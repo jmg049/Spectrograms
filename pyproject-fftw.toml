@@ -1,0 +1,44 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "spectrograms-fftw"
+version = "0.1.0"
+description = "Fast spectrogram computation library powered by Rust (FFTW backend - requires system FFTW library)"
+readme = "python/README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "Jack Geraghty", email = "jgeraghty049@gmail.com" }
+]
+keywords = ["spectrogram", "audio", "fft", "fftw", "mel", "signal-processing"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = ["numpy>=1.16"]
+
+[project.urls]
+Homepage = "https://github.com/jmg049/Spectrograms"
+Repository = "https://github.com/jmg049/Spectrograms"
+Issues = "https://github.com/jmg049/Spectrograms/issues"
+
+[tool.maturin]
+features = ["python", "fftw"]
+module-name = "spectrograms._spectrograms"
+python-source = "python"
+
+# Note: This variant requires FFTW3 to be installed on the system:
+# - Ubuntu/Debian: sudo apt-get install libfftw3-dev
+# - macOS: brew install fftw
+# - Windows: See FFTW installation instructions

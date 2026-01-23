@@ -1,0 +1,45 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "spectrograms"
+version = "0.1.0"
+description = "Fast spectrogram computation library powered by Rust"
+readme = "python/README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Jack Geraghty", email = "jgeraghty049@gmail.com" }]
+keywords = ["spectrogram", "audio", "fft", "mel", "signal-processing"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "myst-parser>=3.0.1",
+    "numpy>=1.16",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-rtd-theme>=3.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jmg049/Spectrograms"
+Repository = "https://github.com/jmg049/Spectrograms"
+Issues = "https://github.com/jmg049/Spectrograms/issues"
+
+[tool.maturin]
+features = ["python", "realfft"]
+module-name = "spectrograms._spectrograms"
+python-source = "python"
+include = ["**/*.pyi", "**/py.typed"]
+# For FFTW variant, build with:
+# maturin build --features python,fftw --no-default-features

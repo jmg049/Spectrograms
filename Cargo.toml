@@ -1,0 +1,44 @@
+[package]
+name = "spectrograms"
+version = "0.1.0"
+edition = "2024"
+authors = ["Jack Geraghty (jmg049) <jgeraghty049@gmail.com>"]
+description = "A focused Rust library for computing spectrograms with a simple, unified API"
+repository = "https://github.com/jmg049/Spectrograms"
+license = "MIT"
+keywords = ["spectrogram", "audio", "fft", "mel", "signal-processing"]
+categories = ["multimedia::audio", "science"]
+readme = "README.md"
+
+[package.metadata.docs.rs]
+# Build docs with all features on docs.rs
+all-features = false
+# Use realfft by default on docs.rs (no system dependencies)
+features = ["realfft"]
+default-target = "x86_64-unknown-linux-gnu"
+
+[dependencies]
+fftw-sys = { version = "0.8.0", optional = true }
+ndarray = "=0.17.2"
+pyo3 = { version = "0.27", optional = true, features = [
+    "extension-module",
+    "experimental-inspect",
+] }
+numpy = { version = "0.27", optional = true }
+num-complex = "0.4.6"
+
+rayon = "1.11.0"
+realfft = { version = "3.5.0", optional = true }
+regex = "1.12.2"
+serde = { version = "1.0", features = ["derive"], optional = true }
+thiserror = "2.0.18"
+
+[features]
+default = ["realfft", "python"]
+fftw = ["dep:fftw-sys"]
+realfft = ["dep:realfft"]
+serde = ["dep:serde"]
+python = ["dep:pyo3", "dep:numpy"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
