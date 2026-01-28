@@ -21,7 +21,7 @@ Basic Usage
    samples = np.random.randn(16000)  # 1 second at 16 kHz
 
    # Configure parameters
-   stft = sg.StftParams(n_fft=512, hop_size=160, window="hanning")
+   stft = sg.StftParams(n_fft=512, hop_size=160, window=sg.WindowType.hanning)
    mfcc_params = sg.MfccParams(n_mfcc=13)
 
    # Compute MFCCs
@@ -74,7 +74,7 @@ Basic Usage
        norm="l2"          # Normalize each frame
    )
 
-   stft = sg.StftParams(n_fft=4096, hop_size=1024, window="hanning")
+   stft = sg.StftParams(n_fft=4096, hop_size=1024, window=sg.WindowType.hanning)
 
    # Compute chromagram
    chroma = sg.compute_chromagram(
@@ -185,7 +185,7 @@ Speech Recognition
 
    # Standard ASR features
    mfcc_params = sg.MfccParams.speech_standard()
-   stft = sg.StftParams(n_fft=512, hop_size=160, window="hamming")
+   stft = sg.StftParams(n_fft=512, hop_size=160, window=sg.WindowType.hamming)
 
    mfccs = sg.compute_mfcc(samples, stft, 16000, 40, mfcc_params)
 
@@ -196,7 +196,7 @@ Music Analysis
 
    # Chord recognition
    chroma_params = sg.ChromaParams.music_standard()
-   stft = sg.StftParams(n_fft=4096, hop_size=1024, window="hanning")
+   stft = sg.StftParams(n_fft=4096, hop_size=1024, window=sg.WindowType.hanning)
 
    chroma = sg.compute_chromagram(samples, stft, 44100, chroma_params)
 

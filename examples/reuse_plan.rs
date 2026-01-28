@@ -1,3 +1,4 @@
+use non_empty_slice::{NonEmptyVec, non_empty_vec};
 /// Plan reuse example
 ///
 /// This example demonstrates:
@@ -5,15 +6,17 @@
 /// - Processing multiple signals efficiently
 /// - Performance benefits of plan reuse
 use spectrograms::{
-    LinearPowerSpectrogram, SpectrogramParams, SpectrogramPlanner, StftParams, WindowType,
+    LinearPowerSpectrogram, SpectrogramParams, SpectrogramPlanner, StftParams, WindowType, nzu,
 };
+
 use std::f64::consts::PI;
 use std::time::Instant;
 
-fn generate_sine(frequency: f64, sample_rate: f64, duration: f64) -> Vec<f64> {
-    (0..(duration * sample_rate) as usize)
+fn generate_sine(frequency: f64, sample_rate: f64, duration: f64) -> NonEmptyVec<f64> {
+    let v = (0..(duration * sample_rate) as usize)
         .map(|i| (2.0 * PI * frequency * i as f64 / sample_rate).sin())
-        .collect()
+        .collect();
+    NonEmptyVec::new(v).unwrap()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,8 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let duration = 1.0;
 
     // Generate multiple test signals at different frequencies
-    let frequencies = vec![220.0, 440.0, 880.0, 1760.0]; // A3, A4, A5, A6
-    let signals: Vec<Vec<f64>> = frequencies
+    let frequencies = non_empty_vec![220.0, 440.0, 880.0, 1760.0]; // A3, A4, A5, A6
+    let signals: Vec<NonEmptyVec<f64>> = frequencies
         .iter()
         .map(|&freq| generate_sine(freq, sample_rate, duration))
         .collect();
@@ -35,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Generated {} signals", signals.len());
 
     // Set up parameters
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true)?;
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true)?;
     let params = SpectrogramParams::new(stft, sample_rate)?;
 
     // Method 1: Using convenience API (creates plan each time)

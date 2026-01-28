@@ -1,3 +1,4 @@
+use non_empty_slice::NonEmptyVec;
 /// Mel-frequency spectrogram example
 ///
 /// This example demonstrates:
@@ -5,7 +6,7 @@
 /// - Using logarithmic (dB) amplitude scaling
 /// - Accessing mel-frequency axes
 use spectrograms::{
-    LogParams, MelDbSpectrogram, MelParams, SpectrogramParams, StftParams, WindowType,
+    LogParams, MelDbSpectrogram, MelParams, SpectrogramParams, StftParams, WindowType, nzu,
 };
 use std::f64::consts::PI;
 
@@ -21,18 +22,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (2.0 * PI * 440.0 * t).sin() + 0.5 * (2.0 * PI * 880.0 * t).sin()
         })
         .collect();
-
+    let samples = NonEmptyVec::new(samples).unwrap();
     println!("Generated {} samples with two frequencies", samples.len());
 
     // Set up STFT parameters
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true)?;
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true)?;
     let params = SpectrogramParams::new(stft, sample_rate)?;
 
     // Set up mel filterbank parameters
     let mel = MelParams::new(
-        80,     // n_mels: number of mel bands
-        0.0,    // f_min: minimum frequency (Hz)
-        8000.0, // f_max: maximum frequency (Hz)
+        nzu!(80), // n_mels: number of mel bands
+        0.0,      // f_min: minimum frequency (Hz)
+        8000.0,   // f_max: maximum frequency (Hz)
     )?;
 
     // Set up logarithmic (dB) scaling
@@ -51,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Lowest mel center: {:.1} Hz", mel_freqs[0]);
     println!(
         "  Highest mel center: {:.1} Hz",
-        mel_freqs[mel_freqs.len() - 1]
+        mel_freqs[mel_freqs.len().get() - 1]
     );
 
     // Print a few mel band center frequencies
@@ -62,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Find average energy per mel band (across all frames)
     println!("\nAverage energy per mel band (dB):");
-    for i in (0..spec.n_bins()).step_by(spec.n_bins() / 5) {
+    for i in (0..spec.n_bins().get()).step_by(spec.n_bins().get() / 5) {
         let row = spec.data().row(i);
         let avg = row.iter().sum::<f64>() / row.len() as f64;
         println!("  Mel band {} ({:.1} Hz): {:.2} dB", i, mel_freqs[i], avg);

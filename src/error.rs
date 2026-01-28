@@ -10,7 +10,8 @@ pub type SpectrogramResult<T> = Result<T, SpectrogramError>;
 /// - `DimensionMismatch`: Indicates a mismatch in expected and actual dimensions.
 /// - `FftBackendError`: Represents errors originating from the FFT backend.
 ///
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
+#[non_exhaustive]
 pub enum SpectrogramError {
     /// The input provided to the spectrogram function is invalid.
     #[error("Invalid input: {0}")]
@@ -67,7 +68,7 @@ impl SpectrogramError {
     /// # Returns
     /// A `SpectrogramError::DimensionMismatch` variant containing the expected and actual sizes.
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn dimension_mismatch(expected: usize, got: usize) -> Self {
         Self::DimensionMismatch { expected, got }
     }

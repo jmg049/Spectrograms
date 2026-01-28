@@ -1,9 +1,8 @@
 """Type stubs for spectrograms package."""
 
-from typing import Optional, Tuple, List
+from typing import Optional
 import numpy as np
 import numpy.typing as npt
-from spectrograms import ErbPowerPlan
 
 __version__: str
 
@@ -54,30 +53,26 @@ class WindowType:
         :return: Rectangular window type
         """
         ...
+    """
+    Create a Hanning window - good general-purpose window with moderate leakage.
 
-    @classmethod
-    def hanning(cls) -> WindowType:
-        """Create a Hanning window - good general-purpose window with moderate leakage.
+    :return: Hanning window type
+    """
+    hanning: WindowType
 
-        :return: Hanning window type
-        """
-        ...
+    """
+    Create a Hamming window - similar to Hanning but slightly different coefficients.
 
-    @classmethod
-    def hamming(cls) -> WindowType:
-        """Create a Hamming window - similar to Hanning but slightly different coefficients.
+    :return: Hamming window type
+    """
+    hamming: WindowType
 
-        :return: Hamming window type
-        """
-        ...
+    """
+    Create a Blackman window - low leakage but wider main lobe.
 
-    @classmethod
-    def blackman(cls) -> WindowType:
-        """Create a Blackman window - low leakage but wider main lobe.
-
-        :return: Blackman window type
-        """
-        ...
+    :return: Blackman window type
+    """
+    blackman: WindowType
 
     @classmethod
     def kaiser(cls, beta: float) -> WindowType:
@@ -618,11 +613,11 @@ class LinearPowerPlan:
         """
         ...
 
-    def output_shape(self, signal_length: int) -> Tuple[int, int]:
+    def output_shape(self, signal_length: int) -> tuple[int, int]:
         """Get the output shape for a given signal length.
 
         :param signal_length: Length of input signal
-        :return: Tuple (n_bins, n_frames)
+        :return: tuple (n_bins, n_frames)
         """
         ...
 
@@ -633,7 +628,7 @@ class LinearMagnitudePlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LinearDbPlan:
     """Plan for computing linear decibel spectrograms."""
@@ -658,7 +653,7 @@ class LinearDbPlan:
         :return: 1D array containing the frame data
         """
         ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class MelPowerPlan:
     """Plan for computing mel power spectrograms."""
@@ -683,7 +678,7 @@ class MelPowerPlan:
         :return: 1D array containing the frame data
         """
         ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class MelMagnitudePlan:
     """Plan for computing mel magnitude spectrograms."""
@@ -692,7 +687,7 @@ class MelMagnitudePlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class MelDbPlan:
     """Plan for computing mel decibel spectrograms."""
@@ -701,7 +696,7 @@ class MelDbPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class ErbPowerPlan:
     """Plan for computing ERB power spectrograms."""
@@ -710,7 +705,7 @@ class ErbPowerPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class ErbMagnitudePlan:
     """Plan for computing ERB magnitude spectrograms."""
@@ -719,7 +714,7 @@ class ErbMagnitudePlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class ErbDbPlan:
     """Plan for computing ERB decibel spectrograms."""
@@ -728,7 +723,7 @@ class ErbDbPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LogHzPowerPlan:
     """Plan for computing logarithmic Hz power spectrograms."""
@@ -737,7 +732,7 @@ class LogHzPowerPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LogHzMagnitudePlan:
     """Plan for computing logarithmic Hz magnitude spectrograms."""
@@ -746,7 +741,7 @@ class LogHzMagnitudePlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LogHzDbPlan:
     """Plan for computing logarithmic Hz decibel spectrograms."""
@@ -755,7 +750,7 @@ class LogHzDbPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class CqtPowerPlan:
     """Plan for computing CQT power spectrograms."""
@@ -764,7 +759,7 @@ class CqtPowerPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class CqtMagnitudePlan:
     """Plan for computing CQT magnitude spectrograms."""
@@ -773,7 +768,7 @@ class CqtMagnitudePlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class CqtDbPlan:
     """Plan for computing CQT decibel spectrograms."""
@@ -782,7 +777,7 @@ class CqtDbPlan:
     def compute_frame(
         self, samples: npt.NDArray[np.float64], frame_idx: int
     ) -> npt.NDArray[np.float64]: ...
-    def output_shape(self, signal_length: int) -> Tuple[int, int]: ...
+    def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 # ============================================================================
 # Spectrogram Compute Functions
@@ -1038,7 +1033,7 @@ def compute_chromagram(
     :param stft_params: STFT parameters
     :param sample_rate: Sample rate in Hz
     :param chroma_params: Chromagram parameters
-    :return: Chromagram as a 2D NumPy array (12 × n_frames)
+    :return: Chromagram as a 2D NumPy array (12 x n_frames)
     """
     ...
 
@@ -1056,7 +1051,7 @@ def compute_mfcc(
     :param sample_rate: Sample rate in Hz
     :param n_mels: Number of mel bands
     :param mfcc_params: MFCC parameters
-    :return: MFCCs as a 2D NumPy array (n_mfcc × n_frames)
+    :return: MFCCs as a 2D NumPy array (n_mfcc x n_frames)
     """
     ...
 
@@ -1069,7 +1064,7 @@ def compute_stft(
 
     :param samples: Audio samples as a 1D NumPy array
     :param params: Spectrogram parameters
-    :return: Complex STFT as a 2D NumPy array of complex128 (n_fft/2+1 × n_frames)
+    :return: Complex STFT as a 2D NumPy array of complex128 (n_fft/2+1 x n_frames)
     """
     ...
 
@@ -1077,7 +1072,7 @@ def compute_stft(
 # FFT Functions
 # ============================================================================
 
-def compute_rfft(
+def compute_fft(
     samples: npt.NDArray[np.float64], n_fft: int
 ) -> npt.NDArray[np.complex128]:
     """Compute the real-to-complex FFT of a signal.
@@ -1150,7 +1145,7 @@ def compute_istft(
 
     Reconstructs a time-domain signal from its STFT using overlap-add synthesis.
 
-    :param stft_matrix: Complex STFT as a 2D NumPy array (n_fft/2+1 × n_frames)
+    :param stft_matrix: Complex STFT as a 2D NumPy array (n_fft/2+1 x n_frames)
     :param n_fft: FFT size
     :param hop_size: Number of samples between successive frames (must match forward STFT)
     :param window: Window function to apply (should match forward STFT window)
@@ -1159,3 +1154,189 @@ def compute_istft(
     :raises DimensionMismatchError: If STFT matrix shape doesn't match parameters
     """
     ...
+
+# ============================================================================
+# 2D FFT Functions
+# ============================================================================
+
+def fft2d(data: npt.NDArray[np.float64]) -> npt.NDArray[np.complex64]:
+    """Compute 2D FFT of a real-valued 2D array.
+
+    :param data: Input 2D array (e.g., image) with shape (nrows, ncols)
+    :return: Complex 2D array with shape (nrows, ncols/2 + 1) due to Hermitian symmetry
+    """
+    ...
+
+def ifft2d(
+    spectrum: npt.NDArray[np.complex64], output_ncols: int
+) -> npt.NDArray[np.float64]:
+    """Compute inverse 2D FFT from frequency domain back to spatial domain.
+
+    :param spectrum: Complex frequency array with shape (nrows, ncols/2 + 1)
+    :param output_ncols: Number of columns in the output (must match original image width)
+    :return: Real 2D array with shape (nrows, output_ncols)
+    """
+    ...
+
+def power_spectrum_2d(data: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Compute 2D power spectrum (squared magnitude).
+
+    :param data: Input 2D array with shape (nrows, ncols)
+    :return: Power spectrum with shape (nrows, ncols/2 + 1)
+    """
+    ...
+
+def magnitude_spectrum_2d(data: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Compute 2D magnitude spectrum.
+
+    :param data: Input 2D array with shape (nrows, ncols)
+    :return: Magnitude spectrum with shape (nrows, ncols/2 + 1)
+    """
+    ...
+
+def fftshift(arr: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Shift zero-frequency component to center.
+
+    :param arr: Input 2D array
+    :return: Shifted array with DC component at center
+    """
+    ...
+
+def ifftshift(arr: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Inverse of fftshift - shift center back to corners.
+
+    :param arr: Input 2D array
+    :return: Shifted array with DC component at corners
+    """
+    ...
+
+# ============================================================================
+# Image Processing Functions
+# ============================================================================
+
+def gaussian_kernel_2d(size: int, sigma: float) -> npt.NDArray[np.float64]:
+    """Create 2D Gaussian kernel for blurring.
+
+    :param size: Kernel size (must be odd, e.g., 3, 5, 7, 9)
+    :param sigma: Standard deviation of the Gaussian
+    :return: Normalized Gaussian kernel with shape (size, size)
+    """
+    ...
+
+def convolve_fft(
+    image: npt.NDArray[np.float64], kernel: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Convolve 2D image with kernel using FFT.
+
+    :param image: Input image with shape (nrows, ncols)
+    :param kernel: Convolution kernel (must be smaller than image)
+    :return: Convolved image (same size as input)
+    """
+    ...
+
+def lowpass_filter(
+    image: npt.NDArray[np.float64], cutoff_fraction: float
+) -> npt.NDArray[np.float64]:
+    """Apply low-pass filter to suppress high frequencies.
+
+    :param image: Input image
+    :param cutoff_fraction: Cutoff radius as fraction (0.0 to 1.0)
+    :return: Filtered image
+    """
+    ...
+
+def highpass_filter(
+    image: npt.NDArray[np.float64], cutoff_fraction: float
+) -> npt.NDArray[np.float64]:
+    """Apply high-pass filter to suppress low frequencies.
+
+    :param image: Input image
+    :param cutoff_fraction: Cutoff radius as fraction (0.0 to 1.0)
+    :return: Filtered image with edges emphasized
+    """
+    ...
+
+def bandpass_filter(
+    image: npt.NDArray[np.float64], low_cutoff: float, high_cutoff: float
+) -> npt.NDArray[np.float64]:
+    """Apply band-pass filter to keep frequencies in a range.
+
+    :param image: Input image
+    :param low_cutoff: Lower cutoff as fraction (0.0 to 1.0)
+    :param high_cutoff: Upper cutoff as fraction (0.0 to 1.0)
+    :return: Filtered image
+    """
+    ...
+
+def detect_edges_fft(image: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Detect edges using high-pass filtering.
+
+    :param image: Input image
+    :return: Edge-detected image
+    """
+    ...
+
+def sharpen_fft(
+    image: npt.NDArray[np.float64], amount: float
+) -> npt.NDArray[np.float64]:
+    """Sharpen image by enhancing high frequencies.
+
+    :param image: Input image
+    :param amount: Sharpening strength (typical range: 0.5 to 2.0)
+    :return: Sharpened image
+    """
+    ...
+
+# ============================================================================
+# 2D FFT Planner
+# ============================================================================
+
+class Fft2dPlanner:
+    """2D FFT planner for efficient batch processing.
+
+    Caches FFT plans internally to avoid repeated setup overhead when
+    processing multiple arrays with the same dimensions.
+    """
+
+    def __init__(self) -> None:
+        """Create a new 2D FFT planner."""
+        ...
+
+    def fft2d(self, data: npt.NDArray[np.float64]) -> npt.NDArray[np.complex64]:
+        """Compute 2D FFT using cached plans.
+
+        :param data: Input 2D array with shape (nrows, ncols)
+        :return: Complex 2D array with shape (nrows, ncols/2 + 1)
+        """
+        ...
+
+    def ifft2d(
+        self, spectrum: npt.NDArray[np.complex64], output_ncols: int
+    ) -> npt.NDArray[np.float64]:
+        """Compute inverse 2D FFT using cached plans.
+
+        :param spectrum: Complex frequency array
+        :param output_ncols: Number of columns in output
+        :return: Real 2D array
+        """
+        ...
+
+    def power_spectrum_2d(
+        self, data: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
+        """Compute 2D power spectrum using cached plans.
+
+        :param data: Input 2D array
+        :return: Power spectrum
+        """
+        ...
+
+    def magnitude_spectrum_2d(
+        self, data: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
+        """Compute 2D magnitude spectrum using cached plans.
+
+        :param data: Input 2D array
+        :return: Magnitude spectrum
+        """
+        ...

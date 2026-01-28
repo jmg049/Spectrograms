@@ -1,0 +1,2384 @@
+% ============================================
+% Spectrograms: A Mathematical and Computational Guide
+% Educational manual for FFT-Based Audio and Image Processing
+% ============================================
+
+\section{Introduction}\label{sec:introduction}
+
+This manual provides a comprehensive mathematical and computational
+overview of the algorithms, optimizations, and transformations
+implemented in the \texttt{spectrograms} library. The focus is on
+understanding the theoretical foundations and practical
+implementations of FFT-based signal processing for audio and image analysis.
+
+The material emphasizes the \termdef{why} and \termdef{how} of each
+algorithm: \emph{why} certain design choices matter, and \emph{how}
+they are implemented efficiently. The material covers both the
+mathematics and the practical computational considerations that make
+these methods work in production systems.
+
+\subsection{Target Audience and Prerequisites}\label{subsec:prerequisites}
+
+This material assumes familiarity with:
+\begin{itemize}[itemsep=3pt]
+  \item Linear algebra (matrix multiplication, vector operations, eigenvalues)
+  \item Complex numbers and Euler's formula
+  \item Discrete signals and sampling theory
+  \item Basic programming concepts and algorithm analysis
+  \item Calculus (integrals, derivatives, series)
+\end{itemize}
+
+No prior knowledge of Fourier analysis, psychoacoustics, or advanced
+signal processing is assumed.
+
+\subsection{Scope and Organization}\label{subsec:organization}
+
+The manual is organized into major thematic sections:
+\begin{enumerate}[itemsep=3pt]
+  \item \textbf{Fourier Transform Theory} (\cref{sec:fourier}) ---
+    DFT, FFT algorithms, Hermitian symmetry, 2D FFT
+  \item \textbf{Window Functions and Spectral Analysis}
+    (\cref{sec:windows}) --- Hanning, Hamming, Kaiser, Blackman, Gaussian
+  \item \textbf{Time-Frequency Representations} (\cref{sec:stft}) ---
+    STFT and spectrograms
+  \item \textbf{Amplitude Scaling and Representations} (\cref{sec:amplitude})
+    --- Power, magnitude, decibels, Parseval's theorem
+  \item \textbf{Perceptual Frequency Scales} (\cref{sec:perceptual})
+    --- Mel, ERB, logarithmic scales
+  \item \textbf{Constant-Q Transform} (\cref{sec:cqt}) --- Variable-length
+    kernels, sparsity optimization
+  \item \textbf{Advanced Audio Features} (\cref{sec:advanced}) ---
+    MFCC, chroma, gammatone filters
+  \item \textbf{Image Processing via FFT} (\cref{sec:image}) --- 2D
+    convolution, filtering, edge detection
+  \item \textbf{Computational Optimizations}
+    (\cref{sec:optimizations}) --- Sparse matrices, FFT plans, caching
+  \item \textbf{Numerical Considerations} (\cref{sec:numerical}) ---
+    Precision, normalization, dynamic range
+\end{enumerate}
+
+\subsection{Notation Conventions}\label{subsec:notation}
+
+Throughout this manual:
+\begin{itemize}[itemsep=2pt]
+  \item $N$ denotes signal length or FFT size
+  \item $k$ denotes frequency bin index ($0 \leq k < N$)
+  \item $n$ denotes time/sample index ($0 \leq n < N$)
+  \item $j = \sqrt{-1}$ (the imaginary unit)
+  \item $X[k]$ denotes frequency domain values
+  \item $x[n]$ denotes time domain values
+  \item Vectors are bold: $\mathbf{x}$
+  \item Complex conjugate: $\conj{z}$
+\end{itemize}
+
+\section{Fourier Transform Foundations}\label{sec:fourier}
+
+\subsection{The Discrete Fourier Transform (DFT)}\label{subsec:dft}
+
+The \termdef{Discrete Fourier Transform} (DFT) decomposes a
+finite-length sequence into its constituent frequencies. For a
+sequence $x[n]$ of length $N$, the DFT is defined
+as~\cite{oppenheim1999discrete}:
+
+\begin{equation}
+  \label{eq:dft_definition}
+  X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-j2\pi kn/N}, \quad k = 0, 1,
+  \ldots, N-1
+\end{equation}
+
+where $X[k]$ represents the complex amplitude at frequency bin $k$.
+Using Euler's formula $e^{j\theta} = \cos\theta + j\sin\theta$,
+\cref{eq:dft_definition} can be expanded as:
+
+\begin{equation}
+  \label{eq:dft_expanded}
+  X[k] = \sum_{n=0}^{N-1} x[n] \left[\cos\left(\frac{2\pi
+  kn}{N}\right) - j\sin\left(\frac{2\pi kn}{N}\right)\right]
+\end{equation}
+
+This reveals that the DFT correlates the input signal with complex
+sinusoids at each frequency. The computational complexity of this
+direct calculation is $\mathcal{O}(N^2)$ --- each of $N$ outputs
+requires $N$ multiplications.
+
+The \termdef{inverse DFT} (IDFT) reconstructs the time-domain signal:
+
+\begin{equation}
+  \label{eq:idft}
+  x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k] \cdot e^{j2\pi kn/N}, \quad
+  n = 0, 1, \ldots, N-1
+\end{equation}
+
+The normalization factor $1/N$ ensures \termdef{perfect
+reconstruction}: $\text{IDFT}(\DFT(x)) = x$.
+
+\begin{concept}{DFT Scaling Convention}
+  Different implementations use different scaling conventions for the
+  DFT and inverse DFT.\ The three most common conventions are:
+
+  \begin{enumerate}[itemsep=2pt]
+    \item \textbf{No forward scaling (this library):} Forward DFT
+      uses coefficient 1, inverse DFT uses $1/N$
+    \item \textbf{Symmetric scaling:} Both forward and inverse use
+      $1/\sqrt{N}$ (unitary transform)
+    \item \textbf{No inverse scaling:} Forward uses $1/N$, inverse uses 1
+  \end{enumerate}
+
+  \textbf{This library uses Convention 1:} The forward DFT has
+  \emph{no normalization factor} (coefficient of 1), and the inverse
+  DFT includes the $1/N$ factor. This convention is standard in most
+  signal processing literature and libraries (FFTW, NumPy, SciPy).
+
+  \textbf{Energy implications:} With this scaling, Parseval's theorem
+  (\cref{subsec:parseval}) takes the form:
+  \begin{equation}
+    \sum_{n=0}^{N-1} \abs{x[n]}^2 = \frac{1}{N}\sum_{k=0}^{N-1} \abs{X[k]}^2
+  \end{equation}
+
+  When comparing spectral amplitudes between implementations,
+  \emph{always verify the scaling convention} to ensure
+  energy-consistent analysis.
+\end{concept}
+
+\subsection{Fast Fourier Transform (FFT): The Cooley-Tukey
+Algorithm}\label{subsec:fft}
+
+The \termdef{Fast Fourier Transform} (FFT) is not a different
+transform, but an efficient algorithm for computing the DFT.\ The
+Cooley-Tukey algorithm~\cite{cooley1965algorithm}, published in 1965
+(though similar ideas date to Gauss in
+1805~\cite{gauss1866nachlass}), reduces complexity from
+$\mathcal{O}(N^2)$ to $\mathcal{O}(N \log N)$.
+
+The key insight is divide-and-conquer using the \emph{symmetry} and
+\emph{periodicity} properties of complex exponentials:
+
+\begin{concept}{Twiddle Factor Properties}
+  Let $W_N^{k} = e^{-j2\pi k/N}$ be the \termdef{twiddle factor}.
+  These complex exponentials satisfy:
+  \begin{align}
+    \label{eq:twiddle_symmetry}
+    W_N^{k+N/2} &= -W_N^{k} \quad \text{(symmetry)} \\
+    \label{eq:twiddle_periodicity}
+    W_N^{k+N} &= W_N^{k} \quad \text{(periodicity)}
+  \end{align}
+
+  \textbf{Periodicity} means the complex exponential repeats every
+  $N$ samples. \textbf{Symmetry} means that values half an FFT bin
+  apart differ only in sign. These properties enable the FFT's
+  recursive decomposition.
+\end{concept}
+
+For $N$ even, split the DFT into even and odd indexed samples:
+
+\begin{equation}
+  \label{eq:fft_split}
+  X[k] = \sum_{n=0}^{N/2-1} x[2n] W_N^{2nk} + \sum_{n=0}^{N/2-1}
+  x[2n+1] W_N^{(2n+1)k}
+\end{equation}
+
+Using $W_N^{2k} = W_{N/2}^{k}$, this becomes:
+
+\begin{equation}
+  \label{eq:fft_butterfly}
+  X[k] = \underbrace{\sum_{n=0}^{N/2-1} x[2n] W_{N/2}^{nk}}_{E[k]} +
+  W_N^k \underbrace{\sum_{n=0}^{N/2-1} x[2n+1] W_{N/2}^{nk}}_{O[k]}
+\end{equation}
+
+where $E[k]$ and $O[k]$ are $N/2$-point DFTs of the even and odd
+samples. This recursive splitting continues until the base cases are reached
+(typically $N=1$ or small prime factors).
+
+The complexity analysis: At each of $\log_2 N$ levels, $N$ operations
+(additions and a twiddle factor multiplication) are performed, yielding
+$\mathcal{O}(N \log N)$ total complexity.
+
+\subsection{Real-to-Complex FFT and Hermitian Symmetry}\label{subsec:r2c_fft}
+
+When the input signal $x[n]$ is real-valued (as in audio processing),
+the DFT output exhibits a special property:
+
+\begin{concept}{Hermitian Symmetry}
+  For a real-valued signal $x[n]$, the DFT satisfies
+  \termdef{Hermitian symmetry}:
+  \begin{equation}\label{eq:hermitian_symmetry}
+    X[k] = \conj{X}[N-k]
+  \end{equation}
+
+  where $\conj{X}$ denotes complex conjugate. This means:
+  \begin{itemize}[itemsep=2pt]
+    \item $\Real(X[k]) = \Real(X[N-k])$ (real parts are symmetric)
+    \item $\Imag(X[k]) = -\Imag(X[N-k])$ (imaginary parts are antisymmetric)
+    \item $X[0]$ and $X[N/2]$ (for even $N$) are purely real
+  \end{itemize}
+
+  This property follows directly from the DFT definition and the fact
+  that $e^{j\theta} + e^{-j\theta} = 2\cos\theta$ is real for real $\theta$.
+
+  \textbf{Critical constraint for R2C transforms:} For even $N$, the
+  Nyquist frequency bin $X[N/2]$ \emph{must be purely real} (i.e.,
+  $\Imag(X[N/2]) = 0$). This follows from Hermitian symmetry since
+  $X[N/2] = \conj{X}[N - N/2] = \conj{X}[N/2]$, which requires the
+  imaginary part to be zero. Violating this constraint results in
+  non-real values after inverse FFT, causing numerical errors and
+  incorrect signal reconstruction.
+\end{concept}
+
+This symmetry makes it sufficient to store only the positive frequencies:
+
+\begin{equation}
+  k \in \{0, 1, 2, \ldots, N/2\}
+\end{equation}
+
+This yields $N/2 + 1$ complex values instead of $N$, halving
+storage requirements. The library computes real-to-complex (R2C) FFTs
+with output size:
+
+\begin{equation}
+  \text{output\_size} = \lfloor N/2 \rfloor + 1
+\end{equation}
+
+\textbf{Implementation detail:} The library uses specialized R2C FFT
+algorithms (from RealFFT or FFTW backends) that exploit this symmetry
+for both speed and memory efficiency.
+
+\begin{lstlisting}[]
+
+pub const fn r2c_output_size(n: usize) -> usize {
+    n / 2 + 1
+}
+
+// Example: 512-point FFT on real signal
+let samples = vec![0.0; 512];
+let spectrum = fft(&samples, 512)?;
+assert_eq!(spectrum.len(), 257); // 512/2 + 1
+\end{lstlisting}
+
+\subsection{Inverse FFT and Perfect Reconstruction}
+
+The inverse FFT (IFFT) transforms frequency-domain data back to the
+time domain. For a complex-to-real (C2R) inverse FFT, given
+Hermitian-symmetric input $X[k]$:
+
+\begin{equation}
+  x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k] e^{j2\pi kn/N}
+\end{equation}
+
+Due to Hermitian symmetry, it is sufficient to sum over the non-redundant
+frequencies:
+
+\begin{equation}
+  x[n] = \frac{1}{N}\left[X[0] + 2\sum_{k=1}^{N/2-1}
+  \text{Re}(X[k]e^{j2\pi kn/N}) + X[N/2]\cos(\pi n)\right]
+\end{equation}
+
+The library's C2R inverse FFT ensures perfect reconstruction:
+
+\begin{lstlisting}[]
+let original = vec![1.0, 2.0, 3.0, 4.0];
+let spectrum = fft2d(&original_image)?;
+let reconstructed = ifft2d(&spectrum, original_image.ncols())?;
+// reconstructed approximately original (within floating-point precision)
+\end{lstlisting}
+
+\subsection{2D FFT via Row-Column Decomposition}\label{subsec:fft2d}
+
+For 2D data like images with dimensions $M \times N$, the 2D DFT is:
+
+\begin{equation}
+  \label{eq:dft_2d}
+  X[k_1, k_2] = \sum_{n_1=0}^{M-1} \sum_{n_2=0}^{N-1} x[n_1, n_2]
+  \cdot e^{-j2\pi(k_1 n_1/M + k_2 n_2/N)}
+\end{equation}
+
+The separability property allows this to be decomposed into row and
+column transforms:
+
+\begin{equation}
+  \label{eq:fft_2d_decomposition}
+  X[k_1, k_2] = \sum_{n_1=0}^{M-1} e^{-j2\pi k_1 n_1/M}
+  \underbrace{\left[\sum_{n_2=0}^{N-1} x[n_1, n_2] \cdot e^{-j2\pi k_2
+  n_2/N}\right]}_{\text{1D FFT along each row}}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+  \item Apply 1D FFT to each row: $M$ transforms of length $N$
+  \item Apply 1D FFT to each column of the result: $N$ transforms of length $M$
+\end{enumerate}
+
+For a real-valued $M \times N$ image, the output is $M \times (N/2 +
+1)$ due to Hermitian symmetry along rows.
+
+\textbf{Implementation:} The library uses row-major layout and
+ensures contiguous memory:
+
+\begin{lstlisting}[]
+
+pub fn fft2d(data: &Array2<f64>) -> SpectrogramResult<Array2<Complex<f64>>> {
+    let (nrows, ncols) = (data.nrows(), data.ncols());
+
+    if !data.is_standard_layout() {
+        return Err(SpectrogramError::invalid_input(
+            "array must be contiguous and row-major"));
+    }
+
+    let out_shape = r2c_output_size_2d(nrows, ncols);
+    // out_shape = (nrows, ncols/2 + 1)
+
+    let mut plan = planner.plan_r2c_2d(nrows, ncols)?;
+    // ... perform row-column FFT
+}
+\end{lstlisting}
+
+Complexity: $O(MN \log N + MN \log M) = O(MN \log(MN))$ for square images.
+
+\section{Window Functions for Spectral Analysis}\label{sec:windows}
+
+\subsection{The Windowing Problem}\label{subsec:windowing_problem}
+
+\begin{concept}{Spectral Leakage}
+  When the DFT of a finite signal segment is computed, the signal is
+  implicitly multiplied by a rectangular window (ones inside the
+  segment, zeros outside). This abrupt truncation causes
+  \termdef{spectral leakage}: energy from one frequency ``leaks''
+  into adjacent frequency bins.
+
+  Consider a pure sinusoid at frequency $f_0$. If sampling captures
+  exactly an integer number of periods, the DFT produces a perfect spike at
+  $f_0$. But with non-integer periods, the energy spreads across many bins.
+
+  This occurs because multiplying by a rectangular window in the time
+  domain is equivalent to convolving with a sinc function in the
+  frequency domain, which has slowly-decaying sidelobes.
+\end{concept}
+
+The fundamental trade-off~\cite{harris1978use}:
+\begin{itemize}[itemsep=3pt]
+  \item \textbf{Narrow main lobe} $\rightarrow$ better frequency resolution
+  \item \textbf{Low sidelobes} $\rightarrow$ less spectral leakage
+\end{itemize}
+
+Window functions smooth the transition to zero at the segment
+boundaries, reducing leakage at the cost of frequency resolution.
+
+\subsection{Windowing Convention: Symmetric
+vs.\ Periodic}\label{subsec:windowing_convention}
+
+\begin{concept}{Symmetric and Periodic Windows}
+  Window functions can be defined with two distinct conventions:
+
+  \textbf{Symmetric windows} use $N-1$ in the denominator:
+  \begin{equation}
+    w_{\text{sym}}[n] = f\left(\frac{n}{N-1}\right), \quad n \in [0, N-1]
+  \end{equation}
+
+  \textbf{Periodic windows} use $N$ in the denominator:
+  \begin{equation}
+    w_{\text{per}}[n] = f\left(\frac{n}{N}\right), \quad n \in [0, N-1]
+  \end{equation}
+
+  The difference is subtle but important:
+  \begin{itemize}[itemsep=2pt]
+    \item \textbf{Symmetric:} Values at endpoints match (e.g., both
+      zero for Hanning). Standard for spectral analysis.
+    \item \textbf{Periodic:} The window is periodic with period $N$,
+      so $w[N] = w[0]$. Required for perfect reconstruction in
+      overlap-add systems.
+  \end{itemize}
+
+  For the Constant Overlap-Add (COLA) property~\cite{harris1978use}:
+  \begin{equation}
+    \sum_{m=-\infty}^{\infty} w[n - mH] = C \quad \text{(constant)}
+  \end{equation}
+  where $H$ is the hop size. Periodic windows satisfy COLA for
+  specific overlap ratios, enabling perfect signal reconstruction.
+
+  \textbf{Library convention:} All window implementations in this
+  library use the \emph{symmetric} formulation ($N-1$), which is
+  standard for analysis applications. For synthesis requiring COLA,
+  use appropriate overlap ratios (e.g., 50\% for Hanning).
+\end{concept}
+
+\subsection{Rectangular Window (No Windowing)}\label{subsec:rect_window}
+
+The rectangular window is simply:
+\begin{equation}
+  \label{eq:rect_window}
+  w[n] = 1, \quad n \in [0, N-1]
+\end{equation}
+
+Its frequency response has the narrowest main lobe but highest
+sidelobes ($\approx$-13~dB), causing severe spectral leakage.
+
+\begin{lstlisting}[caption={Rectangular window implementation}]
+
+WindowType::Rectangular => {
+    w.fill(1.0);
+}
+\end{lstlisting}
+
+Use when: You need maximum frequency resolution and know the signal
+contains exact integer periods.
+
+\subsection{Hanning Window}\label{subsec:hann_window}
+
+Also called the Hann window (named after Julius von Hann, not Richard
+Hamming~\cite{harris1978use}), defined as:
+
+\begin{equation}
+  \label{eq:hann_window}
+  w[n] = 0.5 - 0.5\cos\left(\frac{2\pi n}{N-1}\right), \quad n \in [0, N-1]
+\end{equation}
+
+This is a raised cosine function. It smoothly tapers to zero at both endpoints.
+
+Properties:
+\begin{itemize}[itemsep=2pt]
+  \item Main lobe width: 4 bins (2$\times$ rectangular)
+  \item First sidelobe: $\approx$-32~dB
+  \item Sidelobe falloff: -18~dB/octave
+\end{itemize}
+
+\begin{lstlisting}[caption={Hanning window implementation}]
+
+WindowType::Hanning => {
+    let n1 = (n_fft - 1) as f64;
+    for (n, v) in w.iter_mut().enumerate() {
+        *v = 0.5 - 0.5 * cos(2.0 * PI * (n as f64) / n1);
+    }
+}
+\end{lstlisting}
+
+\textbf{Why this works:} The cosine taper reduces discontinuities at
+the edges. In the frequency domain, the Hanning window's transform is
+the convolution of the rectangular window's transform with two delta
+functions, producing lower sidelobes.
+
+The Hanning window is the most commonly used for general-purpose
+spectral analysis.
+
+\subsection{Hamming Window}\label{subsec:hamming_window}
+
+Named after Richard Hamming~\cite{harris1978use}, this window uses
+optimized coefficients:
+
+\begin{equation}
+  \label{eq:hamming_window}
+  w[n] = 0.54 - 0.46\cos\left(\frac{2\pi n}{N-1}\right)
+\end{equation}
+
+The coefficients (0.54, 0.46) were chosen to minimize the first sidelobe:
+\begin{itemize}
+  \item Main lobe width: 4 bins (same as Hanning)
+  \item First sidelobe: $\approx$-43 dB (better than Hanning)
+  \item Sidelobe falloff: -6 dB/octave (worse than Hanning)
+\end{itemize}
+
+\begin{lstlisting}[]
+
+WindowType::Hamming => {
+    let n1 = (n_fft - 1) as f64;
+    for (n, v) in w.iter_mut().enumerate() {
+        *v = 0.54 - 0.46 * cos(2.0 * PI * (n as f64) / n1);
+    }
+}
+\end{lstlisting}
+
+Trade-off: The Hamming window doesn't reach exactly zero at the
+endpoints (it's 0.08), which can cause issues for overlap-add
+reconstruction. However, its lower first sidelobe makes it useful
+when strong interfering signals exist.
+
+\subsection{Blackman Window}\label{subsec:blackman_window}
+
+A three-term cosine sum~\cite{blackman1958measurement} with excellent
+sidelobe suppression:
+
+\begin{equation}
+  \label{eq:blackman_window}
+  w[n] = 0.42 - 0.5\cos\left(\frac{2\pi n}{N-1}\right) +
+  0.08\cos\left(\frac{4\pi n}{N-1}\right)
+\end{equation}
+
+Properties:
+\begin{itemize}
+  \item Main lobe width: 6 bins (3$\times$ rectangular)
+  \item First sidelobe: $\approx$-58 dB
+  \item Sidelobe falloff: -18 dB/octave
+\end{itemize}
+
+\begin{lstlisting}[]
+
+WindowType::Blackman => {
+    let n1 = (n_fft - 1) as f64;
+    for (n, v) in w.iter_mut().enumerate() {
+        let a = 2.0 * PI * (n as f64) / n1;
+        *v = 0.42 - 0.5 * cos(a) + 0.08 * cos(2.0 * a);
+    }
+}
+\end{lstlisting}
+
+Use when: You need minimal spectral leakage and can tolerate wider
+main lobes (reduced frequency resolution).
+
+\subsection{Kaiser Window and Bessel Functions}\label{subsec:kaiser_window}
+
+The Kaiser window~\cite{kaiser1974nonrecursive} provides a tunable
+parameter $\beta$ that controls the trade-off between main lobe width
+and sidelobe level:
+
+\begin{equation}
+  \label{eq:kaiser_window}
+  w[n] =
+  \frac{I_0\left(\beta\sqrt{1-{\left(\frac{2n}{N-1}-1\right)}^{2}}\right)}{I_0(\beta)}
+\end{equation}
+
+\begin{concept}{Modified Bessel Function}
+  The \termdef{modified Bessel function of the first kind}, order
+  zero, $I_0(x)$ is defined by:
+  \begin{equation}
+    \label{eq:bessel_i0}
+    I_0(x) = \sum_{k=0}^{\infty} \frac{1}{(k!)^2}{\left(\frac{x}{2}\right)^{2k}}
+  \end{equation}
+
+  For computational efficiency, a truncated power series is used. The
+  series converges rapidly; typically 20--30 terms achieve
+  machine-precision accuracy for $x < 10$.
+\end{concept}
+
+Parameter $\beta$ effects:
+\begin{itemize}
+  \item $\beta = 0$: rectangular window
+  \item $\beta = 5$: similar to Hamming
+  \item $\beta = 8.6$: similar to Blackman
+  \item Larger $\beta$: lower sidelobes, wider main lobe
+\end{itemize}
+
+\begin{lstlisting}[]
+
+fn bessel_i0(x: f64) -> f64 {
+    let mut sum = 1.0;       // k=0 term
+    let mut term = 1.0;
+    let half_x = x / 2.0;
+
+    // Truncated series: sufficient for Kaiser windows
+    for k in 1..30 {
+        term *= (half_x / k as f64).powi(2);
+        sum += term;
+
+        // Early termination if converged
+        if term < 1e-12 * sum {
+            break;
+        }
+    }
+
+    sum
+}
+
+WindowType::Kaiser { beta } => {
+    let denominator = bessel_i0(beta);
+
+    for i in 0..n_fft {
+        let n = i as f64;
+        let n_max = (n_fft - 1) as f64;
+        let alpha = (n - n_max / 2.0) / (n_max / 2.0);
+        let bessel_arg = beta * (1.0 - alpha * alpha).sqrt();
+
+        w[i] = bessel_i0(bessel_arg) / denominator;
+    }
+}
+\end{lstlisting}
+
+The Kaiser window is named after James Kaiser who introduced it in
+1966 for optimal FIR filter design.
+
+\subsection{Gaussian Window}\label{subsec:gaussian_window}
+
+A Gaussian function centered at the window midpoint:
+
+\begin{equation}
+  w[n] = \exp\left(-\frac{1}{2}\left(\frac{n -
+  \frac{N-1}{2}}{\sigma}\right)^{2}\right)
+\end{equation}
+
+where $\sigma$ (standard deviation) controls the width. Smaller
+$\sigma$ → narrower window → more time localization.
+
+\begin{lstlisting}[]
+
+WindowType::Gaussian { std } => {
+    for i in 0..n_fft {
+        let n = i as f64;
+        let center = (n_fft - 1) as f64 / 2.0;
+        let exponent = -0.5 * ((n - center) / std).powi(2);
+        w[i] = exp(exponent);
+    }
+}
+\end{lstlisting}
+
+The Gaussian window has a unique property: its Fourier transform is
+also Gaussian. This gives optimal time-frequency localization per the
+uncertainty principle:
+
+\begin{equation}
+  \Delta t \cdot \Delta f \geq \frac{1}{4\pi}
+\end{equation}
+
+Use for: Time-frequency analysis where minimizing uncertainty is
+critical (e.g., Gabor transforms).
+
+\subsection{Trade-offs: Frequency Resolution vs. Spectral Leakage}
+
+Comparison table for $N=512$:
+
+\begin{center}
+  \begin{tabular}{lccc}
+    \textbf{Window} & \textbf{Main Lobe} & \textbf{Peak Sidelobe} &
+    \textbf{Falloff Rate} \\
+    \hline
+    Rectangular & 2 bins & -13 dB & -6 dB/oct \\
+    Hanning & 4 bins & -32 dB & -18 dB/oct \\
+    Hamming & 4 bins & -43 dB & -6 dB/oct \\
+    Blackman & 6 bins & -58 dB & -18 dB/oct \\
+    Kaiser ($\beta=8.6$) & 6 bins & -60 dB & -6 dB/oct \\
+  \end{tabular}
+\end{center}
+
+\textbf{Selection guidelines:}
+\begin{itemize}
+  \item General purpose, good balance: Hanning
+  \item Need low first sidelobe: Hamming
+  \item Need very low sidelobes: Blackman
+  \item Custom trade-off: Kaiser with tuned $\beta$
+  \item Optimal uncertainty: Gaussian with appropriate $\sigma$
+
+\end{itemize}
+
+\subsection{Constant Overlap-Add (COLA) Constraint}\label{subsec:cola}
+
+\begin{concept}{Perfect Reconstruction and COLA}
+  When using the STFT for signal modification or synthesis (e.g.,
+  time-stretching, pitch-shifting, noise reduction), the time-domain
+  signal must be reconstructed from modified spectral frames.
+  The \termdef{Constant Overlap-Add} (COLA) constraint ensures
+  perfect reconstruction is possible~\cite{harris1978use}.
+
+  For a window function $w[n]$ and hop size $H$, the COLA property
+  states that the sum of overlapping windows must be constant:
+
+  \begin{equation}
+    \label{eq:cola}
+    \sum_{m=-\infty}^{\infty} w[n - mH] = C \quad \text{(constant for
+    all } n\text{)}
+  \end{equation}
+
+  where $C$ is a non-zero constant (typically normalized to 1).
+
+  \textbf{Physical interpretation:} When frames are overlapped by
+  hop size $H$ and summed (overlap-add), every sample in the
+  reconstructed signal receives equal weighting from the windows.
+  This prevents amplitude modulation artifacts.
+\end{concept}
+
+\textbf{COLA conditions for common windows:}
+
+\begin{enumerate}[itemsep=3pt]
+  \item \textbf{Rectangular window:} COLA for any hop size $H \leq N$
+    (no overlap required)
+
+  \item \textbf{Hanning window (periodic):} COLA for $H = N/2, N/4,
+    N/8, \ldots$ (50\%, 75\%, 87.5\% overlap, etc.)
+    \begin{itemize}
+      \item 50\% overlap ($H = N/2$): Most common, $C = 1$
+      \item 75\% overlap ($H = N/4$): Higher redundancy, smoother synthesis
+    \end{itemize}
+
+  \item \textbf{Hamming window:} COLA for $H \approx 0.375N$ to
+    $0.5N$ (requires careful tuning; 50\% overlap gives $C \approx 1.08$)
+
+  \item \textbf{Blackman window:} COLA for $H \leq N/3$ (at least
+    67\% overlap required)
+
+  \item \textbf{Kaiser window:} COLA depends on $\beta$; generally
+    requires $50-75\%$ overlap
+\end{enumerate}
+
+\textbf{Verification:} To check if a window/hop combination satisfies
+COLA, compute:
+
+\begin{lstlisting}[]
+
+fn verify_cola(window: &[f64], hop_size: usize) -> bool {
+    let n = window.len();
+    let n_overlaps = (n + hop_size - 1) / hop_size;
+
+    // Check multiple offset positions
+    for offset in 0..hop_size {
+        let mut sum = 0.0;
+
+        for m in 0..n_overlaps {
+            let idx = offset + m * hop_size;
+            if idx < n {
+                sum += window[idx];
+            }
+        }
+
+        // All positions should have same sum (within tolerance)
+        if (sum - window[0]).abs() > 1e-10 {
+            return false;
+        }
+    }
+
+    true
+}
+\end{lstlisting}
+
+\textbf{Implications for spectrogram inversion:}
+
+When using the STFT for analysis-modification-synthesis:
+\begin{enumerate}
+  \item Choose a window/hop combination that satisfies COLA
+  \item Apply STFT to get frames $X[m, k]$
+  \item Modify the spectrogram (e.g., filter, denoise, time-stretch)
+  \item Apply inverse FFT to each modified frame
+  \item Overlap-add the frames with hop size $H$
+  \item Divide by the COLA constant $C$ (if $C \neq 1$)
+\end{enumerate}
+
+The reconstructed signal $\hat{x}[n]$ will equal the original $x[n]$
+if no modifications were made (perfect reconstruction).
+
+\textbf{Library convention:} For analysis-only applications
+(spectrograms, feature extraction), COLA is not required. However,
+this library uses 50\% overlap ($H = N/2$) by default, which
+satisfies COLA for Hanning windows and enables optional synthesis workflows.
+
+\section{Short-Time Fourier Transform (STFT)}\label{sec:stft}
+
+\subsection{Time-Frequency Analysis Motivation}\label{subsec:stft_motivation}
+
+The standard DFT (\cref{eq:dft_definition}) provides frequency
+content but discards all temporal information: it indicates \emph{which}
+frequencies are present, but not \emph{when} they occur. For
+non-stationary signals (speech, music, transient events),
+time-frequency analysis is required~\cite{allen2003short}.
+
+The \termdef{Short-Time Fourier Transform} (STFT) solves this by
+applying the DFT to short, overlapping segments (frames) of the
+signal, creating a time-frequency representation.
+
+\subsection{STFT Definition and Computation}\label{subsec:stft_definition}
+
+For a signal $x[n]$ with window function $w[n]$ of length $N$, the STFT is:
+
+\begin{equation}
+  \label{eq:stft}
+  X[m, k] = \sum_{n=0}^{N-1} x[n + mH] \cdot w[n] \cdot e^{-j2\pi kn/N}
+\end{equation}
+
+where:
+\begin{itemize}[itemsep=2pt]
+  \item $m$ is the frame index
+  \item $H$ is the \termdef{hop size} (samples between consecutive frames)
+  \item $k$ is the frequency bin
+  \item $N$ is the FFT size (window length)
+\end{itemize}
+
+The result is a 2D complex matrix: $X[m, k]$ with dimensions (time
+frames) $\times$ (frequency bins).
+
+\subsection{Framing and Overlap}
+
+The signal is divided into overlapping frames:
+\begin{equation}
+  \text{Frame } m \text{ starts at sample: } mH
+\end{equation}
+
+Key parameters:
+\begin{itemize}
+  \item \textbf{FFT size ($N$):} Window length, determines frequency
+    resolution: $\Delta f = f_s / N$
+  \item \textbf{Hop size ($H$):} Samples between frames, determines
+    time resolution: $\Delta t = H / f_s$
+  \item \textbf{Overlap:} $(N - H) / N$. Common: 50\% (H = N/2) or
+    75\% (H = N/4)
+\end{itemize}
+
+Number of frames for signal of length $L$ samples:
+\begin{equation}
+  M = \left\lfloor\frac{L - N}{H}\right\rfloor + 1
+\end{equation}
+
+With centering (padding $N/2$ zeros on each end):
+\begin{equation}
+  M = \left\lfloor\frac{L + N - H}{H}\right\rfloor
+\end{equation}
+
+\begin{concept}{STFT Centering and Temporal Alignment}
+  \textbf{Why pad $N/2$ zeros?} Without centering, the first window
+  is positioned with its \emph{left edge} at sample 0. This means the
+  window's center is at sample $N/2$, causing a temporal shift in the
+  resulting spectrogram.
+
+  By padding $N/2$ zeros \emph{before} the signal, the first window's
+  \emph{center} aligns with sample 0. This ensures:
+  \begin{itemize}[itemsep=2pt]
+    \item Frame $m$ is centered at time $t = mH/f_s$ (no offset)
+    \item Edge effects are symmetric at signal boundaries
+    \item Improved temporal localization for transient events
+  \end{itemize}
+
+  The same $N/2$ padding is applied at the signal's end, ensuring
+  symmetric treatment of boundaries. This is standard practice in
+  audio analysis libraries (e.g., librosa's \texttt{center=True}).
+
+  \textbf{Padding type specification:} This library uses
+  \emph{zero-padding} (also called zero-extension) for both the
+  initial and final $N/2$ samples:
+  \begin{equation}
+    \tilde{x}[n] =
+    \begin{cases}
+      0 & n < 0 \\
+      x[n] & 0 \leq n < L \\
+      0 & n \geq L
+    \end{cases}
+  \end{equation}
+
+  where $L$ is the original signal length.
+
+  \textbf{Alternative: Reflective padding} extends the signal by
+  mirroring boundary values (e.g., $\tilde{x}[-1] = x[0]$,
+  $\tilde{x}[-2] = x[1]$), which can reduce edge discontinuities for
+  certain signals. However, zero-padding is the standard convention
+  in most audio processing libraries (NumPy, SciPy, librosa) and is
+  used exclusively in this implementation.
+
+  \textbf{Implementation consistency:} All implementations must use
+  the same padding type to ensure identical spectrograms for the same
+  input. Using reflective padding when zero-padding is expected (or
+  vice versa) will cause boundary frames to diverge, particularly for
+  the first and last $\lceil N/(2H) \rceil$ frames where padding
+  contributes to the windowed signal.
+\end{concept}
+
+\textbf{Implementation detail:} The library uses centering by default
+to avoid edge effects:
+
+\begin{lstlisting}[]
+
+fn frame_count(&self, n_samples: usize) -> usize {
+    let pad = if self.centre { self.n_fft / 2 } else { 0 };
+    let padded_len = n_samples + 2 * pad;
+
+    if padded_len < self.n_fft {
+        return 1;  // Single frame, even for short signals
+    }
+
+    let remaining = padded_len - self.n_fft;
+    let n_frames = remaining / self.hop + 1;
+    n_frames
+}
+\end{lstlisting}
+
+\subsection{STFT Computation Pipeline}
+
+For each frame $m$:
+
+\begin{enumerate}
+  \item \textbf{Extract frame:} Get samples $x[mH], x[mH+1], \ldots, x[mH+N-1]$
+  \item \textbf{Apply window:} Compute $x_w[n] = x[mH + n] \cdot w[n]$
+  \item \textbf{FFT:} Compute $X_m[k] = \text{FFT}(x_w)$
+  \item \textbf{Store:} Save as column $m$ of output matrix
+\end{enumerate}
+
+Optimizations:
+\begin{itemize}
+  \item Pre-compute window samples once
+  \item Reuse FFT plan across all frames
+  \item Allocate workspace buffers once
+\end{itemize}
+
+\begin{concept}{Workspace Memory Requirements}
+  To enable efficient STFT computation, implementations use a
+  \termdef{Workspace} structure that holds reusable buffers and FFT
+  state. This avoids repeated allocations during frame processing.
+
+  \textbf{Minimum workspace requirements:}
+  \begin{enumerate}[itemsep=2pt]
+    \item \textbf{Windowed frame buffer:} Real-valued array of size
+      $N$ to hold $x[mH + n] \cdot w[n]$ before FFT
+    \item \textbf{FFT output buffer:} Complex-valued array of size
+      $N/2 + 1$ (for R2C FFT) to hold frequency-domain values $X_m[k]$
+    \item \textbf{FFT plan state:} Backend-specific data structure
+      (e.g., FFTW plan, RealFFT planner) that stores twiddle factors
+      and algorithm configuration
+    \item \textbf{Power/magnitude spectrum buffer:} Real-valued array
+      of size $N/2 + 1$ to hold $|X_m[k]|^2$ or $|X_m[k]|$ for the
+      current frame
+  \end{enumerate}
+
+  Total memory requirement: $O(N)$ real values and $O(N)$ complex
+  values, plus backend-specific FFT plan overhead (typically $O(N
+  \log N)$ for precomputed twiddle factors).
+
+  \textbf{Implementation example:}
+
+  \begin{lstlisting}[]
+struct Workspace {
+    frame: Vec<f64>,              // Size N (windowed input)
+    fft_out: Vec<Complex<f64>>,   // Size N/2 + 1 (FFT output)
+    spectrum: Vec<f64>,           // Size N/2 + 1 (power/magnitude)
+}
+
+impl Workspace {
+    fn new(n_fft: usize) -> Self {
+        let out_len = n_fft / 2 + 1;
+        Self {
+            frame: vec![0.0; n_fft],
+            fft_out: vec![Complex::zero(); out_len],
+            spectrum: vec![0.0; out_len],
+        }
+    }
+}
+  \end{lstlisting}
+
+  \textbf{Performance benefit:} Reusing workspace buffers across
+  frames reduces memory allocator pressure. For a 10-second audio
+  file at 16 kHz with $N=512$ and $H=256$, this processes
+  approximately 625 frames --- avoiding 1,875 allocations (3 buffers
+  $\times$ 625 frames).
+\end{concept}
+
+\begin{lstlisting}[]
+ - compute one frame
+fn compute_frame_spectrum(&mut self, samples: &[f64],
+                          frame_idx: usize,
+                          workspace: &mut Workspace) -> Result<()> {
+    let out = workspace.frame.as_mut_slice();
+    let pad = if self.centre { self.n_fft / 2 } else { 0 };
+    let start = frame_idx * self.hop;
+
+    // Fill windowed frame (with zero-padding)
+    for i in 0..self.n_fft {
+        let v_idx = start + i;
+        let s_idx = v_idx as isize - pad as isize;
+
+        let sample = if s_idx < 0 || s_idx >= samples.len() {
+            0.0  // Padding
+        } else {
+            samples[s_idx as usize]
+        };
+
+        out[i] = sample * self.window[i];
+    }
+
+    // Compute FFT
+    self.fft.process(out, workspace.fft_out)?;
+
+    // Convert to power spectrum: |X[k]|^2
+    for (i, c) in workspace.fft_out.iter().enumerate() {
+        workspace.spectrum[i] = c.norm_sqr();
+    }
+
+    Ok(())
+}
+\end{lstlisting}
+
+\subsection{Spectrogram as STFT Magnitude}
+
+A spectrogram is the magnitude (or power) of the STFT:\
+
+\begin{equation}
+  S[m, k] = |X[m, k]|^2 \quad \text{(power spectrogram)}
+\end{equation}
+
+or
+
+\begin{equation}
+  S[m, k] = |X[m, k]| \quad \text{(magnitude spectrogram)}
+\end{equation}
+
+This discards phase information but provides an intuitive
+visualization of energy distribution over time and frequency.
+
+\subsection{Time-Frequency Uncertainty Principle}\label{subsec:uncertainty}
+
+\begin{concept}{Time-Frequency Uncertainty Principle}
+  The fundamental trade-off in STFT is governed by the uncertainty
+  principle~\cite{gabor1946theory}:
+
+  \begin{equation}
+    \label{eq:uncertainty_principle}
+    \Delta t \cdot \Delta f \geq \frac{1}{4\pi}
+  \end{equation}
+
+  where $\Delta t$ is temporal resolution and $\Delta f$ is frequency
+  resolution.
+
+  This is \emph{not} a limitation of the algorithm, but a fundamental
+  property of Fourier analysis related to the Heisenberg uncertainty
+  principle in quantum mechanics. You \textbf{cannot} achieve
+  arbitrary precision in both domains simultaneously.
+\end{concept}
+
+Implications:
+\begin{itemize}[itemsep=3pt]
+  \item \textbf{Large $N$ (long window):} Good frequency resolution,
+    poor time resolution
+  \item \textbf{Small $N$ (short window):} Good time resolution, poor
+    frequency resolution
+\end{itemize}
+
+For speech (16 kHz sample rate):
+\begin{itemize}
+  \item $N = 512$ (32 ms): $\Delta f = 31.25$ Hz --- good for rapid changes
+  \item $N = 2048$ (128 ms): $\Delta f = 7.8$ Hz --- better frequency detail
+\end{itemize}
+
+For music (44.1 kHz sample rate):
+\begin{itemize}
+  \item $N = 2048$ (46 ms): $\Delta f = 21.5$ Hz --- standard choice
+  \item $N = 4096$ (93 ms): $\Delta f = 10.8$ Hz --- for harmonic analysis
+\end{itemize}
+
+\textbf{Cannot achieve arbitrary precision in both domains
+simultaneously.} This is not a limitation of the algorithm, but a
+fundamental property of Fourier analysis related to the Heisenberg
+uncertainty principle in quantum mechanics.
+
+\section{Amplitude Scaling and Representations}\label{sec:amplitude}
+
+\subsection{Power Spectrum}\label{subsec:power_spectrum}
+
+The power spectrum represents energy at each frequency:
+
+\begin{equation}
+  P[k] = |X[k]|^2 = \text{Re}(X[k])^{2} + \text{Im}(X[k])^{2}
+\end{equation}
+
+For real input signals, this is proportional to the energy in frequency bin $k$.
+
+Properties:
+\begin{itemize}
+  \item Always non-negative
+  \item Units: (amplitude)$^2$
+  \item Additive: energies from independent sources sum
+\end{itemize}
+
+The squared magnitude emphasizes strong components and suppresses
+weak ones, which can be both beneficial (noise reduction) and
+problematic (loss of weak signals).
+
+\subsection{Magnitude Spectrum}
+
+The magnitude spectrum is the absolute value:
+
+\begin{equation}
+  M[k] = |X[k]| = \sqrt{\text{Re}(X[k])^2 + \text{Im}(X[k])^{2}}
+\end{equation}
+
+This is more perceptually linear than power, as human perception of
+sound intensity is approximately logarithmic.
+
+Relationship:
+\begin{equation}
+  M[k] = \sqrt{P[k]}
+\end{equation}
+
+Use magnitude when:
+\begin{itemize}
+  \item You need perceptually meaningful amplitudes
+  \item Comparing with other magnitude-based representations
+  \item Visualization where extreme values would dominate
+\end{itemize}
+
+\subsection{Decibel Scale}\label{subsec:decibel}
+
+The decibel (dB) scale provides logarithmic amplitude scaling:
+
+\begin{equation}
+  \label{eq:db_scale_ref}
+  S_{\text{dB}}[k] = 10 \log_{10}\left(\frac{P[k]}{P_{\text{ref}}}\right)
+\end{equation}
+
+where $P_{\text{ref}}$ is a reference power. For power spectrograms
+without specific reference:
+
+\begin{equation}
+  \label{eq:db_scale}
+  S_{\text{dB}}[k] = 10 \log_{10}(P[k])
+\end{equation}
+
+For magnitude-based signals:
+
+\begin{equation}
+  \label{eq:db_scale_magnitude}
+  S_{\text{dB}}[k] = 20 \log_{10}(M[k])
+\end{equation}
+
+The factor of 20 (instead of 10) accounts for the squared
+relationship between magnitude and power.
+
+\textbf{Numerical considerations:} To avoid $\log(0) = -\infty$, a
+floor is applied:
+
+\begin{equation}
+  S_{\text{dB}}[k] = 10 \log_{10}(\max(P[k], \epsilon))
+\end{equation}
+
+where $\epsilon$ is a small threshold (e.g., $10^{-10}$). This maps
+very small values to a large negative dB value instead of $-\infty$.
+
+\textbf{Dynamic range compression:} The dB scale compresses the
+dynamic range, making it easier to visualize spectrograms with both
+loud and quiet components. A signal with power ratios of 1,000,000:1
+becomes 60 dB, much more manageable.
+
+Example:
+\begin{itemize}
+  \item Power = 1.0 → 0 dB
+  \item Power = 0.1 → -10 dB
+  \item Power = 0.01 → -20 dB
+  \item Power = 100.0 → 20 dB
+\end{itemize}
+
+\subsection{Parseval's Theorem and Energy Conservation}\label{subsec:parseval}
+
+\begin{concept}{Parseval's Theorem}
+  Parseval's theorem states that energy is conserved between time and
+  frequency domains:
+
+  \begin{equation}
+    \label{eq:parseval}
+    \sum_{n=0}^{N-1} \abs{x[n]}^2 = \frac{1}{N}\sum_{k=0}^{N-1} \abs{X[k]}^2
+  \end{equation}
+
+  This fundamental result ensures that:
+  \begin{itemize}[itemsep=2pt]
+    \item The FFT doesn't create or destroy energy
+    \item Total power in frequency domain equals total power in time domain
+    \item Inverse FFT perfectly reconstructs energy (up to numerical precision)
+  \end{itemize}
+\end{concept}
+
+For windowed signals in STFT with proper overlap-add, energy is preserved:
+
+\begin{equation}
+  \sum_m \sum_k |X[m,k]|^2 \propto \sum_n |x[n]|^2
+\end{equation}
+
+where the proportionality constant depends on the window normalization.
+
+\textbf{Implication for normalization:} Different FFT libraries use
+different normalization conventions. The library uses the convention
+where the forward FFT has no normalization factor, and the inverse
+FFT divides by $N$. This is consistent with most signal processing literature.
+
+\section{Perceptual Frequency Scales}\label{sec:perceptual}
+
+\subsection{Motivation: Human Auditory
+Perception}\label{subsec:perceptual_motivation}
+
+Auditory frequency perception is not linear~\cite{fletcher1940auditory}.
+Frequency differences are perceived logarithmically, especially at
+higher frequencies. For example:
+\begin{itemize}[itemsep=2pt]
+  \item The difference between 100~Hz and 200~Hz is highly
+    perceptible (one octave)
+  \item The difference between 10,000~Hz and 10,100~Hz is barely
+    noticeable (0.014 octaves)
+\end{itemize}
+
+Perceptual frequency scales map linear Hz to
+psychoacoustically-motivated scales that better match human hearing.
+
+\subsection{Mel Scale}\label{subsec:mel_scale}
+
+The mel scale is based on pitch perception
+studies~\cite{stevens1937scale}. The name comes from ``melody,''
+reflecting its musical origins. The conversion formulas are:
+
+\begin{equation}
+  \label{eq:hz_to_mel}
+  \text{mel}(f) = 2595 \log_{10}\left(1 + \frac{f}{700}\right)
+\end{equation}
+
+\begin{equation}
+  \label{eq:mel_to_hz}
+  f(\text{mel}) = 700\left(10^{\text{mel}/2595} - 1\right)
+\end{equation}
+
+The mel scale is approximately linear below 1000~Hz and logarithmic above.
+
+\textbf{Mel Filterbank Construction:}
+
+To create $M$ mel-spaced filters:
+
+\begin{enumerate}
+  \item Convert frequency range $[f_{\min}, f_{\max}]$ to mel scale
+  \item Create $M + 2$ equally-spaced mel points (for triangular filter edges)
+  \item Convert mel points back to Hz
+  \item Map Hz to FFT bin indices
+  \item Create triangular filters centered at these points
+\end{enumerate}
+
+\begin{equation}
+  H_m[k] =
+  \begin{cases}
+    0 & k < f[m-1] \\
+    \frac{k - f[m-1]}{f[m] - f[m-1]} & f[m-1] \leq k < f[m] \\
+    \frac{f[m+1] - k}{f[m+1] - f[m]} & f[m] \leq k \leq f[m+1] \\
+    0 & k > f[m+1]
+  \end{cases}
+\end{equation}
+
+where $f[m]$ are the FFT bin indices corresponding to mel points.
+
+\textbf{Implementation detail:} The filterbank is stored as a sparse
+matrix since each triangular filter only has non-zero values over a
+small range of bins:
+
+\begin{lstlisting}[]
+
+fn build_mel_filterbank_matrix(sample_rate_hz: f64, n_fft: usize,
+                                n_mels: usize, f_min: f64,
+                                f_max: f64) -> SparseMatrix {
+    let out_len = r2c_output_size(n_fft);
+    let df = sample_rate_hz / n_fft as f64;
+
+    // Convert to mel scale
+    let mel_min = hz_to_mel(f_min);
+    let mel_max = hz_to_mel(f_max);
+
+    // Create n_mels + 2 mel points (for triangle edges)
+    let n_points = n_mels + 2;
+    let step = (mel_max - mel_min) / (n_points - 1) as f64;
+
+    let mel_points: Vec<_> = (0..n_points)
+        .map(|i| i as f64 * step + mel_min)
+        .collect();
+
+    // Convert back to Hz, then to FFT bins
+    let bin_points: Vec<_> = mel_points
+        .iter()
+        .map(|&mel| mel_to_hz(mel))
+        .map(|hz| (hz / df).floor() as usize)
+        .collect();
+
+    // Build sparse filterbank
+    let mut fb = SparseMatrix::new(n_mels, out_len);
+
+    for m in 0..n_mels {
+        let left = bin_points[m];
+        let centre = bin_points[m + 1];
+        let right = bin_points[m + 2];
+
+        // Rising slope: left -> centre
+        for k in left..centre {
+            let v = (k - left) as f64 / (centre - left) as f64;
+            fb.set(m, k, v);
+        }
+
+        // Falling slope: centre -> right
+        for k in centre..right {
+            let v = (right - k) as f64 / (right - centre) as f64;
+            fb.set(m, k, v);
+        }
+    }
+
+    fb
+}
+\end{lstlisting}
+
+For typical speech processing ($N=512$, 80 mel bands), the filterbank
+is approximately 95\% sparse.
+
+\textbf{Numerical hygiene:} To achieve this sparsity in practice,
+coefficients below a threshold (typically $10^{-12}$ or machine
+  epsilon $\epsilon_{\text{machine}} \approx 2.2 \times 10^{-16}$ for
+f64) are set to exactly zero during construction. This prevents
+accumulation of negligible numerical artifacts while maintaining
+filterbank fidelity.
+
+\subsection{ERB Scale: Glasberg and Moore Model}\label{subsec:erb_scale}
+
+The \termdef{Equivalent Rectangular Bandwidth} (ERB) scale is based
+on psychoacoustic measurements of critical
+bandwidths~\cite{glasberg1990derivation,moore1983suggested}. It
+models the frequency selectivity of the human auditory system.
+
+The ERB in Hz as a function of center frequency:
+
+\begin{equation}
+  \label{eq:erb_bandwidth}
+  \text{ERB}(f) = 24.7 \left(4.37 \frac{f}{1000} + 1\right)
+\end{equation}
+
+To convert frequency to ERB scale (ERB-rate):
+
+\begin{equation}
+  \label{eq:hz_to_erb}
+  \text{ERB-rate}(f) = 21.4 \log_{10}(4.37 \frac{f}{1000} + 1)
+\end{equation}
+
+Inverse transformation:
+
+\begin{equation}
+  \label{eq:erb_to_hz}
+  f(\text{ERB}) = \frac{1000}{4.37}\left(10^{\text{ERB}/21.4} - 1\right)
+\end{equation}
+
+\textbf{Gammatone Filters:}
+
+ERB spectrograms often use gammatone filters, which model the impulse
+response of the auditory filter:
+
+\begin{equation}
+  g(t) = t^{n-1} e^{-2\pi b t} \cos(2\pi f_c t + \phi)
+\end{equation}
+
+where:
+\begin{itemize}
+  \item $n$ is the filter order (typically 4)
+  \item $b$ is the bandwidth parameter related to ERB
+  \item $f_c$ is the center frequency
+  \item $\phi$ is the phase
+\end{itemize}
+
+The library implements gammatone filters in the frequency domain for efficiency.
+
+\textbf{Why ERB over Mel?} The ERB scale more accurately models
+auditory filters at higher frequencies and is preferred for
+applications requiring high fidelity to human perception.
+
+\subsection{Logarithmic Frequency (Musical Scale)}\label{subsec:log_frequency}
+
+Musical notes are logarithmically spaced: each octave doubles the
+frequency. For music analysis, a logarithmic frequency axis is natural.
+
+Log-frequency bins:
+
+\begin{equation}
+  f_k = f_{\min} \cdot \left(\frac{f_{\max}}{f_{\min}}\right)^{k/{(K-1)}}
+\end{equation}
+
+for $k = 0, 1, \ldots, K-1$ bins.
+
+Alternatively, using equal spacing in log-space:
+
+\begin{equation}
+  \log f_k = \log f_{\min} + k \frac{\log f_{\max} - \log f_{\min}}{K - 1}
+\end{equation}
+
+\textbf{Linear Interpolation:}
+
+Since FFT bins are linearly spaced, linear interpolation is used
+between adjacent bins to get log-spaced values:
+
+\begin{equation}
+  y_k = (1 - \alpha) X[i] + \alpha X[i+1]
+\end{equation}
+
+where $i = \lfloor f_k / \Delta f \rfloor$ and $\alpha = (f_k / \Delta f) - i$.
+
+\begin{lstlisting}[]
+
+fn build_loghz_matrix(sample_rate_hz: f64, n_fft: usize,
+                      n_bins: usize, f_min: f64,
+                      f_max: f64) -> SparseMatrix {
+    let df = sample_rate_hz / n_fft as f64;
+
+    // Logarithmically-spaced frequencies
+    let log_f_min = f_min.ln();
+    let log_f_max = f_max.ln();
+    let log_step = (log_f_max - log_f_min) / (n_bins - 1) as f64;
+
+    let log_frequencies: Vec<_> = (0..n_bins)
+        .map(|i| (i as f64 * log_step + log_f_min).exp())
+        .collect();
+
+    // Build interpolation matrix
+    let mut matrix = SparseMatrix::new(n_bins, out_len);
+
+    for (bin_idx, &target_freq) in log_frequencies.iter().enumerate() {
+        let exact_bin = target_freq / df;
+        let lower_bin = exact_bin.floor() as usize;
+        let upper_bin = exact_bin.ceil() as usize;
+
+        if lower_bin == upper_bin {
+            matrix.set(bin_idx, lower_bin, 1.0);
+        } else {
+            // Linear interpolation
+            let frac = exact_bin - lower_bin as f64;
+            matrix.set(bin_idx, lower_bin, 1.0 - frac);
+            matrix.set(bin_idx, upper_bin, frac);
+        }
+    }
+
+    matrix
+}
+\end{lstlisting}
+
+This matrix is extremely sparse: only 1--2 non-zero values per row
+(>99\% sparse).
+
+\subsection{Filterbank Design and Sparse Matrices}
+
+All perceptual scales use sparse matrix multiplication for
+efficiency. The operation is:
+
+\begin{equation}
+  \mathbf{y} = H \mathbf{x}
+\end{equation}
+
+where $H$ is the filterbank matrix (sparse), $\mathbf{x}$ is the
+linear spectrum, and $\mathbf{y}$ is the perceptually-scaled spectrum.
+
+\textbf{Sparse Matrix Storage:}
+
+The library uses row-wise sparse format:
+
+\begin{lstlisting}[]
+struct SparseMatrix {
+    nrows: usize,
+    ncols: usize,
+    values: Vec<Vec<f64>>,    // Non-zero values per row
+    indices: Vec<Vec<usize>>, // Column indices per row
+}
+\end{lstlisting}
+
+Multiplication:
+
+\begin{lstlisting}[]
+fn multiply_vec(&self, input: &[f64], out: &mut [f64]) {
+    for (row_idx, (row_values, row_indices)) in
+        self.values.iter().zip(&self.indices).enumerate() {
+
+        let mut acc = 0.0;
+        for (&value, &col_idx) in row_values.iter().zip(row_indices) {
+            acc += value * input[col_idx];
+        }
+        out[row_idx] = acc;
+    }
+}
+\end{lstlisting}
+
+\begin{concept}{Sparse Matrix Computational Complexity}
+  For matrix-vector multiplication $\mathbf{y} = A\mathbf{x}$ where
+  $A$ is $m \times n$:
+
+  \textbf{Dense matrix:}
+  \begin{equation}
+    \mathcal{O}(mn) \quad \text{(every element accessed)}
+  \end{equation}
+
+  \textbf{Sparse matrix with $\text{nnz}$ non-zeros:}
+  \begin{equation}
+    \mathcal{O}(\text{nnz}) \quad \text{(only non-zeros computed)}
+  \end{equation}
+
+  where $\text{nnz}$ is the number of non-zero elements.
+
+  For filterbanks with uniform sparsity $s$ non-zeros per row:
+  \begin{equation}
+    \text{nnz} = ms
+  \end{equation}
+
+  Example: Mel filterbank with $m=80$, $n=257$, $s=20$ non-zeros/row
+  has 1,600 operations vs. 20,560 for dense multiplication.
+\end{concept}
+
+For mel filterbanks with $M=80$ bands and $N=512$ FFT (257 bins):
+\begin{itemize}
+  \item Dense matrix: $80 \times 257 = 20{,}560$ multiplications
+  \item Sparse matrix: $\approx 80 \times 20 = 1{,}600$
+    multiplications ($\thicksim$10--20 non-zeros/row)
+\end{itemize}
+
+For log-frequency with linear interpolation:
+\begin{itemize}
+  \item Only 2 multiplications per output bin (vs. 257 for dense)
+\end{itemize}
+
+\section{Constant-Q Transform (CQT)}\label{sec:cqt}
+
+\subsection{Motivation and Q Factor}\label{subsec:cqt_motivation}
+
+The Short-Time Fourier Transform (\cref{subsec:stft_definition})
+provides constant frequency resolution $\Delta f$ across all
+frequencies. But musical perception is logarithmic: \emph{relative}
+frequency differences (ratios) are more relevant than absolute differences.
+
+The \termdef{Constant-Q Transform}
+(CQT)~\cite{brown1991calculation,brown1992efficient} provides
+logarithmically-spaced frequency bins with constant quality factor $Q$:
+
+\begin{equation}
+  \label{eq:q_factor}
+  Q = \frac{f_k}{\Delta f_k}
+\end{equation}
+
+where $f_k$ is the center frequency and $\Delta f_k$ is the bandwidth
+of bin $k$.
+
+For musical applications with $B$ bins per octave:
+
+\begin{equation}
+  Q = \frac{1}{2^{1/B} - 1}
+\end{equation}
+
+For example, with $B=12$ bins/octave (semitones):
+\begin{equation}
+  Q = \frac{1}{2^{1/12} - 1} \approx 16.82
+\end{equation}
+
+Higher $Q$ → narrower bandwidth → better frequency resolution but
+worse time resolution.
+
+\subsection{Kernel-Based Implementation}
+
+Unlike STFT which uses a fixed-length window, CQT uses
+\textit{variable-length windows} (kernels) for each frequency:
+
+For frequency bin $k$ with center frequency $f_k$:
+
+\begin{equation}
+  N_k = \left\lceil \frac{Q \cdot f_s}{f_k} \right\rceil
+\end{equation}
+
+where $f_s$ is the sample rate. Higher frequencies → shorter windows,
+lower frequencies → longer windows.
+
+The CQT kernel for frequency $f_k$:
+
+\begin{equation}
+  g_k[n] = w[n] \cdot e^{j2\pi f_k n/f_s}, \quad n = 0, 1, \ldots, N_k-1
+\end{equation}
+
+where $w[n]$ is a window function (typically Hanning or Hamming).
+
+\textbf{Implementation:}
+
+\begin{lstlisting}[]
+
+fn generate_kernel_bin(center_freq: f64, kernel_length: usize,
+                       sample_rate: f64,
+                       window_type: WindowType) -> Vec<Complex<f64>> {
+    let mut kernel = Vec::with_capacity(kernel_length);
+
+    // Generate window
+    let window = make_window(window_type, kernel_length)?;
+
+    // Generate complex exponential kernel
+    for (n, w) in window.iter().enumerate() {
+        let t = n as f64 / sample_rate;
+        let phase = 2.0 * PI * center_freq * t;
+
+        // e^(i*2*$\pi$*f*t) = cos(2$\pi$ft) + i*sin(2$\pi$ft)
+        let exponential = Complex::new(phase.cos(), phase.sin());
+
+        // Apply window function
+        let windowed = exponential * w;
+        kernel.push(windowed);
+    }
+
+    kernel
+}
+\end{lstlisting}
+
+\subsection{Variable-Length Windows}
+
+The beauty of CQT is that window length scales with frequency:
+
+\begin{itemize}
+  \item \textbf{Low frequencies:} Long windows → good frequency
+    resolution, poor time resolution
+  \item \textbf{High frequencies:} Short windows → good time
+    resolution, adequate frequency resolution
+\end{itemize}
+
+This matches musical perception: precise pitch resolution is required for low
+notes (fundamental frequencies), while less precision is typically acceptable
+for high harmonics.
+
+Example for $f_s = 44{,}100$ Hz, $Q \approx 16.82$:
+\begin{itemize}
+  \item $f = 55$ Hz (A1): $N \approx 13{,}480$ samples ($\approx$305 ms)
+  \item $f = 440$ Hz (A4): $N \approx 1{,}685$ samples ($\approx$38 ms)
+  \item $f = 3{,}520$ Hz (A7): $N \approx 211$ samples ($\approx$4.8 ms)
+\end{itemize}
+
+\subsection{Sparsity Optimization}
+
+CQT kernels naturally have many small-magnitude coefficients,
+especially near the edges due to windowing. This can be exploited with
+\textit{sparsity thresholding}:
+
+\begin{equation}
+  g_k[n] \leftarrow
+  \begin{cases}
+    g_k[n] & \text{if } |g_k[n]| > \epsilon \cdot \max|g_k| \\
+    0 & \text{otherwise}
+  \end{cases}
+\end{equation}
+
+where $\epsilon$ is the sparsity threshold (e.g., 0.01 for 1\%).
+
+\begin{lstlisting}[]
+
+fn apply_sparsity_threshold(kernel: &mut [Complex<f64>],
+                            threshold: f64) {
+    let max_magnitude = kernel.iter()
+                              .map(|c| c.norm())
+                              .fold(0.0, f64::max);
+
+    let absolute_threshold = max_magnitude * threshold;
+
+    for coefficient in kernel.iter_mut() {
+        if coefficient.norm() < absolute_threshold {
+            *coefficient = Complex::new(0.0, 0.0);
+        }
+    }
+}
+\end{lstlisting}
+
+Typical sparsity levels: 60--80\% of kernel coefficients can be zeroed
+with $\epsilon = 0.01$ with negligible quality loss.
+
+\textbf{Computational benefit:} Sparse kernels reduce the number of
+operations in time-domain convolution by skipping zero multiplications.
+
+\begin{concept}{Sparsity Threshold Artifacts}
+  \textbf{Warning:} Aggressive sparsity thresholds (e.g., $\epsilon >
+  0.01$ or zeroing coefficients below $10^{-10}$) can introduce
+  audible artifacts:
+
+  \begin{itemize}[itemsep=2pt]
+    \item \textbf{Spectral leakage:} Truncating kernel tails creates
+      discontinuities, causing frequency bleeding between adjacent bins.
+    \item \textbf{Musical noise:} Sparse, time-varying kernels can
+      produce tonal artifacts that vary frame-to-frame, perceived as
+      ``chirping'' or ``burbling'' sounds.
+    \item \textbf{Time-smearing:} Excessively truncated kernels lose
+      their designed frequency selectivity.
+  \end{itemize}
+
+  \textbf{Recommended practice:} Use conservative thresholds ($\epsilon
+  \leq 0.001$) for high-quality audio analysis. For real-time or
+  resource-constrained applications, validate perceptual quality
+  through listening tests before deploying aggressive sparsity.
+\end{concept}
+
+\section{Advanced Audio Features}\label{sec:advanced}
+
+\subsection{Mel-Frequency Cepstral Coefficients (MFCC)}\label{subsec:mfcc}
+
+MFCCs are the most widely used features in speech recognition,
+speaker identification, and audio
+classification~\cite{davis1980comparison,rabiner1993fundamentals}.
+Introduced by Davis and Mermelstein in 1980, they provide a compact
+representation of the spectral envelope.
+
+\textbf{Computation pipeline:}
+
+\begin{enumerate}
+  \item Compute mel-scaled power spectrogram: $S_{\text{mel}}[m, k]$
+  \item Apply logarithm: $L[m, k] = \log(S_{\text{mel}}[m, k] + \epsilon)$
+  \item Apply Discrete Cosine Transform (DCT-II) to each frame
+  \item Optionally apply cepstral liftering
+  \item Extract first $C$ coefficients (typically 13)
+\end{enumerate}
+
+\textbf{Why DCT?} The mel spectrogram has correlated bins due to
+overlapping triangular filters. The \termdef{Discrete Cosine
+Transform} (DCT)~\cite{ahmed2006discrete} decorrelates them and
+compacts energy into the first few coefficients.
+
+\begin{concept}{Discrete Cosine Transform (DCT-II)}
+  The DCT-II formula:
+  \begin{equation}
+    \label{eq:dct_ii}
+    c[k] = \sum_{n=0}^{N-1} x[n] \cos\left(\frac{\pi k(n +
+    0.5)}{N}\right), \quad k = 0, 1, \ldots, N-1
+  \end{equation}
+
+  The DCT is closely related to the DFT but operates entirely on real
+  numbers. It's used in JPEG image compression and many audio codecs
+  due to its excellent energy compaction properties.
+\end{concept}
+
+\begin{lstlisting}[]
+
+fn dct_ii(input: &[f64]) -> Vec<f64> {
+    let n = input.len();
+    let mut output = vec![0.0; n];
+
+    for k in 0..n {
+        let mut sum = 0.0;
+        for (i, &val) in input.iter().enumerate() {
+            sum += val * (PI * k as f64 * (i as f64 + 0.5) / n as f64).cos();
+        }
+        output[k] = sum;
+    }
+
+    output
+}
+\end{lstlisting}
+
+\textbf{Cepstral liftering:}
+
+Liftering applies a sinusoidal weighting to emphasize mid-range coefficients:
+
+\begin{equation}
+  \tilde{c}[k] = c[k] \left(1 + \frac{L}{2}\sin\left(\frac{\pi
+  k}{L}\right)\right)
+\end{equation}
+
+where $L$ is the lifter parameter (commonly 22).
+
+\begin{lstlisting}[]
+
+fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
+    let n_mfcc = mfcc.nrows();
+
+    // Compute lifter weights
+    let weights: Vec<_> = (0..n_mfcc)
+        .map(|i| 1.0 + (lifter as f64 / 2.0)
+                     * (PI * i as f64 / lifter as f64).sin())
+        .collect();
+
+    // Apply weights to each frame
+    for frame_idx in 0..n_frames {
+        for coeff_idx in 0..n_mfcc {
+            mfcc[[coeff_idx, frame_idx]] *= weights[coeff_idx];
+        }
+    }
+}
+\end{lstlisting}
+
+\textbf{The C0 coefficient:} The zeroth coefficient represents the
+overall energy of the frame. Some applications include it (speaker
+recognition), others exclude it (speech recognition) to reduce
+sensitivity to volume.
+
+\textbf{Why 13 coefficients?} Empirically, 13 MFCCs capture most
+speech information. Higher coefficients represent fine spectral
+detail that's often noise.
+
+\subsection{Chroma Features for Music Analysis}\label{subsec:chroma}
+
+Chroma features~\cite{fujishima1999realtime,muller2005audio} (also
+called pitch class profiles) represent the energy distribution across
+the 12 pitch classes of the Western musical scale, collapsing all
+octaves together.
+
+The 12 pitch classes: C, C\musSharp{}, D, D\musSharp{}, E, F,
+F\musSharp{}, G, G\musSharp{}, A, A\musSharp{}, B
+
+\textbf{Construction:}
+
+\begin{enumerate}
+  \item Map FFT bins to musical notes using:
+    \begin{equation}
+      n(f) = 12 \log_2\left(\frac{f}{f_{\text{ref}}}\right)
+    \end{equation}
+    where $f_{\text{ref}}$ is a reference frequency (e.g., A4 = 440 Hz)
+
+  \item Determine pitch class: $p = n \mod 12$
+
+  \item Sum energy from all octaves for each pitch class:
+    \begin{equation}
+      C[p] = \sum_{\text{octaves}} E[p, \text{octave}]
+    \end{equation}
+
+  \item Normalize (L1, L2, or max)
+\end{enumerate}
+
+\textbf{Normalization strategies:}
+
+\begin{itemize}
+  \item \textbf{L1:} $\tilde{C}[p] = C[p] / \sum_{p'} C[p']$ (probabilities)
+  \item \textbf{L2:} $\tilde{C}[p] = C[p] / \sqrt{\sum_{p'} C[p']^{2}}$
+    (Euclidean norm)
+  \item \textbf{Max:} $\tilde{C}[p] = C[p] / \max_{p'} C[p']$
+    (relative strength)
+\end{itemize}
+
+\textbf{Applications:} Chord recognition, key estimation, cover song
+identification, music similarity.
+
+\subsection{ERB Spectrograms and Gammatone Filters}
+
+ERB spectrograms using gammatone filters provide the most
+perceptually accurate time-frequency representation.
+
+The gammatone impulse response:
+
+\begin{equation}
+  g(t) = at^{n-1}e^{-2\pi bt}\cos(2\pi f_c t + \phi)
+\end{equation}
+
+where:
+\begin{itemize}
+  \item $a$ is amplitude
+  \item $n$ is filter order (typically 4)
+  \item $b$ is bandwidth parameter
+  \item $f_c$ is center frequency
+  \item $\phi$ is phase
+\end{itemize}
+
+The bandwidth parameter relates to ERB:\
+
+\begin{equation}
+  b = 1.019 \cdot \text{ERB}(f_c)
+\end{equation}
+
+\textbf{Frequency domain implementation:}
+
+For efficiency, the library implements gammatone filtering in the
+frequency domain. The frequency-domain transfer function is:
+
+\begin{equation}
+  G(f) = \frac{1}{\left(1 + j\frac{f - f_c}{b}\right)^n}
+\end{equation}
+
+where $n$ is the filter order (typically 4), $f_c$ is the center
+frequency, $b$ is the bandwidth parameter, and $j = \sqrt{-1}$.
+This fourth-order complex pole provides the characteristic asymmetric
+frequency response of the auditory filter.
+
+Filtering is then performed via element-wise multiplication:
+
+\begin{equation}
+  Y(f) = X(f) \cdot G(f)
+\end{equation}
+
+This avoids expensive time-domain convolution for each filter.
+
+\section{Image Processing via FFT}\label{sec:image}
+
+\subsection{2D Convolution and the Convolution
+Theorem}\label{subsec:convolution_theorem}
+
+The \termdef{convolution theorem}~\cite{blozinski1972convolution} states
+that convolution in the spatial domain is equivalent to
+multiplication in the frequency domain:
+
+\begin{equation}
+  \label{eq:convolution_theorem}
+  f \ast g = \mathcal{F}^{-1}\{\mathcal{F}\{f\} \cdot \mathcal{F}\{g\}\}
+\end{equation}
+
+For images:
+\begin{equation}
+  (I \ast K)[x, y] = \text{IFFT2D}\{\text{FFT2D}(I) \odot \text{FFT2D}(K)\}
+\end{equation}
+
+where $\odot$ denotes element-wise multiplication.
+
+\textbf{Complexity comparison:}
+
+Spatial convolution for image $M \times N$ with kernel $K \times K$:
+\begin{equation}
+  \mathcal{O}(M \times N \times K^2)
+\end{equation}
+
+FFT-based convolution:
+\begin{equation}
+  \mathcal{O}(M N \log(MN))
+\end{equation}
+
+\textbf{Theoretical crossover:} FFT has better asymptotic complexity when $K >
+\sqrt{\log(MN)}$, typically around $K \geq 7$.
+
+\subsection{Kernel Padding and Phase Shifting}
+
+For correct FFT convolution, the kernel must be padded to image size
+with proper phase shifting. The kernel's center should map to
+position $(0, 0)$ in the padded array:
+
+\begin{lstlisting}[]
+
+fn pad_kernel_for_fft(kernel: &Array2<f64>,
+                      target_shape: (usize, usize)) -> Array2<f64> {
+    let (ker_rows, ker_cols) = kernel.dim();
+    let mut result = Array2::<f64>::zeros(target_shape);
+
+    // Kernel center position
+    let ker_center_row = ker_rows / 2;
+    let ker_center_col = ker_cols / 2;
+
+    // Place kernel with center at (0, 0) using wraparound
+    for i in 0..ker_rows {
+        for j in 0..ker_cols {
+            let row_offset = i as isize - ker_center_row as isize;
+            let col_offset = j as isize - ker_center_col as isize;
+
+            // Wrap around to place center at (0, 0)
+            let target_row = row_offset.rem_euclid(target_rows as isize) as usize;
+            let target_col = col_offset.rem_euclid(target_cols as isize) as usize;
+
+            result[[target_row, target_col]] = kernel[[i, j]];
+        }
+    }
+
+    result
+}
+\end{lstlisting}
+
+This ensures the FFT interprets the kernel correctly for circular convolution.
+
+\subsection{Spatial Filtering in the Frequency Domain}
+
+Filtering is multiplication by a frequency-domain mask:
+
+\begin{equation}
+  Y(u, v) = X(u, v) \cdot H(u, v)
+\end{equation}
+
+\textbf{Low-pass filter:} Keeps low frequencies, removes high
+frequencies (smoothing)
+
+\begin{equation}
+  H_{\text{LP}}(u, v) =
+  \begin{cases}
+    1 & \sqrt{u^2 + v^2} \leq D_0 \\
+    0 & \text{otherwise}
+  \end{cases}
+\end{equation}
+
+\textbf{High-pass filter:} Removes low frequencies, keeps high
+frequencies (sharpening/edges)
+
+\begin{equation}
+  H_{\text{HP}}(u, v) = 1 - H_{\text{LP}}(u, v)
+\end{equation}
+
+\textbf{Band-pass filter:} Keeps frequencies in a range
+
+\begin{equation}
+  H_{\text{BP}}(u, v) =
+  \begin{cases}
+    1 & D_1 \leq \sqrt{u^2 + v^2} \leq D_2 \\
+    0 & \text{otherwise}
+  \end{cases}
+\end{equation}
+
+\subsection{Gaussian Blur via FFT}
+
+The Gaussian kernel for blurring:
+
+\begin{equation}
+  G(x, y) = \frac{1}{2\pi\sigma^2} \exp\left(-\frac{x^2 + y^2}{2\sigma^2}\right)
+\end{equation}
+
+Implementation:
+
+\begin{lstlisting}[]
+
+pub fn gaussian_kernel_2d(size: NonZeroUsize, sigma: f64) -> SpectrogramResult<Array2<f64>> {
+    if size.get().is_multiple_of(2) {
+        return Err(SpectrogramError::invalid_input(
+            "kernel size must be odd and > 0",
+        ));
+    }
+    if sigma <= 0.0 {
+        return Err(SpectrogramError::invalid_input("sigma must be > 0"));
+    }
+    let size = size.get();
+    let center = (size / 2) as f64;
+    let variance = sigma * sigma;
+    let coeff = 1.0 / (2.0 * PI * variance);
+
+    let mut kernel = Array2::<f64>::zeros((size, size));
+
+    for i in 0..size {
+        for j in 0..size {
+            let x = i as f64 - center;
+            let y = j as f64 - center;
+            let exponent = -(x * x + y * y) / (2.0 * variance);
+            kernel[[i, j]] = coeff * exponent.exp();
+        }
+    }
+
+    // Normalize to sum to 1.0
+    let sum: f64 = kernel.iter().sum();
+    kernel.mapv_inplace(|v| v / sum);
+
+    Ok(kernel)
+}
+\end{lstlisting}
+
+The Gaussian has a useful property: its Fourier transform is also
+Gaussian, ensuring smooth frequency response.
+
+\subsection{Edge Detection and High-Pass Filtering}
+
+Edges correspond to high-frequency components. A simple high-pass
+filter enhances edges:
+
+\begin{equation}
+  \text{Edges} = \text{Image} - \text{Lowpass}(\text{Image})
+\end{equation}
+
+Or apply a high-pass mask directly in frequency domain:
+
+\begin{equation}
+  H_{\text{HP}}(u, v) =
+  \begin{cases}
+    0 & \sqrt{u^2 + v^2} < D_0 \\
+    1 & \text{otherwise}
+  \end{cases}
+\end{equation}
+
+The Laplacian operator for edge detection:
+
+\begin{equation}
+  \nabla^2 I = \frac{\partial^2 I}{\partial x^2} + \frac{\partial^2
+  I}{\partial y^2}
+\end{equation}
+
+In frequency domain, differentiation becomes multiplication:
+
+\begin{equation}
+  \mathcal{F}\{\nabla^2 I\} = -(u^2 + v^2) \mathcal{F}\{I\}
+\end{equation}
+
+\section{Computational Optimizations}\label{sec:optimizations}
+
+\subsection{Plan-Based Computation}\label{subsec:fft_plans}
+
+FFT planning involves:
+\begin{enumerate}
+  \item Analyzing the transform size
+  \item Selecting optimal algorithm (radix-2, split-radix, Bluestein, etc.)
+  \item Precomputing twiddle factors: $W_N^k = e^{-j2\pi k/N}$
+  \item Allocating scratch buffers
+\end{enumerate}
+
+For a single FFT, planning overhead is negligible. But for
+spectrograms with hundreds of frames, planning each FFT is wasteful.
+
+\textbf{Solution: Reusable plans}
+
+\begin{lstlisting}[]
+
+pub struct StftPlan {
+    n_fft: usize,
+    hop: usize,
+    window: Vec<f64>,      // Pre-computed window
+    fft: Box<dyn R2cPlan>, // Reusable FFT plan
+    fft_out: Vec<Complex<f64>>, // Reusable buffer
+    frame: Vec<f64>,       // Reusable frame buffer
+}
+
+impl StftPlan {
+    pub fn new(params: &SpectrogramParams) -> Result<Self> {
+        let n_fft = params.stft().n_fft();
+        let window = make_window(params.stft().window(), n_fft)?;
+
+        // Create FFT plan once
+        let mut planner = RealFftPlanner::new();
+        let fft = planner.plan_r2c(n_fft)?;
+
+        Ok(Self {
+            n_fft,
+            window,
+            fft,
+            fft_out: vec![Complex::new(0.0, 0.0); n_fft/2 + 1],
+            frame: vec![0.0; n_fft],
+        })
+    }
+
+    // Reuse plan for each frame
+    fn compute_frame(&mut self, samples: &[f64],
+                     frame_idx: usize) -> Result<()> {
+        // Window frame into self.frame buffer
+        // ...
+
+        // Reuse FFT plan and buffers
+        self.fft.process(&self.frame, &mut self.fft_out)?;
+        Ok(())
+    }
+}
+\end{lstlisting}
+
+\textbf{Computational benefit:} For 1000-frame spectrograms, plan reuse
+amortizes the planning overhead across all frames.
+
+\subsection{Sparse Matrix Operations}
+
+For filterbank multiplication $\mathbf{y} = H\mathbf{x}$ where $H$ is sparse:
+
+Dense: $\mathcal{O}(mn)$ for $m \times n$ matrix
+
+Sparse: $\mathcal{O}(nnz)$ where $nnz$ is number of non-zeros
+
+For mel filterbanks with 80 bands and 257 FFT bins:
+\begin{itemize}
+  \item Dense: $80 \times 257 = 20{,}560$ ops
+  \item Sparse ($\thicksim$20 non-zeros/row): $80 \times 20 = 1{,}600$ ops
+\end{itemize}
+
+\textbf{Row-wise sparse storage:}
+
+\begin{lstlisting}[]
+struct SparseMatrix {
+    nrows: usize,
+    ncols: usize,
+    values: Vec<Vec<f64>>,     // Non-zero values per row
+    indices: Vec<Vec<usize>>,  // Column indices per row
+}
+
+fn multiply_vec(&self, input: &[f64], out: &mut [f64]) {
+    for (row_idx, (row_values, row_indices)) in
+        self.values.iter().zip(&self.indices).enumerate() {
+
+        let mut acc = 0.0;
+        for (&value, &col_idx) in
+            row_values.iter().zip(row_indices) {
+            acc += value * input[col_idx];
+        }
+        out[row_idx] = acc;
+    }
+}
+\end{lstlisting}
+
+\textbf{Cache efficiency:} Row-wise format ensures sequential access
+to both input array and sparse values, maximizing cache hits.
+
+\subsection{Zero-Copy Design Patterns}
+
+Minimize allocations in hot loops:
+
+\textbf{Bad: Allocate per iteration}
+\begin{lstlisting}[]
+for frame in 0..n_frames {
+    let mut windowed = vec![0.0; n_fft]; // Allocation!
+    // ... process frame
+}
+\end{lstlisting}
+
+\textbf{Good: Reuse workspace}
+\begin{lstlisting}[]
+let mut workspace = vec![0.0; n_fft]; // Single allocation
+for frame in 0..n_frames {
+    // Reuse workspace
+    fill_frame(&mut workspace, samples, frame);
+    // ... process frame
+}
+\end{lstlisting}
+
+\textbf{Workspace pattern:}
+
+\begin{lstlisting}[]
+struct Workspace {
+    frame: Vec<f64>,          // Windowed frame buffer
+    fft_out: Vec<Complex<f64>>, // FFT output buffer
+    spectrum: Vec<f64>,       // Power spectrum buffer
+    mapped: Vec<f64>,         // Filterbank output buffer
+}
+
+impl Workspace {
+    fn ensure_sizes(&mut self, n_fft: usize,
+                   out_len: usize, n_bins: usize) {
+        self.frame.resize(n_fft, 0.0);
+        self.fft_out.resize(out_len, Complex::new(0.0, 0.0));
+        self.spectrum.resize(out_len, 0.0);
+        self.mapped.resize(n_bins, 0.0);
+    }
+}
+\end{lstlisting}
+
+\subsection{Memory Layout and Cache Efficiency}
+
+\textbf{Row-major vs.\ column-major:}
+
+The library uses row-major layout (C-style) for compatibility with
+most FFT libraries:
+
+\begin{lstlisting}[]
+// Row-major: rows are contiguous
+let data = Array2::<f64>::zeros((nrows, ncols));
+assert!(data.is_standard_layout()); // row-major
+\end{lstlisting}
+
+For column-wise operations (processing spectrogram frames), this can
+cause cache misses. But the benefit of contiguous memory for FFT outweighs this.
+
+\textbf{Alignment:} Modern FFT libraries (FFTW, RealFFT) benefit from
+aligned memory. The library ensures contiguous slices are passed to
+FFT routines.
+
+\subsection{FFTW Integration}\label{subsec:fftw}
+
+FFTW (\emph{Fastest Fourier Transform in the
+West})~\cite{frigo2005design} is considered the gold standard for FFT
+performance. The library supports both:
+
+\begin{itemize}
+  \item \textbf{RealFFT:} Pure Rust, portable, good performance
+  \item \textbf{FFTW:} C library, excellent performance, requires
+    system installation
+\end{itemize}
+
+\textbf{FFTW wisdom:}
+
+FFTW learns optimal algorithms through runtime measurements. Plans
+can be saved and reused:
+
+\begin{lstlisting}[]
+// FFTW planning flags:
+// ESTIMATE: Fast planning, ok performance
+// MEASURE: Slower planning, better performance
+// PATIENT: Very slow planning, best performance
+let plan = fftw::plan_r2c_1d(n_fft, FFTW_MEASURE);
+\end{lstlisting}
+
+For repeated transforms of the same size, MEASURE or PATIENT modes
+can provide better performance than ESTIMATE.
+
+\section{Numerical Considerations}\label{sec:numerical}
+
+\subsection{Floating-Point Precision}\label{subsec:precision}
+
+The library uses \code{f64} (double precision) throughout:
+
+\begin{itemize}
+  \item 53 bits of precision ($\approx$16 decimal digits)
+  \item Dynamic range: $\approx 10^{-308}$ to $10^{308}$
+  \item Sufficient for all audio processing needs
+\end{itemize}
+
+\textbf{Why not f32?} While f32 has lower memory requirements, audio
+processing requires:
+\begin{itemize}
+  \item Accurate accumulation over many samples (STFT frames)
+  \item Stable recursive filters (if implemented)
+  \item Wide dynamic range for decibel conversions
+\end{itemize}
+
+f64 ensures numerical stability without performance concerns on modern CPUs.
+
+\subsection{Normalization Conventions}\label{subsec:normalization}
+
+Different conventions exist for FFT normalization. The library uses:
+
+\textbf{Forward FFT:} No normalization
+\begin{equation}
+  X[k] = \sum_{n=0}^{N-1} x[n] e^{-j2\pi kn/N}
+\end{equation}
+
+\textbf{Inverse FFT:} Divide by $N$
+\begin{equation}
+  x[n] = \frac{1}{N}\sum_{k=0}^{N-1} X[k] e^{j2\pi kn/N}
+\end{equation}
+
+This ensures $\text{IFFT}(\text{FFT}(x)) = x$ exactly.
+
+Alternative conventions (used by some libraries):
+\begin{itemize}
+  \item Both directions scaled by $1/\sqrt{N}$ (symmetric)
+  \item Inverse scaled by $1/N$, forward by $N$ (rare)
+\end{itemize}
+
+\subsection{Dynamic Range and Epsilon Thresholds}
+
+\textbf{Logarithm floor:}
+
+To avoid $\log(0) = -\infty$:
+
+\begin{lstlisting}[]
+let epsilon = 1e-10;
+let db = 10.0 * (power.max(epsilon)).log10();
+\end{lstlisting}
+
+Choosing $\epsilon$:
+\begin{itemize}
+  \item Too large: Loss of quiet signals
+  \item Too small: Numerical instability
+  \item Sweet spot: $10^{-10}$ to $10^{-8}$ for f64
+\end{itemize}
+
+\textbf{Sparse matrix threshold:}
+
+For considering values ``zero'':
+
+\begin{lstlisting}[]
+if value.abs() > 1e-10 {
+    store(value);
+}
+\end{lstlisting}
+
+This is much larger than machine epsilon ($\approx 2.2 \times
+10^{-16}$ for f64) to account for accumulated rounding errors.
+
+\section{Conclusion and Further Reading}
+
+\subsection{Summary of Key Concepts}
+
+This manual covered:
+
+\textbf{Core algorithms:}
+\begin{itemize}
+  \item DFT and FFT (Cooley-Tukey algorithm)
+  \item Real-to-complex FFT with Hermitian symmetry
+  \item 2D FFT via row-column decomposition
+  \item STFT and time-frequency uncertainty
+\end{itemize}
+
+\textbf{Signal processing methods:}
+\begin{itemize}
+  \item Window functions (Hanning, Hamming, Blackman, Kaiser, Gaussian)
+  \item Amplitude scaling (power, magnitude, decibels)
+  \item Convolution theorem for efficient filtering
+\end{itemize}
+
+\textbf{Perceptual scales:}
+\begin{itemize}
+  \item Mel scale for speech processing
+  \item ERB scale (Glasberg \& Moore) for auditory modeling
+  \item Logarithmic frequency for music
+  \item CQT with variable-length kernels
+\end{itemize}
+
+\textbf{Advanced features:}
+\begin{itemize}
+  \item MFCCs via DCT for speech recognition
+  \item Chroma features for music analysis
+  \item Gammatone filters for perceptual accuracy
+\end{itemize}
+
+\textbf{Optimizations:}
+\begin{itemize}
+  \item Plan-based computation
+  \item Sparse matrix operations
+  \item Zero-copy workspace patterns
+  \item Cache-efficient memory layouts
+\end{itemize}
+
+\subsection{Applications and Extensions}
+
+The techniques in this manual enable:
+
+\begin{itemize}
+  \item Speech recognition and speaker identification
+  \item Music information retrieval
+  \item Audio classification and tagging
+  \item Sound event detection
+  \item Acoustic scene analysis
+  \item Image denoising and enhancement
+  \item Texture analysis
+  \item Pattern recognition
+\end{itemize}
+
+\textbf{Software:}
+\begin{itemize}
+  \item FFTW:\ \texttt{www.fftw.org}
+  \item Librosa (Python): \texttt{librosa.org}
+  \item Numpy (Python): \texttt{numpy.org}
+  \item SciPy (Python): \texttt{scipy.org}
+  \item This library: \texttt{github.com/jmg049/Spectrograms}
+\end{itemize}
+\clearpage

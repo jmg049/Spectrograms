@@ -12,3 +12,25 @@ __pycache__
 *.whl
 
 docs/build
+
+# tex files
+**/*.aux 
+**/*.bbl
+**/*.blg
+**/*.fls
+**/*.fdb_latexmk
+**/*.log
+**/*.lof
+**/*.lot
+**/*.out
+**/*.toc
+**/*.synctex.gz
+**/*.nav
+**/*.snm
+**/*.run.xml 
+**/*.xdv
+manual/build/
+
+**/*.code-workspace
+**/*ipynb_checkpoints
+python/examples/benchmark_results/

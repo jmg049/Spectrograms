@@ -26,7 +26,7 @@ Basic Usage
    signals = [np.random.randn(16000) for _ in range(100)]
 
    # Set up parameters
-   stft = sg.StftParams(n_fft=512, hop_size=256, window="hanning")
+   stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning)
    params = sg.SpectrogramParams(stft, sample_rate=16000)
    mel_params = sg.MelParams(n_mels=80, f_min=0.0, f_max=8000.0)
    db_params = sg.LogParams(floor_db=-80.0)
@@ -149,7 +149,7 @@ Plans hold internal state and buffers. For many different parameter configuratio
    plans = {}
 
    for n_fft in [512, 1024, 2048]:
-       stft = sg.StftParams(n_fft=n_fft, hop_size=n_fft//4, window="hanning")
+       stft = sg.StftParams(n_fft=n_fft, hop_size=n_fft//4, window=sg.WindowType.hanning)
        params = sg.SpectrogramParams(stft, sample_rate=16000)
        planner = sg.SpectrogramPlanner()
        plans[n_fft] = planner.mel_db_plan(params, mel_params, db_params)

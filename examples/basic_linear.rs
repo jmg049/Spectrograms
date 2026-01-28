@@ -1,10 +1,11 @@
+use non_empty_slice::NonEmptyVec;
 /// Basic linear spectrogram example
 ///
 /// This example demonstrates:
 /// - Creating a simple sine wave
 /// - Computing a linear-frequency power spectrogram
 /// - Accessing spectrogram data and axes
-use spectrograms::{LinearPowerSpectrogram, SpectrogramParams, StftParams, WindowType};
+use spectrograms::{LinearPowerSpectrogram, SpectrogramParams, StftParams, WindowType, nzu};
 use std::f64::consts::PI;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,13 +17,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let samples: Vec<f64> = (0..(duration * sample_rate) as usize)
         .map(|i| (2.0 * PI * frequency * i as f64 / sample_rate).sin())
         .collect();
+    let samples = NonEmptyVec::new(samples).unwrap();
 
     println!("Generated {} samples at {} Hz", samples.len(), sample_rate);
 
     // Set up spectrogram parameters
     let stft = StftParams::new(
-        512,                 // n_fft: FFT window size
-        256,                 // hop_size: samples between frames
+        nzu!(512),           // n_fft: FFT window size
+        nzu!(256),           // hop_size: samples between frames
         WindowType::Hanning, // window function
         true,                // centre: pad signal for centered frames
     )?;

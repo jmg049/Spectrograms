@@ -1,44 +1,32 @@
-use spectrograms::{LogParams, MelParams, SpectrogramParams, StftParams, WindowType};
+use spectrograms::{LogParams, MelParams, SpectrogramParams, StftParams, WindowType, nzu};
 
 #[test]
 fn test_stft_params_valid() {
-    let params = StftParams::new(512, 256, WindowType::Hanning, true);
+    let params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true);
     assert!(params.is_ok());
 
     let p = params.unwrap();
-    assert_eq!(p.n_fft(), 512);
-    assert_eq!(p.hop_size(), 256);
+    assert_eq!(p.n_fft(), nzu!(512));
+    assert_eq!(p.hop_size(), nzu!(256));
     assert_eq!(p.window(), WindowType::Hanning);
     assert!(p.centre());
 }
 
 #[test]
-fn test_stft_params_zero_n_fft() {
-    let result = StftParams::new(0, 256, WindowType::Hanning, true);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_stft_params_zero_hop_size() {
-    let result = StftParams::new(512, 0, WindowType::Hanning, true);
-    assert!(result.is_err());
-}
-
-#[test]
 fn test_stft_params_hop_larger_than_n_fft() {
-    let result = StftParams::new(512, 1024, WindowType::Hanning, true);
+    let result = StftParams::new(nzu!(512), nzu!(1024), WindowType::Hanning, true);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_stft_params_equal_hop_and_n_fft() {
-    let result = StftParams::new(512, 512, WindowType::Hanning, true);
+    let result = StftParams::new(nzu!(512), nzu!(512), WindowType::Hanning, true);
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_spectrogram_params_valid() {
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, 16000.0);
     assert!(params.is_ok());
 
@@ -50,57 +38,51 @@ fn test_spectrogram_params_valid() {
 
 #[test]
 fn test_spectrogram_params_zero_sample_rate() {
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let result = SpectrogramParams::new(stft, 0.0);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_spectrogram_params_negative_sample_rate() {
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let result = SpectrogramParams::new(stft, -16000.0);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_spectrogram_params_infinite_sample_rate() {
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let result = SpectrogramParams::new(stft, f64::INFINITY);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_mel_params_valid() {
-    let params = MelParams::new(80, 0.0, 8000.0);
+    let params = MelParams::new(nzu!(80), 0.0, 8000.0);
     assert!(params.is_ok());
 
     let p = params.unwrap();
-    assert_eq!(p.n_mels(), 80);
+    assert_eq!(p.n_mels(), nzu!(80));
     assert_eq!(p.f_min(), 0.0);
     assert_eq!(p.f_max(), 8000.0);
 }
 
 #[test]
-fn test_mel_params_zero_n_mels() {
-    let result = MelParams::new(0, 0.0, 8000.0);
-    assert!(result.is_err());
-}
-
-#[test]
 fn test_mel_params_negative_f_min() {
-    let result = MelParams::new(80, -100.0, 8000.0);
+    let result = MelParams::new(nzu!(80), -100.0, 8000.0);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_mel_params_f_max_less_than_f_min() {
-    let result = MelParams::new(80, 8000.0, 100.0);
+    let result = MelParams::new(nzu!(80), 8000.0, 100.0);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_mel_params_equal_f_min_f_max() {
-    let result = MelParams::new(80, 8000.0, 8000.0);
+    let result = MelParams::new(nzu!(80), 8000.0, 8000.0);
     assert!(result.is_err());
 }
 

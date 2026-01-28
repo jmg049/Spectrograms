@@ -1,3 +1,4 @@
+use non_empty_slice::NonEmptyVec;
 use spectrograms::*;
 use std::f64::consts::PI;
 
@@ -11,15 +12,14 @@ fn sine_wave(freq: f64, sample_rate: f64, n_samples: usize) -> Vec<f64> {
 fn test_chromagram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
-
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard().unwrap();
+    let samples = NonEmptyVec::new(samples).unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard();
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
     // Chromagram should have 12 pitch classes
-    assert_eq!(result.n_bins(), 12);
-    assert!(result.n_frames() > 0);
+    assert_eq!(result.n_bins(), nzu!(12));
 
     // All values should be non-negative and finite
     for val in result.data.iter() {
@@ -32,9 +32,10 @@ fn test_chromagram_basic() {
 fn test_chromagram_a440() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
+    let samples = NonEmptyVec::new(samples).unwrap();
 
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard().unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard();
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
@@ -44,7 +45,7 @@ fn test_chromagram_a440() {
     // Sum energy across all frames for each pitch class
     let mut pitch_energies = vec![0.0; 12];
     for pitch in 0..12 {
-        for frame in 0..result.n_frames() {
+        for frame in 0..result.n_frames().get() {
             pitch_energies[pitch] += data[[pitch, frame]];
         }
     }
@@ -70,16 +71,17 @@ fn test_chromagram_c_note() {
     let sample_rate = 16000.0;
     let c_freq = 261.63; // C4
     let samples = sine_wave(c_freq, sample_rate, 16000);
+    let samples = NonEmptyVec::new(samples).unwrap();
 
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard().unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard();
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
     let data = &result.data;
     let mut pitch_energies = vec![0.0; 12];
     for pitch in 0..12 {
-        for frame in 0..result.n_frames() {
+        for frame in 0..result.n_frames().get() {
             pitch_energies[pitch] += data[[pitch, frame]];
         }
     }
@@ -101,9 +103,6 @@ fn test_chromagram_c_note() {
 
 #[test]
 fn test_chroma_params_validation() {
-    // Valid parameters
-    assert!(ChromaParams::music_standard().is_ok());
-
     // Valid with custom tuning
     assert!(ChromaParams::new(442.0, 50.0, 8000.0, ChromaNorm::L2).is_ok());
 
@@ -121,11 +120,10 @@ fn test_chroma_params_validation() {
 fn test_chroma_normalization_none() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
+    let samples = NonEmptyVec::new(samples).unwrap();
 
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard()
-        .unwrap()
-        .with_norm(ChromaNorm::None);
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard().with_norm(ChromaNorm::None);
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
@@ -140,18 +138,16 @@ fn test_chroma_normalization_none() {
 fn test_chroma_normalization_l1() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
-
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard()
-        .unwrap()
-        .with_norm(ChromaNorm::L1);
+    let samples = NonEmptyVec::new(samples).unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard().with_norm(ChromaNorm::L1);
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
     let data = &result.data;
 
     // Check L1 normalization: sum of each frame should be close to 1.0 (or 0 if all zeros)
-    for frame in 0..result.n_frames() {
+    for frame in 0..result.n_frames().get() {
         let frame_sum: f64 = (0..12).map(|pitch| data[[pitch, frame]]).sum();
 
         if frame_sum > 1e-10 {
@@ -169,18 +165,16 @@ fn test_chroma_normalization_l1() {
 fn test_chroma_normalization_l2() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
-
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard()
-        .unwrap()
-        .with_norm(ChromaNorm::L2);
+    let samples = NonEmptyVec::new(samples).unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard().with_norm(ChromaNorm::L2);
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
     let data = &result.data;
 
     // Check L2 normalization: sqrt of sum of squares should be close to 1.0
-    for frame in 0..result.n_frames() {
+    for frame in 0..result.n_frames().get() {
         let frame_energy: f64 = (0..12).map(|pitch| data[[pitch, frame]].powi(2)).sum();
         let frame_norm = frame_energy.sqrt();
 
@@ -198,18 +192,17 @@ fn test_chroma_normalization_l2() {
 fn test_chroma_normalization_max() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
+    let samples = NonEmptyVec::new(samples).unwrap();
 
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard()
-        .unwrap()
-        .with_norm(ChromaNorm::Max);
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard().with_norm(ChromaNorm::Max);
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
     let data = &result.data;
 
     // Check Max normalization: maximum value in each frame should be 1.0
-    for frame in 0..result.n_frames() {
+    for frame in 0..result.n_frames().get() {
         let frame_max = (0..12)
             .map(|pitch| data[[pitch, frame]])
             .max_by(|a, b| a.partial_cmp(b).unwrap())
@@ -229,9 +222,10 @@ fn test_chroma_normalization_max() {
 fn test_chroma_silence() {
     let sample_rate = 16000.0;
     let samples = vec![0.0; 16000];
+    let samples = NonEmptyVec::new(samples).unwrap();
 
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard().unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard();
 
     let result = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();
 
@@ -245,9 +239,10 @@ fn test_chroma_silence() {
 fn test_chroma_consistency() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 16000);
+    let samples = NonEmptyVec::new(samples).unwrap();
 
-    let stft = StftParams::new(2048, 512, WindowType::Hanning, true).unwrap();
-    let chroma_params = ChromaParams::music_standard().unwrap();
+    let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();
+    let chroma_params = ChromaParams::music_standard();
 
     // Compute twice with same parameters
     let result1 = chromagram(&samples, &stft, sample_rate, &chroma_params).unwrap();

@@ -1,3 +1,4 @@
+use non_empty_slice::NonEmptyVec;
 /// Amplitude scale comparison example
 ///
 /// This example demonstrates:
@@ -6,7 +7,7 @@
 /// - Conversion relationships
 use spectrograms::{
     LinearDbSpectrogram, LinearMagnitudeSpectrogram, LinearPowerSpectrogram, LogParams,
-    SpectrogramParams, StftParams, WindowType,
+    SpectrogramParams, StftParams, WindowType, nzu,
 };
 use std::f64::consts::PI;
 
@@ -16,9 +17,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let samples: Vec<f64> = (0..1600)
         .map(|i| (2.0 * PI * 440.0 * i as f64 / sample_rate).sin())
         .collect();
-
+    let samples = NonEmptyVec::new(samples).unwrap();
     // Set up parameters
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true)?;
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true)?;
     let params = SpectrogramParams::new(stft, sample_rate)?;
 
     println!("Comparing amplitude scales for a 440 Hz sine wave:\n");
@@ -80,13 +81,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Dynamic range comparison:");
     println!("  Power scale: {:.2e} (ratio)", power_range);
     println!("  dB scale: {:.2} dB (difference)", db_range);
-    println!("  → dB scale compresses large dynamic ranges for better visualization");
+    println!("  -> dB scale compresses large dynamic ranges for better visualization");
     println!();
 
     println!("Scale selection guide:");
-    println!("  • Power: Best for energy-based analysis, preserves additivity");
-    println!("  • Magnitude: Closer to linear amplitude perception");
-    println!("  • Decibels: Best for visualization, matches human hearing, wide dynamic range");
+    println!("  * Power: Best for energy-based analysis, preserves additivity");
+    println!("  * Magnitude: Closer to linear amplitude perception");
+    println!("  * Decibels: Best for visualization, matches human hearing, wide dynamic range");
 
     Ok(())
 }

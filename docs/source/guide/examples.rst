@@ -1,12 +1,166 @@
-Adding Examples
-===============
+Examples
+========
 
-Good documentation includes practical examples. Here's how to add them effectively.
+This page lists all available example scripts demonstrating various features of the spectrograms library.
 
-Creating Example Files
------------------------
+All examples are located in the ``python/examples/`` directory of the repository.
 
-Example files should be standalone and runnable:
+Audio Processing Examples
+--------------------------
+
+Basic Spectrograms
+~~~~~~~~~~~~~~~~~~
+
+**basic_linear.py**
+  Compute a simple linear power spectrogram from a sine wave.
+  Demonstrates the most basic usage of the library.
+
+  .. code-block:: bash
+
+     python python/examples/basic_linear.py
+
+**mel_spectrogram.py**
+  Compute mel spectrograms with different amplitude scales (power, magnitude, dB).
+  Shows how to use mel filterbanks for perceptual frequency scaling.
+
+  .. code-block:: bash
+
+     python python/examples/mel_spectrogram.py
+
+Window Functions
+~~~~~~~~~~~~~~~~
+
+**compare_windows.py**
+  Compare different window functions (Hanning, Hamming, Blackman, Kaiser).
+  Visualizes the trade-offs between frequency resolution and spectral leakage.
+
+  .. code-block:: bash
+
+     python python/examples/compare_windows.py
+
+Batch Processing
+~~~~~~~~~~~~~~~~
+
+**batch_processing.py**
+  Efficient batch processing using the planner API.
+  Demonstrates 1.5-3x speedup by reusing FFT plans across multiple signals.
+
+  .. code-block:: bash
+
+     python python/examples/batch_processing.py
+
+Streaming
+~~~~~~~~~
+
+**streaming.py**
+  Frame-by-frame processing for real-time applications.
+  Shows how to process audio incrementally with minimal latency.
+
+  .. code-block:: bash
+
+     python python/examples/streaming.py
+
+Audio Features
+~~~~~~~~~~~~~~
+
+**mfcc_example.py**
+  Compute Mel-Frequency Cepstral Coefficients (MFCCs).
+  Common features for speech recognition and audio classification.
+
+  .. code-block:: bash
+
+     python python/examples/mfcc_example.py
+
+**chromagram_example.py**
+  Compute chromagrams (pitch class profiles).
+  Useful for music analysis and chord recognition.
+
+  .. code-block:: bash
+
+     python python/examples/chromagram_example.py
+
+Image Processing Examples
+--------------------------
+
+2D FFT Basics
+~~~~~~~~~~~~~
+
+**fft2d_basic.py**
+  Basic 2D FFT operations on images.
+  Demonstrates forward/inverse FFT and power spectrum computation.
+
+  .. code-block:: bash
+
+     python python/examples/fft2d_basic.py
+
+Image Filtering
+~~~~~~~~~~~~~~~
+
+**image_blur_fft.py**
+  Apply Gaussian blur using FFT-based convolution.
+  Shows how FFT convolution is faster for large kernels.
+
+  .. code-block:: bash
+
+     python python/examples/image_blur_fft.py
+
+**image_edge_detection.py**
+  Edge detection using high-pass filtering in frequency domain.
+  Demonstrates spatial filtering techniques.
+
+  .. code-block:: bash
+
+     python python/examples/image_edge_detection.py
+
+Performance Analysis
+--------------------
+
+**fft_performance_analysis.py**
+  Performance comparison against NumPy and SciPy implementations.
+  Measures execution time across different configurations.
+
+  .. code-block:: bash
+
+     python python/examples/fft_performance_analysis.py
+
+**notebook.ipynb**
+  Comprehensive Jupyter notebook with interactive benchmarks.
+  Includes visualization of performance results and detailed comparisons.
+
+  .. code-block:: bash
+
+     jupyter lab python/examples/notebook.ipynb
+
+Reference Implementations
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**numpy_impls.py**
+  Reference NumPy/SciPy implementations used in benchmarks.
+  Useful for understanding the algorithms and comparing approaches.
+
+Running Examples
+----------------
+
+All examples are self-contained and can be run directly:
+
+.. code-block:: bash
+
+   # Install the library first
+   pip install spectrograms
+
+   # Run any example
+   python python/examples/<example_name>.py
+
+Some examples may require additional dependencies for visualization:
+
+.. code-block:: bash
+
+   pip install matplotlib seaborn jupyter
+
+Example Template
+----------------
+
+When creating new examples, follow this template:
 
 .. code-block:: python
 
@@ -15,6 +169,7 @@ Example files should be standalone and runnable:
    Brief Title
 
    Longer description of what this example demonstrates.
+   Include any prerequisites or special requirements.
    """
 
    import numpy as np
@@ -23,54 +178,17 @@ Example files should be standalone and runnable:
 
    def main():
        # Your example code here
-       pass
+       print("Example output")
 
 
    if __name__ == "__main__":
        main()
 
-Place examples in ``python/examples/`` directory.
+See Also
+--------
 
-Inline Examples
----------------
-
-For small code snippets in documentation:
-
-.. code-block:: rst
-
-   .. code-block:: python
-
-      import spectrograms as sg
-
-      # Brief, focused example
-      spec = sg.compute_linear_power_spectrogram(samples, params)
-
-Best Practices
---------------
-
-1. **Start simple**: Begin with the most basic usage
-2. **Build complexity**: Add advanced features progressively
-3. **Explain why**: Don't just show what, explain when and why
-4. **Show output**: Include expected results or shapes
-5. **Handle errors**: Show proper error handling when relevant
-
-Linking to API
---------------
-
-Reference API elements using Sphinx roles:
-
-.. code-block:: rst
-
-   Use :class:`~spectrograms.SpectrogramParams` to configure...
-   Call :func:`~spectrograms.compute_mel_power_spectrogram`...
-   See :doc:`../guide/quickstart` for more...
-
-The ``~`` prefix shows only the last component of the name.
-
-Adding to Documentation
------------------------
-
-1. Create or update RST file in appropriate section
-2. Add to toctree in parent index
-3. Build and verify: ``python build_docs.py --serve``
-4. Check for warnings and broken links
+- :doc:`quickstart` - Quick introduction to basic usage
+- :doc:`planner_guide` - Efficient batch processing guide
+- :doc:`audio_features` - Audio feature extraction guide
+- :doc:`image_processing` - Image processing guide
+- :doc:`performance` - Performance tips and benchmarks

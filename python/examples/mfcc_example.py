@@ -18,16 +18,16 @@ def generate_speech_like_signal(sample_rate, duration):
     f0 = 120 + 30 * np.sin(2 * np.pi * 2 * t)  # 120-150 Hz
 
     # Three formants (resonant frequencies typical of vowels)
-    f1 = 700   # First formant
+    f1 = 700  # First formant
     f2 = 1220  # Second formant
     f3 = 2600  # Third formant
 
     # Generate signal with formants
     signal = (
-        np.sin(2 * np.pi * f0 * t) +                      # Fundamental
-        0.7 * np.sin(2 * np.pi * f1 * t) +                # F1
-        0.5 * np.sin(2 * np.pi * f2 * t) +                # F2
-        0.3 * np.sin(2 * np.pi * f3 * t)                  # F3
+        np.sin(2 * np.pi * f0 * t)  # Fundamental
+        + 0.7 * np.sin(2 * np.pi * f1 * t)  # F1
+        + 0.5 * np.sin(2 * np.pi * f2 * t)  # F2
+        + 0.3 * np.sin(2 * np.pi * f3 * t)  # F3
     )
 
     # Add some noise (breathiness)
@@ -58,10 +58,10 @@ def main():
 
     # Configure STFT parameters (typical for speech)
     stft = sg.StftParams(
-        n_fft=512,      # 32ms frames at 16kHz
-        hop_size=160,   # 10ms hop (typical for speech)
+        n_fft=512,  # 32ms frames at 16kHz
+        hop_size=160,  # 10ms hop (typical for speech)
         window="hanning",
-        centre=True
+        centre=True,
     )
 
     print(f"\nSTFT parameters:")
@@ -87,7 +87,7 @@ def main():
     mfccs = sg.compute_mfcc(signal, stft, sample_rate, n_mels, mfcc_params)
 
     print(f"\n✓ MFCCs computed:")
-    print(f"  Shape: {mfccs.shape} (n_mfcc × n_frames)")
+    print(f"  Shape: {mfccs.shape} (n_mfcc x n_frames)")
     print(f"  Number of frames: {mfccs.shape[1]}")
     print(f"  Frame rate: {mfccs.shape[1] / duration:.1f} frames/second")
 
@@ -101,7 +101,9 @@ def main():
         std = np.std(mfccs[i, :])
         min_val = np.min(mfccs[i, :])
         max_val = np.max(mfccs[i, :])
-        print(f"  C{i:2d}   {mean:10.3f}  {std:10.3f}  {min_val:10.3f}  {max_val:10.3f}")
+        print(
+            f"  C{i:2d}   {mean:10.3f}  {std:10.3f}  {min_val:10.3f}  {max_val:10.3f}"
+        )
 
     # ========================================================================
     # Using the speech standard preset
@@ -114,7 +116,9 @@ def main():
     print(f"\nSpeech standard parameters:")
     print(f"  Number of coefficients: {standard_mfcc_params.n_mfcc}")
 
-    mfccs_standard = sg.compute_mfcc(signal, stft, sample_rate, n_mels, standard_mfcc_params)
+    mfccs_standard = sg.compute_mfcc(
+        signal, stft, sample_rate, n_mels, standard_mfcc_params
+    )
     print(f"\n✓ Standard MFCCs computed: {mfccs_standard.shape}")
 
     # Verify they're the same (both use 13 coefficients)
@@ -173,8 +177,12 @@ def main():
 
     print(f"\nFirst {n_show} frames:")
     for frame_idx in range(n_show):
-        print(f"\nFrame {frame_idx} (t = {frame_idx * stft.hop_size / sample_rate:.3f}s):")
-        print(f"  MFCCs: [{', '.join(f'{mfccs[i, frame_idx]:6.2f}' for i in range(min(5, mfccs.shape[0])))}...]")
+        print(
+            f"\nFrame {frame_idx} (t = {frame_idx * stft.hop_size / sample_rate:.3f}s):"
+        )
+        print(
+            f"  MFCCs: [{', '.join(f'{mfccs[i, frame_idx]:6.2f}' for i in range(min(5, mfccs.shape[0])))}...]"
+        )
 
     # ========================================================================
     # Feature normalization (common in ML applications)
@@ -192,8 +200,12 @@ def main():
             mfccs_normalized[i, :] = (mfccs[i, :] - mean) / std
 
     print("\nNormalized MFCCs (zero mean, unit variance per coefficient):")
-    print(f"  Mean of means: {np.mean([np.mean(mfccs_normalized[i, :]) for i in range(mfccs_normalized.shape[0])]):.6f}")
-    print(f"  Mean of stds:  {np.mean([np.std(mfccs_normalized[i, :]) for i in range(mfccs_normalized.shape[0])]):.6f}")
+    print(
+        f"  Mean of means: {np.mean([np.mean(mfccs_normalized[i, :]) for i in range(mfccs_normalized.shape[0])]):.6f}"
+    )
+    print(
+        f"  Mean of stds:  {np.mean([np.std(mfccs_normalized[i, :]) for i in range(mfccs_normalized.shape[0])]):.6f}"
+    )
 
     # ========================================================================
     # Application examples

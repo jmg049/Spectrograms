@@ -1,7 +1,10 @@
 use core::fmt::Display;
 use core::str::FromStr;
+use std::{num::NonZeroUsize, sync::OnceLock};
 
-use crate::SpectrogramError;
+use non_empty_slice::NonEmptyVec;
+
+use crate::{SpectrogramError, make_window};
 
 /// Window functions for spectral analysis and filtering.
 ///
@@ -9,6 +12,7 @@ use crate::SpectrogramError;
 /// and spectral leakage in FFT-based analysis.
 #[derive(Default, Debug, Clone, PartialEq, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive] // Allow adding new window types in future versions
 pub enum WindowType {
     /// Rectangular window (no windowing) - best frequency resolution but high leakage.
     Rectangular,
@@ -31,7 +35,62 @@ pub enum WindowType {
     },
 }
 
+impl WindowType {
+    #[must_use]
+    #[inline]
+    pub const fn is_parameterized(&self) -> bool {
+        matches!(self, Self::Kaiser { .. } | Self::Gaussian { .. })
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn parameter_value(&self) -> Option<f64> {
+        match self {
+            Self::Kaiser { beta } => Some(*beta),
+            Self::Gaussian { std } => Some(*std),
+            _ => None,
+        }
+    }
+}
+
+#[must_use]
+#[inline]
+pub fn hanning_window(n: NonZeroUsize) -> NonEmptyVec<f64> {
+    make_window(WindowType::Hanning, n)
+}
+
+#[must_use]
+#[inline]
+pub fn hamming_window(n: NonZeroUsize) -> NonEmptyVec<f64> {
+    make_window(WindowType::Hamming, n)
+}
+
+#[must_use]
+#[inline]
+pub fn blackman_window(n: NonZeroUsize) -> NonEmptyVec<f64> {
+    make_window(WindowType::Blackman, n)
+}
+
+#[must_use]
+#[inline]
+pub fn rectangular_window(n: NonZeroUsize) -> NonEmptyVec<f64> {
+    make_window(WindowType::Rectangular, n)
+}
+
+#[must_use]
+#[inline]
+pub fn kaiser_window(n: NonZeroUsize, beta: f64) -> NonEmptyVec<f64> {
+    make_window(WindowType::Kaiser { beta }, n)
+}
+
+#[must_use]
+#[inline]
+pub fn gaussian_window(n: NonZeroUsize, std: f64) -> NonEmptyVec<f64> {
+    make_window(WindowType::Gaussian { std }, n)
+}
+
 impl Display for WindowType {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Rectangular => write!(f, "Rectangular"),
@@ -44,24 +103,28 @@ impl Display for WindowType {
     }
 }
 
+// Cache the compiled regex for window type parsing
+static WINDOW_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+
 impl FromStr for WindowType {
     type Err = SpectrogramError;
 
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
             return Err(SpectrogramError::invalid_input(
                 "Input must not be empty. Must be one of ['rectangular', 'hanning', 'hamming', 'blackman', 'gaussian', 'kaiser']",
             ));
         }
-        let pattern = r"^(?:(?P<name>rect|rectangle|hann|hanning|hamm|hamming|blackman)|(?P<param_name>kaiser|gaussian)=(?P<param>\d+(\.\d+)?))$";
-        let reg = regex::RegexBuilder::new(pattern)
-            .case_insensitive(true)
-            .build()
-            .map_err(|reg_err| {
-                SpectrogramError::invalid_input(format!(
-                    "Failed to build regex for parsing. Reason {reg_err}"
-                ))
-            })?;
+
+        let reg = WINDOW_REGEX.get_or_init(|| {
+            let pattern = r"^(?:(?P<name>rect|rectangle|hann|hanning|hamm|hamming|blackman)|(?P<param_name>kaiser|gaussian)=(?P<param>\d+(\.\d+)?))$";
+            regex::RegexBuilder::new(pattern)
+                .case_insensitive(true)
+                .build()
+                .expect("hardcoded window regex should compile")
+        });
+
         let normalised = s.trim();
         match reg.captures(normalised) {
             Some(caps) => {
@@ -71,7 +134,10 @@ impl FromStr for WindowType {
                         "hann" | "hanning" => Ok(Self::Hanning),
                         "hamm" | "hamming" => Ok(Self::Hamming),
                         "blackman" => Ok(Self::Blackman),
-                        _ => unreachable!("regex guarantees exhaustiveness"),
+                        _ => Err(SpectrogramError::invalid_input(format!(
+                            "Unrecognized window name: {}",
+                            name.as_str()
+                        ))),
                     }
                 } else if let (Some(param_name), Some(param)) =
                     (caps.name("param_name"), caps.name("param"))
@@ -86,10 +152,15 @@ impl FromStr for WindowType {
                     match param_name.as_str().to_ascii_lowercase().as_str() {
                         "kaiser" => Ok(Self::Kaiser { beta: value }),
                         "gaussian" => Ok(Self::Gaussian { std: value }),
-                        _ => unreachable!("regex guarantees exhaustiveness"),
+                        _ => Err(SpectrogramError::invalid_input(format!(
+                            "Unrecognized parameterized window: {}",
+                            param_name.as_str()
+                        ))),
                     }
                 } else {
-                    unreachable!("regex guarantees one capture branch")
+                    Err(SpectrogramError::invalid_input(
+                        "Invalid window specification: regex matched but no valid capture group found",
+                    ))
                 }
             }
             None => Err(SpectrogramError::invalid_input(format!(

@@ -26,6 +26,7 @@ Standard FFT frequency bins, equally spaced in Hz.
 Log Frequency Scale
 -------------------
 Logarithmically spaced frequencies.
+
 .. code-block:: python
 
    import spectrograms as sg

@@ -1,10 +1,13 @@
 Quickstart
 ==========
 
-This guide shows you how to compute your first spectrogram.
+This guide shows you how to get started with audio and image processing.
 
-Basic Example
--------------
+Audio Processing
+================
+
+Basic Spectrogram
+-----------------
 
 Compute a linear power spectrogram from a simple sine wave:
 
@@ -23,7 +26,7 @@ Compute a linear power spectrogram from a simple sine wave:
    stft = sg.StftParams(
        n_fft=512,
        hop_size=256,
-       window="hanning",
+       window=sg.WindowType.hanning,
        centre=True
    )
    params = sg.SpectrogramParams(stft, sample_rate=sample_rate)
@@ -70,9 +73,67 @@ For perceptually-scaled analysis (common in speech and music):
        samples, params, mel_params, db_params
    )
 
+Image Processing
+================
+
+Basic 2D FFT
+------------
+
+Compute the 2D FFT of an image:
+
+.. code-block:: python
+
+   import numpy as np
+   import spectrograms as sg
+
+   # Create or load a 256x256 image
+   image = np.random.randn(256, 256)
+
+   # Compute 2D FFT
+   spectrum = sg.fft2d(image)
+   print(f"Spectrum shape: {spectrum.shape}")  # (256, 129)
+
+   # Compute power spectrum
+   power = sg.power_spectrum_2d(image)
+
+Image Filtering
+---------------
+
+Apply spatial filters to enhance or smooth images:
+
+.. code-block:: python
+
+   import spectrograms as sg
+
+   # Apply Gaussian blur
+   kernel = sg.gaussian_kernel_2d(size=9, sigma=2.0)
+   blurred = sg.convolve_fft(image, kernel)
+
+   # Detect edges with high-pass filter
+   edges = sg.highpass_filter(image, cutoff=0.1)
+
+   # Sharpen image
+   sharpened = sg.sharpen_fft(image, amount=1.5)
+
+Understanding Image Results
+---------------------------
+
+2D FFT functions return NumPy arrays:
+
+- ``fft2d()``: Complex array with shape ``(nrows, ncols//2 + 1)``
+- ``power_spectrum_2d()``: Real array with shape ``(nrows, ncols//2 + 1)``
+- Filtering functions: Real array with same shape as input
+
 Next Steps
 ----------
+
+**Audio:**
 
 - Learn about :doc:`choosing_parameters` for your application
 - Optimize batch processing with the :doc:`planner_guide`
 - Explore :doc:`audio_features` like MFCC and chromagrams
+
+**Image:**
+
+- Learn about :doc:`image_processing` for 2D FFT operations
+- See :doc:`performance` for optimization tips

@@ -10,4 +10,6 @@ This section documents the complete Python API for the spectrograms library.
    functions
    planner
    result
+   fft2d
+   image_ops
    exceptions

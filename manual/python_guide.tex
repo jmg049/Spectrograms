@@ -1,0 +1,783 @@
+% ============================================
+% Python API Reference Guide
+% Practical applications using the spectrograms library
+% ============================================
+
+\section{Python API Reference}\label{sec:python_guide}
+
+\subsection{Introduction}\label{subsec:python_intro}
+
+This section provides a complete reference for the Python API, demonstrating
+how to apply the mathematical concepts from previous sections in practice.
+All code examples use \texttt{samples} (audio data as \texttt{ndarray[float64]})
+and \texttt{image} (image data as \texttt{ndarray[float64]}).
+
+\needspace{10\baselineskip}
+\subsection*{Installation and Imports}
+
+\begin{lstlisting}[language=bash]
+pip install spectrograms
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+import numpy as np
+import spectrograms as sg
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{API Organization}
+
+The API consists of four components:
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Parameter Classes:} Configuration objects
+  \item \textbf{Computation Functions:} Single-use convenience functions
+  \item \textbf{Planner Classes:} Reusable plans for batch processing
+  \item \textbf{Result Objects:} Rich results with metadata
+\end{itemize}
+
+All computation functions release Python's GIL for parallel processing.
+
+\needspace{10\baselineskip}
+\subsection*{Error Handling}
+
+\begin{lstlisting}[language=Python]
+try:
+    spec = sg.compute_mel_power_spectrogram(samples, params, mel_params)
+except sg.InvalidInputError as e:
+    print(f"Invalid parameters: {e}")
+except sg.DimensionMismatchError as e:
+    print(f"Array size mismatch: {e}")
+except sg.FFTBackendError as e:
+    print(f"FFT computation error: {e}")
+except sg.SpectrogramError as e:
+    print(f"Library error: {e}")
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Basic FFT Operations}
+
+\needspace{10\baselineskip}
+\subsection*{1D FFT}
+
+Compute the Discrete Fourier Transform (\cref{eq:dft_definition}):
+
+\begin{lstlisting}[language=Python]
+n_fft: int = 512
+
+# Compute FFT
+spectrum: npt.NDArray[np.complex128] = sg.compute_fft(samples[:n_fft], n_fft)
+print(f"Output shape: {spectrum.shape}")  # (257,) due to Hermitian symmetry
+print(f"Output dtype: {spectrum.dtype}")  # complex128
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Inverse FFT}
+
+Perfect reconstruction (\cref{eq:idft}):
+
+\begin{lstlisting}[language=Python]
+spectrum: npt.NDArray[np.complex128] = sg.compute_fft(samples[:512], 512)
+reconstructed: npt.NDArray[np.float64] = sg.compute_irfft(spectrum, 512)
+
+error: float = np.max(np.abs(samples[:512] - reconstructed))
+print(f"Reconstruction error: {error:.2e}")  # < 1e-14
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Power and Magnitude Spectra}
+
+From \cref{subsec:power_spectrum}:
+
+\begin{lstlisting}[language=Python]
+# Power spectrum: |X[k]|^2
+power: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512)
+
+# Magnitude spectrum: |X[k]|
+magnitude: npt.NDArray[np.float64] = sg.compute_magnitude_spectrum(samples[:512], 512)
+
+# With windowing (sec:windows)
+power_windowed: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512, window=WindowType.hanning())
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+
+\clearpage
+\subsection*{Window Functions}
+
+\needspace{10\baselineskip}
+\subsection*{Predefined Windows}
+
+Window functions from \cref{sec:windows}:
+
+\begin{lstlisting}[language=Python]
+# WindowType class methods
+rect: sg.WindowType = sg.WindowType.rectangular()
+hann: sg.WindowType = sg.WindowType.hanning()
+hamming: sg.WindowType = sg.WindowType.hamming()
+blackman: sg.WindowType = sg.WindowType.blackman()
+
+# Use with compute functions
+power: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512, window=hann)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Parametric Windows}
+
+Kaiser (\cref{subsec:kaiser_window}) and Gaussian
+(\cref{subsec:gaussian_window}):
+
+\begin{lstlisting}[language=Python]
+# Kaiser window with beta parameter
+kaiser: sg.WindowType = sg.WindowType.kaiser(beta=8.6)
+power_kaiser: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512, window=kaiser)
+
+# Gaussian window with std
+gaussian: sg.WindowType = sg.WindowType.gaussian(std=0.4)
+power_gaussian: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512, window=gaussian)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{STFT and Spectrograms}
+
+\needspace{10\baselineskip}
+\subsection*{Configuration}
+
+STFT parameters from \cref{subsec:stft_definition}:
+
+\begin{lstlisting}[language=Python]
+# Manual configuration
+window: sg.WindowType = sg.WindowType.hanning()
+stft: sg.StftParams = sg.StftParams(
+    n_fft=512,
+    hop_size=160,
+    window=window,
+    centre=True
+)
+params: sg.SpectrogramParams = sg.SpectrogramParams(stft, sample_rate=16000)
+
+# Presets
+params_speech: sg.SpectrogramParams = sg.SpectrogramParams.speech_default(16000)
+params_music: sg.SpectrogramParams = sg.SpectrogramParams.music_default(44100)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Linear Spectrograms}
+
+Three amplitude representations (\cref{sec:amplitude}):
+
+\begin{lstlisting}[language=Python]
+params: sg.SpectrogramParams = sg.SpectrogramParams.speech_default(16000)
+
+# Power: |X[k]|^2
+spec_power: sg.Spectrogram = sg.compute_linear_power_spectrogram(samples, params)
+
+# Magnitude: |X[k]|
+spec_magnitude: sg.Spectrogram = sg.compute_linear_magnitude_spectrogram(samples, params)
+
+# Decibels: 10*log10(|X[k]|^2)
+db_params: sg.LogParams = sg.LogParams(floor_db=-80.0)
+spec_db: sg.Spectrogram = sg.compute_linear_db_spectrogram(samples, params, db_params)
+
+print(f"Shape: {spec_power.shape}")  # (257, n_frames)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Spectrogram Result Object}
+
+\begin{lstlisting}[language=Python]
+spec: sg.Spectrogram = sg.compute_linear_db_spectrogram(samples, params, db_params)
+
+# Access as ndarray via buffer protocol
+data: npt.NDArray[np.float64] = np.asarray(spec)  # Shape: (n_bins, n_frames)
+
+# Direct property access
+frequencies: npt.NDArray[np.float64] = spec.frequencies
+times: npt.NDArray[np.float64] = spec.times
+n_bins: int = spec.n_bins
+n_frames: int = spec.n_frames
+
+# Methods
+duration: float = spec.duration()
+freq_range: tuple[float, float] = spec.frequency_range()
+db_range: tuple[float, float] | None = spec.db_range()
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\clearpage
+
+\subsection*{Perceptual Frequency Scales}
+
+\needspace{10\baselineskip}
+\subsection*{Mel Scale}
+
+Mel-scale spectrograms (\cref{subsec:mel_scale}):
+
+\begin{lstlisting}[language=Python]
+mel_params: sg.MelParams = sg.MelParams(
+    n_mels=80,
+    f_min=0.0,
+    f_max=8000.0
+)
+
+# Three amplitude types
+mel_power: sg.Spectrogram = sg.compute_mel_power_spectrogram(samples, params, mel_params)
+mel_magnitude: sg.Spectrogram = sg.compute_mel_magnitude_spectrogram(samples, params, mel_params)
+mel_db: sg.Spectrogram = sg.compute_mel_db_spectrogram(samples, params, mel_params, db_params)
+
+print(f"Mel shape: {mel_power.shape}")  # (80, n_frames)
+print(f"Mel frequencies: {mel_power.frequencies[:5]}")
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{ERB Scale}
+
+ERB-scale spectrograms (\cref{subsec:erb_scale}):
+
+\begin{lstlisting}[language=Python]
+erb_params: sg.ErbParams = sg.ErbParams(
+    n_filters=64,
+    f_min=50.0,
+    f_max=8000.0
+)
+
+erb_power: sg.Spectrogram = sg.compute_erb_power_spectrogram(samples, params, erb_params)
+erb_magnitude: sg.Spectrogram = sg.compute_erb_magnitude_spectrogram(samples, params, erb_params)
+erb_db: sg.Spectrogram = sg.compute_erb_db_spectrogram(samples, params, erb_params, db_params)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Logarithmic Hz Scale}
+
+Logarithmic frequency scale for music:
+
+\begin{lstlisting}[language=Python]
+loghz_params: sg.LogHzParams = sg.LogHzParams(
+    n_bins=84,
+    f_min=55.0,
+    f_max=7040.0
+)
+
+loghz_power: sg.Spectrogram = sg.compute_loghz_power_spectrogram(samples, params, loghz_params)
+loghz_magnitude: sg.Spectrogram = sg.compute_loghz_magnitude_spectrogram(samples, params, loghz_params)
+loghz_db: sg.Spectrogram = sg.compute_loghz_db_spectrogram(samples, params, loghz_params, db_params)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Constant-Q Transform}
+
+CQT (\cref{sec:cqt}):
+
+\begin{lstlisting}[language=Python]
+cqt_params: sg.CqtParams = sg.CqtParams(
+    bins_per_octave=12,
+    n_octaves=7,
+    f_min=55.0
+)
+
+cqt_power: sg.Spectrogram = sg.compute_cqt_power_spectrogram(samples, params, cqt_params)
+cqt_magnitude: sg.Spectrogram = sg.compute_cqt_magnitude_spectrogram(samples, params, cqt_params)
+cqt_db: sg.Spectrogram = sg.compute_cqt_db_spectrogram(samples, params, cqt_params, db_params)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Audio Features}
+
+\needspace{10\baselineskip}
+\subsection*{Raw STFT}
+
+Complex-valued STFT matrix:
+
+\begin{lstlisting}[language=Python]
+stft_matrix: npt.NDArray[np.complex128] = sg.compute_stft(samples, params.stft)
+print(f"STFT shape: {stft_matrix.shape}")  # (n_bins, n_frames)
+print(f"STFT dtype: {stft_matrix.dtype}")  # complex128
+
+# Extract magnitude and phase
+magnitude: npt.NDArray[np.float64] = np.abs(stft_matrix)
+phase: npt.NDArray[np.float64] = np.angle(stft_matrix)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Inverse STFT}
+
+Reconstruct signal from STFT (\cref{subsec:cola}):
+
+\begin{lstlisting}[language=Python]
+stft_matrix: npt.NDArray[np.complex128] = sg.compute_stft(samples, params.stft)
+
+reconstructed: npt.NDArray[np.float64] = sg.compute_istft(
+    stft_matrix,
+    n_fft=params.stft.n_fft,
+    hop_size=params.stft.hop_size,
+    window=params.stft.window,
+    centre=params.stft.centre
+)
+
+# Verify reconstruction
+error: float = np.max(np.abs(samples[:len(reconstructed)] - reconstructed))
+print(f"Error: {error:.2e}")
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{MFCC}
+
+Mel-Frequency Cepstral Coefficients (\cref{subsec:mfcc}):
+
+\begin{lstlisting}[language=Python]
+mfcc_params: sg.MfccParams = sg.MfccParams(
+    n_mfcc=13,
+    use_dct_ortho=True,
+    lifter_coeff=22.0
+)
+
+mfccs: npt.NDArray[np.float64] = sg.compute_mfcc(
+    samples,
+    params.stft,
+    sample_rate=16000,
+    n_mels=40,
+    mfcc_params=mfcc_params
+)
+print(f"MFCC shape: {mfccs.shape}")  # (13, n_frames)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Chromagram}
+
+Pitch class profiles (\cref{subsec:chroma}):
+
+\begin{lstlisting}[language=Python]
+chroma_params: sg.ChromaParams = sg.ChromaParams(
+    tuning=440.0,
+    f_min=32.7,
+    f_max=4186.0,
+    norm=ChromaNorm.l2
+)
+
+chroma: sg.Chromagram = sg.compute_chromagram(
+    samples,
+    params.stft,
+    sample_rate=16000,
+    chroma_params=chroma_params
+)
+
+# Access as ndarray (12 pitch classes, n_frames)
+chroma_data: npt.NDArray[np.float64] = np.asarray(chroma)
+
+pitch_classes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Performance Optimization}
+
+\needspace{10\baselineskip}
+\subsection*{Plan Reuse}
+
+Reuse FFT plans for batch processing:
+
+\begin{lstlisting}[language=Python]
+# Single computation
+spec1: sg.Spectrogram = sg.compute_mel_db_spectrogram(samples, params, mel_params, db_params)
+
+# Batch with plan reuse
+planner: sg.SpectrogramPlanner = sg.SpectrogramPlanner()
+plan = planner.mel_db_plan(params, mel_params, db_params)
+
+signals = [samples1, samples2, samples3]
+spectrograms = [plan.compute(s) for s in signals]
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Available Plans}
+
+All spectrogram types have corresponding plans:
+
+\begin{lstlisting}[language=Python]
+planner = sg.SpectrogramPlanner()
+
+# Linear (3 types)
+linear_power_plan = planner.linear_power_plan(params)
+linear_magnitude_plan = planner.linear_magnitude_plan(params)
+linear_db_plan = planner.linear_db_plan(params, db_params)
+
+# Mel (3 types)
+mel_power_plan = planner.mel_power_plan(params, mel_params)
+mel_magnitude_plan = planner.mel_magnitude_plan(params, mel_params)
+mel_db_plan = planner.mel_db_plan(params, mel_params, db_params)
+
+# ERB (3 types)
+erb_power_plan = planner.erb_power_plan(params, erb_params)
+erb_magnitude_plan = planner.erb_magnitude_plan(params, erb_params)
+erb_db_plan = planner.erb_db_plan(params, erb_params, db_params)
+
+# LogHz (3 types)
+loghz_power_plan = planner.loghz_power_plan(params, loghz_params)
+loghz_magnitude_plan = planner.loghz_magnitude_plan(params, loghz_params)
+loghz_db_plan = planner.loghz_db_plan(params, loghz_params, db_params)
+
+# CQT (3 types)
+cqt_power_plan = planner.cqt_power_plan(params, cqt_params)
+cqt_magnitude_plan = planner.cqt_magnitude_plan(params, cqt_params)
+cqt_db_plan = planner.cqt_db_plan(params, cqt_params, db_params)
+
+# All plans use same interface
+spec = plan.compute(samples)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Frame-by-Frame Processing}
+
+Process individual frames without full spectrogram:
+
+\begin{lstlisting}[language=Python]
+planner = sg.SpectrogramPlanner()
+plan = planner.mel_power_plan(params, mel_params)
+
+n_frames = (len(samples) + params.stft.n_fft - params.stft.hop_size) // params.stft.hop_size
+
+for frame_idx in range(n_frames):
+    frame = plan.compute_frame(samples, frame_idx)  # 1D array (n_mels,)
+    # Process frame...
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Streaming Processing}
+
+Real-time frame extraction:
+
+\begin{lstlisting}[language=Python]
+planner = sg.SpectrogramPlanner()
+plan = planner.mel_power_plan(params, mel_params)
+
+buffer = np.array([], dtype=np.float64)
+chunk_size = 160
+
+for chunk in audio_stream:
+    buffer = np.concatenate([buffer, chunk])
+
+    while len(buffer) >= params.stft.n_fft:
+        frame = plan.compute_frame(buffer, 0)
+        # Process frame...
+        buffer = buffer[params.stft.hop_size:]
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{2D FFT}
+
+\needspace{10\baselineskip}
+\subsection*{Forward 2D FFT}
+
+2D FFT from \cref{subsec:fft2d}:
+
+\begin{lstlisting}[language=Python]
+image = np.load('test.png')  # Shape: (height, width)
+
+spectrum = sg.fft2d(image)
+print(f"Spectrum shape: {spectrum.shape}")  # (height, width//2 + 1)
+print(f"Spectrum dtype: {spectrum.dtype}")  # complex64
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Inverse 2D FFT}
+
+\begin{lstlisting}[language=Python]
+spectrum = sg.fft2d(image)
+reconstructed = sg.ifft2d(spectrum, image.shape[1])
+
+error = np.max(np.abs(image - reconstructed))
+print(f"Reconstruction error: {error:.2e}")
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{2D Power and Magnitude Spectra}
+
+\begin{lstlisting}[language=Python]
+power = sg.power_spectrum_2d(image)        # Shape: (height, width//2 + 1)
+magnitude = sg.magnitude_spectrum_2d(image)
+
+# Log scale for visualization
+power_db = 10 * np.log10(power + 1e-10)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{FFT Shift}
+
+Center DC component:
+
+\begin{lstlisting}[language=Python]
+power = sg.power_spectrum_2d(image)
+
+# Shift DC to center
+power_shifted = sg.fftshift(power)
+
+# Reverse shift
+power_restored = sg.ifftshift(power_shifted)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Batch 2D FFT}
+
+\begin{lstlisting}[language=Python]
+planner = sg.Fft2dPlanner()
+
+# Forward plan
+fft_plan = planner.fft2d_plan(nrows, ncols)
+spectra = [fft_plan.forward(img) for img in images]
+
+# Inverse plan
+ifft_plan = planner.ifft2d_plan(nrows, ncols)
+reconstructed = [ifft_plan.inverse(spec) for spec in spectra]
+
+# Power spectrum plan
+power_plan = planner.power_spectrum_plan(nrows, ncols)
+powers = [power_plan.compute(img) for img in images]
+
+# Magnitude spectrum plan
+magnitude_plan = planner.magnitude_spectrum_plan(nrows, ncols)
+magnitudes = [magnitude_plan.compute(img) for img in images]
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Image Filtering}
+
+\needspace{10\baselineskip}
+\subsection*{Gaussian Blur}
+
+\begin{lstlisting}[language=Python]
+kernel = sg.gaussian_kernel_2d(size=15, sigma=2.0)
+blurred = sg.convolve_fft(image, kernel)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Frequency Filters}
+
+\begin{lstlisting}[language=Python]
+# Lowpass: smooth (keep low frequencies)
+lowpass = sg.lowpass_filter(image, cutoff_fraction=0.1)
+
+# Highpass: edges (keep high frequencies)
+highpass = sg.highpass_filter(image, cutoff_fraction=0.1)
+
+# Bandpass: specific frequency range
+bandpass = sg.bandpass_filter(image, low_cutoff=0.1, high_cutoff=0.5)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Edge Detection and Sharpening}
+
+\begin{lstlisting}[language=Python]
+# Edge detection
+edges = sg.detect_edges_fft(image)
+
+# Sharpening
+sharpened = sg.sharpen_fft(image, amount=1.5)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Complete API Reference}
+
+\needspace{10\baselineskip}
+\subsection*{Parameter Classes}
+
+\textbf{WindowType:}
+
+\begin{lstlisting}[language=Python]
+sg.WindowType.rectangular()
+sg.WindowType.hanning()
+sg.WindowType.hamming()
+sg.WindowType.blackman()
+sg.WindowType.kaiser(beta: float)
+sg.WindowType.gaussian(std: float)
+\end{lstlisting}
+
+\textbf{StftParams:}
+
+\begin{lstlisting}[language=Python]
+stft = sg.StftParams(
+    n_fft: int,
+    hop_size: int,
+    window: str | WindowType,
+    center: bool = True
+)
+\end{lstlisting}
+
+\textbf{LogParams:}
+
+\begin{lstlisting}[language=Python]
+db_params = sg.LogParams(floor_db: float)
+\end{lstlisting}
+
+\textbf{SpectrogramParams:}
+
+\begin{lstlisting}[language=Python]
+params = sg.SpectrogramParams(stft: StftParams, sample_rate: float)
+params = sg.SpectrogramParams.speech_default(sample_rate: float)
+params = sg.SpectrogramParams.music_default(sample_rate: float)
+\end{lstlisting}
+
+\textbf{MelParams:}
+
+\begin{lstlisting}[language=Python]
+mel_params = sg.MelParams(
+    n_mels: int,
+    f_min: float = 0.0,
+    f_max: float | None = None
+)
+\end{lstlisting}
+
+\textbf{ErbParams:}
+
+\begin{lstlisting}[language=Python]
+erb_params = sg.ErbParams(
+    n_bands: int,
+    f_min: float = 50.0,
+    f_max: float | None = None,
+    use_gammatone: bool = True
+)
+\end{lstlisting}
+
+\textbf{LogHzParams:}
+
+\begin{lstlisting}[language=Python]
+loghz_params = sg.LogHzParams(
+    n_bins: int,
+    f_min: float,
+    f_max: float,
+    bins_per_octave: int = 12
+)
+\end{lstlisting}
+
+\textbf{CqtParams:}
+
+\begin{lstlisting}[language=Python]
+cqt_params = sg.CqtParams(
+    n_bins: int,
+    f_min: float,
+    bins_per_octave: int = 12,
+    sparsity_threshold: float = 0.01
+)
+\end{lstlisting}
+
+\textbf{ChromaParams:}
+
+\begin{lstlisting}[language=Python]
+chroma_params = sg.ChromaParams(
+    tuning_frequency: float = 440.0,
+    n_chroma: int = 12,
+    norm_type: str = "L2"
+)
+chroma_params = sg.ChromaParams.music_standard()
+\end{lstlisting}
+
+\textbf{MfccParams:}
+
+\begin{lstlisting}[language=Python]
+mfcc_params = sg.MfccParams(
+    n_mfcc: int = 13,
+    use_energy: bool = True,
+    lifter_coefficient: float = 22.0,
+    normalize: bool = False
+)
+mfcc_params = sg.MfccParams.speech_standard()
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Spectrogram Functions}
+
+All return \texttt{Spectrogram} objects with \texttt{.data},
+\texttt{.frequencies},
+\texttt{.times}, \texttt{.duration()},
+\texttt{.frequency\_range()},\\ \texttt{.db\_range()}, however, they
+can also act as an \texttt{ndarray} via the array protocol with no
+additional function calls:
+
+\begin{lstlisting}[language=Python]
+# Linear
+sg.compute_linear_power_spectrogram(samples, params)
+sg.compute_linear_magnitude_spectrogram(samples, params)
+sg.compute_linear_db_spectrogram(samples, params, db_params)
+
+# Mel
+sg.compute_mel_power_spectrogram(samples, params, mel_params)
+sg.compute_mel_magnitude_spectrogram(samples, params, mel_params)
+sg.compute_mel_db_spectrogram(samples, params, mel_params, db_params)
+
+# ERB
+sg.compute_erb_power_spectrogram(samples, params, erb_params)
+sg.compute_erb_magnitude_spectrogram(samples, params, erb_params)
+sg.compute_erb_db_spectrogram(samples, params, erb_params, db_params)
+
+# LogHz
+sg.compute_loghz_power_spectrogram(samples, params, loghz_params)
+sg.compute_loghz_magnitude_spectrogram(samples, params, loghz_params)
+sg.compute_loghz_db_spectrogram(samples, params, loghz_params, db_params)
+
+# CQT
+sg.compute_cqt_power_spectrogram(samples, params, cqt_params)
+sg.compute_cqt_magnitude_spectrogram(samples, params, cqt_params)
+sg.compute_cqt_db_spectrogram(samples, params, cqt_params, db_params)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Audio Feature Functions}
+
+\begin{lstlisting}[language=Python]
+# STFT
+stft_matrix = sg.compute_stft(samples, stft_params)  # complex128, (n_bins, n_frames)
+
+# Inverse STFT
+samples = sg.compute_istft(stft_matrix, n_fft, hop_size, window, center)
+
+# MFCC
+mfccs = sg.compute_mfcc(samples, stft_params, sample_rate, n_mels, mfcc_params)
+
+# Chromagram
+chroma = sg.compute_chromagram(samples, stft_params, sample_rate, chroma_params)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{FFT Functions}
+
+\begin{lstlisting}[language=Python]
+# 1D FFT
+spectrum = sg.compute_fft(samples, n_fft)  # complex128, (n_fft//2 + 1,)
+samples = sg.compute_irfft(spectrum, n_fft)
+
+# Power/magnitude
+power = sg.compute_power_spectrum(samples, n_fft, window)
+magnitude = sg.compute_magnitude_spectrum(samples, n_fft, window)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{2D FFT Functions}
+
+\begin{lstlisting}[language=Python]
+# 2D FFT
+spectrum = sg.fft2d(image)  # complex64, (nrows, ncols//2 + 1)
+image = sg.ifft2d(spectrum, output_ncols)
+
+# Power/magnitude
+power = sg.power_spectrum_2d(image)
+magnitude = sg.magnitude_spectrum_2d(image)
+
+# Shift
+shifted = sg.fftshift(array)
+restored = sg.ifftshift(shifted)
+\end{lstlisting}
+
+\needspace{10\baselineskip}
+\subsection*{Image Processing Functions}
+
+\begin{lstlisting}[language=Python]
+# Convolution
+kernel = sg.gaussian_kernel_2d(size, sigma)
+result = sg.convolve_fft(image, kernel)
+
+# Filters
+lowpass = sg.lowpass_filter(image, cutoff_fraction)
+highpass = sg.highpass_filter(image, cutoff_fraction)
+bandpass = sg.bandpass_filter(image, low_cutoff, high_cutoff)
+
+# Edge detection and sharpening
+edges = sg.detect_edges_fft(image)
+sharpened = sg.sharpen_fft(image, amount)
+\end{lstlisting}

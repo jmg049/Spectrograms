@@ -1,44 +1,90 @@
 [package]
 name = "spectrograms"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Jack Geraghty (jmg049) <jgeraghty049@gmail.com>"]
-description = "A focused Rust library for computing spectrograms with a simple, unified API"
+description = "High-performance FFT-based computations for audio and image processing"
 repository = "https://github.com/jmg049/Spectrograms"
 license = "MIT"
-keywords = ["spectrogram", "audio", "fft", "mel", "signal-processing"]
-categories = ["multimedia::audio", "science"]
+keywords = ["fft", "spectrogram", "audio", "image", "signal-processing"]
+categories = ["multimedia::audio", "multimedia::images", "science"]
 readme = "README.md"
 
 [package.metadata.docs.rs]
-# Build docs with all features on docs.rs
+# Build docs with default features (realfft) on docs.rs to avoid system dependencies
 all-features = false
 # Use realfft by default on docs.rs (no system dependencies)
-features = ["realfft"]
-default-target = "x86_64-unknown-linux-gnu"
+features = ["realfft", "serde", "python"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 fftw-sys = { version = "0.8.0", optional = true }
-ndarray = "=0.17.2"
+ndarray = { version = ">=0.17", features = ["serde"] }
 pyo3 = { version = "0.27", optional = true, features = [
     "extension-module",
     "experimental-inspect",
 ] }
 numpy = { version = "0.27", optional = true }
-num-complex = "0.4.6"
+num-complex = { version = "0.4.6", features = ["serde"] }
 
-rayon = "1.11.0"
 realfft = { version = "3.5.0", optional = true }
+rustfft = { version = "6.4.1", optional = true }
 regex = "1.12.2"
 serde = { version = "1.0", features = ["derive"], optional = true }
 thiserror = "2.0.18"
+non-empty-slice = { version = "0.5.1", features = ["serde"] }
+bincode2 = { version = "2.0.1", optional = true }
+once_cell = "1.19"
+
 
 [features]
-default = ["realfft", "python"]
+default = ["realfft"]
 fftw = ["dep:fftw-sys"]
-realfft = ["dep:realfft"]
+realfft = ["dep:realfft", "dep:rustfft"]
 serde = ["dep:serde"]
 python = ["dep:pyo3", "dep:numpy"]
 
+[build-dependencies]
+pkg-config = "0.3"
+
+[dev-dependencies]
+bincode2 = "2.0.1"
+rmp-serde = "1.1"
+serde_json = "1.0"
+num-format = "0.4.4"
+criterion = { version = "0.8.1", features = ["html_reports"] }
+
 [lib]
 crate-type = ["lib", "cdylib"]
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"
+debug = false
+
+# Benchmarks configuration
+[[bench]]
+name = "fft1d_benchmarks"
+harness = false
+
+[[bench]]
+name = "stft_benchmarks"
+harness = false
+
+[[bench]]
+name = "spectrogram_benchmarks"
+harness = false
+
+[[bench]]
+name = "fft2d_benchmarks"
+harness = false
+
+[[bench]]
+name = "image_ops_benchmarks"
+harness = false
+
+[[bench]]
+name = "planner_benchmarks"
+harness = false

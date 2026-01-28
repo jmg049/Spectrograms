@@ -1,11 +1,13 @@
 //! Python parameter wrapper classes.
 
+use std::num::NonZeroUsize;
+
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 
 use crate::{
-    ChromaNorm, ChromaParams, CqtParams, ErbParams, LogHzParams, LogParams, MelParams, MfccParams,
-    SpectrogramParams, StftParams, WindowType,
+    ChromaNorm, ChromaParams, CqtParams, ErbParams, LogHzParams, LogParams, MelNorm, MelParams,
+    MfccParams, SpectrogramParams, StftParams, WindowType,
 };
 
 /// Python wrapper for `WindowType`.
@@ -23,8 +25,8 @@ impl PyWindowType {
     /// Create a rectangular (no) window.
     ///
     /// Best frequency resolution but high spectral leakage.
-    #[classmethod]
-    const fn rectangular(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn rectangular() -> Self {
         Self {
             inner: WindowType::Rectangular,
         }
@@ -33,8 +35,8 @@ impl PyWindowType {
     /// Create a Hanning window.
     ///
     /// Good general-purpose window with moderate leakage.
-    #[classmethod]
-    const fn hanning(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn hanning() -> Self {
         Self {
             inner: WindowType::Hanning,
         }
@@ -43,8 +45,8 @@ impl PyWindowType {
     /// Create a Hamming window.
     ///
     /// Similar to Hanning but with slightly different coefficients.
-    #[classmethod]
-    const fn hamming(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn hamming() -> Self {
         Self {
             inner: WindowType::Hamming,
         }
@@ -53,8 +55,8 @@ impl PyWindowType {
     /// Create a Blackman window.
     ///
     /// Low spectral leakage but wider main lobe.
-    #[classmethod]
-    const fn blackman(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn blackman() -> Self {
         Self {
             inner: WindowType::Blackman,
         }
@@ -65,7 +67,7 @@ impl PyWindowType {
     /// # Arguments
     /// * `beta` - Beta parameter controlling the trade-off between main lobe width and side lobe level
     #[classmethod]
-    #[pyo3(signature = (beta: "float"), text_signature = "(beta: float)")]
+    #[pyo3(signature = (beta: "float"), text_signature = "(beta: float) -> WindowType")]
     const fn kaiser(_cls: &Bound<'_, PyType>, beta: f64) -> Self {
         Self {
             inner: WindowType::Kaiser { beta },
@@ -77,7 +79,7 @@ impl PyWindowType {
     /// # Arguments
     /// * `std` - Standard deviation parameter controlling the window width
     #[classmethod]
-    #[pyo3(signature = (std: "float"), text_signature = "(std: float)")]
+    #[pyo3(signature = (std: "float"), text_signature = "(std: float) -> WindowType")]
     const fn gaussian(_cls: &Bound<'_, PyType>, std: f64) -> Self {
         Self {
             inner: WindowType::Gaussian { std },
@@ -108,18 +110,18 @@ impl PyStftParams {
     ///
     /// Parameters
     /// ----------
-    /// n_fft : int
+    /// `n_fft` : int
     ///     FFT size
-    /// hop_size : int
+    /// `hop_size` : int
     ///     Hop size between frames
-    /// window : WindowType
+    /// window : `WindowType`
     ///     Window function
     /// centre : bool, default=True
     ///     Whether to centre frames with padding
     ///
     /// Returns
     /// -------
-    /// StftParams
+    /// `StftParams`
     ///     STFT parameters
     #[new]
     #[pyo3(signature = (
@@ -128,20 +130,25 @@ impl PyStftParams {
         window: "WindowType",
         centre: "bool" = true
     ), text_signature = "(n_fft: int, hop_size: int, window: WindowType, centre: bool = True)")]
-    fn new(n_fft: usize, hop_size: usize, window: PyWindowType, centre: bool) -> PyResult<Self> {
+    fn new(
+        n_fft: NonZeroUsize,
+        hop_size: NonZeroUsize,
+        window: PyWindowType,
+        centre: bool,
+    ) -> PyResult<Self> {
         let inner = StftParams::new(n_fft, hop_size, window.inner, centre)?;
         Ok(Self { inner })
     }
 
     /// FFT size.
     #[getter]
-    const fn n_fft(&self) -> usize {
+    const fn n_fft(&self) -> NonZeroUsize {
         self.inner.n_fft()
     }
 
     /// Hop size between frames.
     #[getter]
-    const fn hop_size(&self) -> usize {
+    const fn hop_size(&self) -> NonZeroUsize {
         self.inner.hop_size()
     }
 
@@ -182,7 +189,7 @@ pub struct PyLogParams {
 impl PyLogParams {
     /// Parameters
     /// ----------
-    /// floor_db : float
+    /// `floor_db` : float
     ///     Minimum power in decibels (values below this are clipped)
     #[new]
     #[pyo3(signature = (floor_db: "float"), text_signature = "(floor_db: float)")]
@@ -213,9 +220,9 @@ pub struct PySpectrogramParams {
 impl PySpectrogramParams {
     /// Parameters
     /// ----------
-    /// stft : StftParams
+    /// stft : `StftParams`
     ///     STFT parameters
-    /// sample_rate : float
+    /// `sample_rate` : float
     ///     Sample rate in Hz
     #[new]
     #[pyo3(signature = (
@@ -247,13 +254,13 @@ impl PySpectrogramParams {
     ///
     /// Parameters
     /// ----------
-    /// sample_rate : float
+    /// `sample_rate` : float
     ///     Sample rate in Hz
     ///
     /// Returns
     /// -------
     /// SpectrogramParams
-    ///     SpectrogramParams with standard speech settings
+    ///     `SpectrogramParams` with standard speech settings
     #[classmethod]
     #[pyo3(signature = (sample_rate: "float"), text_signature = "(sample_rate: float)")]
     fn speech_default(_cls: &Bound<'_, PyType>, sample_rate: f64) -> PyResult<Self> {
@@ -267,13 +274,13 @@ impl PySpectrogramParams {
     ///
     /// Parameters
     /// ----------
-    /// sample_rate : float
+    /// `sample_rate` : float
     ///     Sample rate in Hz
     ///
     /// Returns
     /// -------
     /// SpectrogramParams
-    ///     SpectrogramParams with standard music settings
+    ///     `SpectrogramParams` with standard music settings
     #[classmethod]
     #[pyo3(signature = (sample_rate: "float"), text_signature = "(sample_rate: float)")]
     fn music_default(_cls: &Bound<'_, PyType>, sample_rate: f64) -> PyResult<Self> {
@@ -306,6 +313,43 @@ impl From<PySpectrogramParams> for SpectrogramParams {
 
 /// Mel-scale filterbank parameters.
 
+/// Mel filterbank normalization strategy.
+#[pyclass(name = "MelNorm")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PyMelNorm {
+    /// No normalization (triangular filters with peak = 1.0).
+    None,
+    /// Slaney-style area normalization (librosa default).
+    Slaney,
+    /// L1 normalization (sum of weights = 1.0).
+    L1,
+    /// L2 normalization (Euclidean norm = 1.0).
+    L2,
+}
+
+impl From<PyMelNorm> for MelNorm {
+    fn from(py_norm: PyMelNorm) -> Self {
+        match py_norm {
+            PyMelNorm::None => MelNorm::None,
+            PyMelNorm::Slaney => MelNorm::Slaney,
+            PyMelNorm::L1 => MelNorm::L1,
+            PyMelNorm::L2 => MelNorm::L2,
+        }
+    }
+}
+
+impl From<MelNorm> for PyMelNorm {
+    fn from(norm: MelNorm) -> Self {
+        match norm {
+            MelNorm::None => PyMelNorm::None,
+            MelNorm::Slaney => PyMelNorm::Slaney,
+            MelNorm::L1 => PyMelNorm::L1,
+            MelNorm::L2 => PyMelNorm::L2,
+        }
+    }
+}
+
+/// Mel-scale filterbank parameters.
 #[pyclass(name = "MelParams")]
 #[derive(Clone, Copy, Debug)]
 pub struct PyMelParams {
@@ -318,26 +362,65 @@ impl PyMelParams {
     ///
     /// Parameters
     /// ----------
-    /// n_mels : int
+    /// `n_mels` : int
     ///     Number of mel bands
-    /// f_min : float
+    /// `f_min` : float
     ///     Minimum frequency in Hz
-    /// f_max : float
+    /// `f_max` : float
     ///     Maximum frequency in Hz
+    /// `norm` : MelNorm or str, optional
+    ///     Filterbank normalization strategy. Can be:
+    ///     - None or "none": No normalization (default)
+    ///     - "slaney": Slaney-style area normalization (librosa default)
+    ///     - "l1": L1 normalization (sum of weights = 1.0)
+    ///     - "l2": L2 normalization (Euclidean norm = 1.0)
     #[new]
     #[pyo3(signature = (
-        n_mels: "int",
-        f_min: "float",
-        f_max: "float"
-    ), text_signature = "(n_mels: int, f_min: float, f_max: float)")]
-    fn new(n_mels: usize, f_min: f64, f_max: f64) -> PyResult<Self> {
-        let inner = MelParams::new(n_mels, f_min, f_max)?;
+        n_mels,
+        f_min,
+        f_max,
+        norm = None
+    ), text_signature = "(n_mels: int, f_min: float, f_max: float, norm: MelNorm | str | None = None)")]
+    fn new(
+        n_mels: NonZeroUsize,
+        f_min: f64,
+        f_max: f64,
+        norm: Option<&pyo3::Bound<'_, pyo3::PyAny>>,
+    ) -> PyResult<Self> {
+        let norm_val = if let Some(norm_arg) = norm {
+            if norm_arg.is_none() {
+                MelNorm::None
+            } else if let Ok(s) = norm_arg.extract::<String>() {
+                match s.to_lowercase().as_str() {
+                    "none" => MelNorm::None,
+                    "slaney" => MelNorm::Slaney,
+                    "l1" => MelNorm::L1,
+                    "l2" => MelNorm::L2,
+                    _ => {
+                        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                            "Invalid norm string: '{}'. Must be one of: 'none', 'slaney', 'l1', 'l2'",
+                            s
+                        )));
+                    }
+                }
+            } else if let Ok(py_norm) = norm_arg.extract::<PyMelNorm>() {
+                py_norm.into()
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "norm must be a MelNorm enum, a string, or None",
+                ));
+            }
+        } else {
+            MelNorm::None
+        };
+
+        let inner = MelParams::with_norm(n_mels, f_min, f_max, norm_val)?;
         Ok(Self { inner })
     }
 
     /// Number of mel bands.
     #[getter]
-    const fn n_mels(&self) -> usize {
+    const fn n_mels(&self) -> NonZeroUsize {
         self.inner.n_mels()
     }
 
@@ -353,12 +436,25 @@ impl PyMelParams {
         self.inner.f_max()
     }
 
+    /// Filterbank normalization strategy.
+    #[getter]
+    fn norm(&self) -> PyMelNorm {
+        self.inner.norm().into()
+    }
+
     fn __repr__(&self) -> String {
+        let norm_str = match self.inner.norm() {
+            MelNorm::None => "None",
+            MelNorm::Slaney => "slaney",
+            MelNorm::L1 => "l1",
+            MelNorm::L2 => "l2",
+        };
         format!(
-            "MelParams(n_mels={}, f_min={}, f_max={})",
+            "MelParams(n_mels={}, f_min={}, f_max={}, norm='{}')",
             self.n_mels(),
             self.f_min(),
-            self.f_max()
+            self.f_max(),
+            norm_str
         )
     }
 }
@@ -376,11 +472,11 @@ impl PyErbParams {
     ///
     /// Parameters
     /// ----------
-    /// n_filters : int
+    /// `n_filters` : int
     ///     Number of ERB filters
-    /// f_min : float
+    /// `f_min` : float
     ///     Minimum frequency in Hz
-    /// f_max : float
+    /// `f_max` : float
     ///     Maximum frequency in Hz
     #[new]
     #[pyo3(signature = (
@@ -388,14 +484,14 @@ impl PyErbParams {
         f_min: "float",
         f_max: "float"
     ), text_signature = "(n_filters: int, f_min: float, f_max: float)")]
-    fn new(n_filters: usize, f_min: f64, f_max: f64) -> PyResult<Self> {
+    fn new(n_filters: NonZeroUsize, f_min: f64, f_max: f64) -> PyResult<Self> {
         let inner = ErbParams::new(n_filters, f_min, f_max)?;
         Ok(Self { inner })
     }
 
     /// Number of ERB filters.
     #[getter]
-    const fn n_filters(&self) -> usize {
+    const fn n_filters(&self) -> NonZeroUsize {
         self.inner.n_filters()
     }
 
@@ -434,11 +530,11 @@ impl PyLogHzParams {
     ///
     /// Parameters
     /// ----------
-    /// n_bins : int
+    /// `n_bins` : int
     ///     Number of logarithmically-spaced frequency bins
-    /// f_min : float
+    /// `f_min` : float
     ///     Minimum frequency in Hz
-    /// f_max : float
+    /// `f_max` : float
     ///     Maximum frequency in Hz
     #[new]
     #[pyo3(signature = (
@@ -446,14 +542,14 @@ impl PyLogHzParams {
         f_min: "float",
         f_max: "float"
     ), text_signature = "(n_bins: int, f_min: float, f_max: float)")]
-    fn new(n_bins: usize, f_min: f64, f_max: f64) -> PyResult<Self> {
+    fn new(n_bins: NonZeroUsize, f_min: f64, f_max: f64) -> PyResult<Self> {
         let inner = LogHzParams::new(n_bins, f_min, f_max)?;
         Ok(Self { inner })
     }
 
     /// Number of frequency bins.
     #[getter]
-    const fn n_bins(&self) -> usize {
+    const fn n_bins(&self) -> NonZeroUsize {
         self.inner.n_bins()
     }
 
@@ -492,11 +588,11 @@ impl PyCqtParams {
     ///
     /// Parameters
     /// ----------
-    /// bins_per_octave : int
+    /// `bins_per_octave` : int
     ///     Number of bins per octave (e.g., 12 for semitones)
-    /// n_octaves : int
+    /// `n_octaves` : int
     ///     Number of octaves to span
-    /// f_min : float
+    /// `f_min` : float
     ///     Minimum frequency in Hz
     #[new]
     #[pyo3(signature = (
@@ -504,14 +600,14 @@ impl PyCqtParams {
         n_octaves: "int",
         f_min: "float"
     ), text_signature = "(bins_per_octave: int, n_octaves: int, f_min: float)")]
-    fn new(bins_per_octave: usize, n_octaves: usize, f_min: f64) -> PyResult<Self> {
+    fn new(bins_per_octave: NonZeroUsize, n_octaves: NonZeroUsize, f_min: f64) -> PyResult<Self> {
         let inner = CqtParams::new(bins_per_octave, n_octaves, f_min)?;
         Ok(Self { inner })
     }
 
     /// Total number of CQT bins.
     #[getter]
-    const fn num_bins(&self) -> usize {
+    const fn num_bins(&self) -> NonZeroUsize {
         self.inner.num_bins()
     }
 
@@ -529,32 +625,32 @@ pub struct PyChromaNorm {
 #[pymethods]
 impl PyChromaNorm {
     /// No normalization.
-    #[classmethod]
-    const fn none(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn none() -> Self {
         Self {
             inner: ChromaNorm::None,
         }
     }
 
     /// L1 normalization (sum to 1).
-    #[classmethod]
-    const fn l1(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn l1() -> Self {
         Self {
             inner: ChromaNorm::L1,
         }
     }
 
     /// L2 normalization (Euclidean norm to 1).
-    #[classmethod]
-    const fn l2(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn l2() -> Self {
         Self {
             inner: ChromaNorm::L2,
         }
     }
 
     /// Max normalization (max value to 1).
-    #[classmethod]
-    const fn max(_cls: &Bound<'_, PyType>) -> Self {
+    #[classattr]
+    const fn max() -> Self {
         Self {
             inner: ChromaNorm::Max,
         }
@@ -566,14 +662,16 @@ impl PyChromaNorm {
 }
 
 impl From<ChromaNorm> for PyChromaNorm {
+    #[inline]
     fn from(inner: ChromaNorm) -> Self {
         Self { inner }
     }
 }
 
-impl Into<ChromaNorm> for PyChromaNorm {
-    fn into(self) -> ChromaNorm {
-        self.inner
+impl From<PyChromaNorm> for ChromaNorm {
+    #[inline]
+    fn from(val: PyChromaNorm) -> Self {
+        val.inner
     }
 }
 
@@ -592,11 +690,11 @@ impl PyChromaParams {
     /// ----------
     /// tuning : float, default=440.0
     ///     Reference tuning frequency in Hz (A4)
-    /// f_min : float, default=32.7
+    /// `f_min` : float, default=32.7
     ///     Minimum frequency in Hz (C1)
-    /// f_max : float, default=4186.0
+    /// `f_max` : float, default=4186.0
     ///     Maximum frequency in Hz (C8)
-    /// norm : ChromaNorm, optional
+    /// norm : `ChromaNorm`, optional
     ///     Normalization method: l1, l2, max, or None (default: l2)
     #[new]
     #[pyo3(signature = (
@@ -613,9 +711,9 @@ impl PyChromaParams {
 
     /// Create standard chroma parameters for music analysis.
     #[classmethod]
-    fn music_standard(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
-        let inner = ChromaParams::music_standard()?;
-        Ok(Self { inner })
+    const fn music_standard(_cls: &Bound<'_, PyType>) -> Self {
+        let inner = ChromaParams::music_standard();
+        Self { inner }
     }
 
     /// Tuning frequency in Hz (typically 440.0 for A4).
@@ -647,6 +745,19 @@ impl PyChromaParams {
     }
 }
 
+impl From<ChromaParams> for PyChromaParams {
+    #[inline]
+    fn from(inner: ChromaParams) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<PyChromaParams> for ChromaParams {
+    #[inline]
+    fn from(val: PyChromaParams) -> Self {
+        val.inner
+    }
+}
 /// MFCC (Mel-Frequency Cepstral Coefficients) parameters.
 
 #[pyclass(name = "MfccParams")]
@@ -661,25 +772,28 @@ impl PyMfccParams {
     ///
     /// Parameters
     /// ----------
-    /// n_mfcc : int, default=13
+    /// `n_mfcc` : int, default=13
     ///     Number of MFCC coefficients to compute
     #[new]
-    #[pyo3(signature = (n_mfcc: "int" = 13))]
+    #[pyo3(signature = (n_mfcc: "int" = 13), text_signature = "(n_mfcc: int = 13)")]
     fn new(n_mfcc: usize) -> PyResult<Self> {
-        let inner = MfccParams::new(n_mfcc)?;
+        let n_mfcc = NonZeroUsize::new(n_mfcc).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("n_mfcc must be a positive integer")
+        })?;
+        let inner = MfccParams::new(n_mfcc);
         Ok(Self { inner })
     }
 
     /// Standard MFCC parameters for speech recognition (13 coefficients).
     #[classmethod]
-    fn speech_standard(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
-        let inner = MfccParams::speech_standard()?;
-        Ok(Self { inner })
+    const fn speech_standard(_cls: &Bound<'_, PyType>) -> Self {
+        let inner = MfccParams::speech_standard();
+        Self { inner }
     }
 
     /// Number of MFCC coefficients.
     #[getter]
-    const fn n_mfcc(&self) -> usize {
+    const fn n_mfcc(&self) -> NonZeroUsize {
         self.inner.n_mfcc()
     }
 
@@ -694,6 +808,7 @@ pub fn register(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStftParams>()?;
     m.add_class::<PyLogParams>()?;
     m.add_class::<PySpectrogramParams>()?;
+    m.add_class::<PyMelNorm>()?;
     m.add_class::<PyMelParams>()?;
     m.add_class::<PyErbParams>()?;
     m.add_class::<PyLogHzParams>()?;

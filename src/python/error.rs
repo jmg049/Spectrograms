@@ -48,6 +48,7 @@ create_exception!(
 /// This implementation allows Rust errors to be automatically converted to
 /// Python exceptions when crossing the language boundary.
 impl From<SpectrogramError> for PyErr {
+    #[inline]
     fn from(err: SpectrogramError) -> Self {
         match err {
             SpectrogramError::InvalidInput(msg) => PyInvalidInputError::new_err(msg),

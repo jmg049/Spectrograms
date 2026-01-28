@@ -1,7 +1,12 @@
+<div align="center">
+
 # Spectrograms
 
-Fast spectrogram computation library powered by Rust.
+[![PyPI][pypi-img]][pypi] [![Docs][docs-img]][docs] [![License: MIT][license-img]][license]
 
+## Fast spectrogram computation library powered by Rust.
+
+</div>
 ## Features
 
 - **Multiple Spectrogram Types**: Linear, Mel, ERB frequency scales
@@ -17,11 +22,19 @@ Fast spectrogram computation library powered by Rust.
 pip install spectrograms
 ```
 
-For the FFTW-accelerated version (requires system FFTW library):
+For the FFTW-accelerated version (requires system FFTW library) you currently must build from source:
 
 ```bash
-pip install spectrograms-fftw
+git clone https://github.com/jmg049/Spectrograms.git
+cd Spectrograms/
+# In pyproject.toml under [tool.maturin], change "realfft" to `"fftw"
+maturin develop --release
 ```
+## Benchmark Results
+
+Check out the [benchmark results](PYTHON_BENCHMARK.md) for detailed performance comparisons against NumPy and SciPy implementations across various configurations and signal types.
+
+[![Average Speedup](../imgs/average_speedup.png)](../imgs/average_speedup.png)
 
 ## Quick Start
 
@@ -104,8 +117,7 @@ The planner API provides 1.5-3x speedup for batch processing by reusing FFT plan
 stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning())
 mfcc_params = sg.MfccParams(n_mfcc=13)
 
-mfccs = sg.compute_mfcc(samples, stft, sample_rate=16000,
-                         n_mels=40, mfcc_params=mfcc_params)
+mfccs = sg.compute_mfcc(samples, stft, sample_rate=16000, n_mels=40, mfcc_params=mfcc_params)
 # Returns shape: (n_mfcc, n_frames)
 ```
 
@@ -115,8 +127,7 @@ mfccs = sg.compute_mfcc(samples, stft, sample_rate=16000,
 stft = sg.StftParams(n_fft=4096, hop_size=512, window=sg.WindowType.hanning())
 chroma_params = sg.ChromaParams.music_standard()
 
-chroma = sg.compute_chromagram(samples, stft, sample_rate=22050,
-                                chroma_params=chroma_params)
+chroma = sg.compute_chromagram(samples, stft, sample_rate=22050, chroma_params=chroma_params)
 # Returns shape: (12, n_frames) - one row per pitch class
 ```
 
@@ -134,7 +145,6 @@ Supported window functions:
 - `"hanning"` - Hann window (default)
 - `"hamming"` - Hamming window
 - `"blackman"` - Blackman window
-- `"bartlett"` - Bartlett (triangular) window
 - `"rectangular"` - Rectangular window (no windowing)
 - `"kaiser=beta"` - Kaiser window with beta parameter (e.g., `"kaiser=5.0"`)
 - `"gaussian=std"` - Gaussian window with std parameter (e.g., `"gaussian=0.4"`)
@@ -181,9 +191,26 @@ The `Spectrogram` object returned by all compute functions has:
 - `.duration()` - Total duration in seconds
 - `.params` - Original computation parameters
 
+**Note: The Spectrogram object can be directly used as a NumPy array.** For example:
+
+```python
+import numpy as np
+import spectrograms as sg
+
+sine_wave = np.sin(2 * np.pi * 440 * np.linspace(0, 1.0, SAMPLE_RATE, endpoint=False))
+
+stft_params = sg.StftParams(n_fft=1024, hop_size=256, window=sg.WindowType.hanning)
+
+spectrogram_params = sg.SpectrogramParams(stft_params, SAMPLE_RATE)
+
+spectrogram = sg.compute_linear_power_spectrogram(sine_wave, spectrogram_params)
+
+np.abs(spectrogram).shape  # works just fine
+```
+
 ### Convenience Functions
 
-All compute functions release the Python GIL during computation, enabling parallelism.
+All compute functions release the Python GIL during computation.
 
 **Linear spectrograms:**
 - `compute_linear_power_spectrogram(samples, params)`
@@ -229,36 +256,13 @@ Available plan types match the convenience functions:
 - `mel_power_plan`, `mel_magnitude_plan`, `mel_db_plan`
 - `erb_power_plan`, `erb_magnitude_plan`, `erb_db_plan`
 
+
 ## Performance Notes
 
 - **Plan Reuse**: Creating FFT plans is expensive. Reuse plans via the `SpectrogramPlanner` API for 1.5-3x speedup in batch processing.
 - **FFT Size**: Powers of 2 (256, 512, 1024, 2048) are significantly faster than arbitrary sizes.
 - **GIL Release**: All compute functions release the Python GIL, allowing parallel processing of multiple audio files.
-- **Backend**: The default `realfft` backend is pure Rust with no system dependencies. The `spectrograms-fftw` package uses FFTW for ~10-20% better performance but requires system FFTW library installation.
-
-## FFTW Installation (Optional)
-
-For the FFTW-accelerated version:
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install libfftw3-dev
-pip install spectrograms-fftw
-```
-
-**macOS:**
-```bash
-brew install fftw
-pip install spectrograms-fftw
-```
-
-**Windows:**
-Download FFTW from http://www.fftw.org/install/windows.html and set `FFTW3_INCLUDE_DIR` and `FFTW3_LIB_DIR` environment variables.
-
-## Requirements
-
-- Python >= 3.8
-- NumPy >= 1.16
+- **Backend**: The default `realfft` backend is pure Rust with no system dependencies. Try building from source to enable the FFTW backend. It *may* offer better performance. 
 
 ## License
 
@@ -267,9 +271,17 @@ MIT License
 ## Links
 
 - **GitHub**: https://github.com/jmg049/Spectrograms
-- **Documentation**: https://github.com/jmg049/Spectrograms/blob/main/README.md
+- **Documentation**: https://jmg049.github.io/Spectrograms
 - **PyPI**: https://pypi.org/project/spectrograms/
 
 ## Contributing
 
-Contributions are welcome! Please see the main repository for contribution guidelines.
+Contributions are welcome! Please see the [main repository](https://github.com/jmg049/Spectrograms) for contribution guidelines.
+
+[pypi]: https://pypi.org/project/spectrograms/
+[pypi-img]: https://img.shields.io/pypi/v/spectrograms?style=for-the-badge&color=009E73&label=PyPI
+
+[docs]: https://jmg049.github.io/Spectrograms/
+[docs-img]: https://img.shields.io/pypi/v/spectrograms?style=for-the-badge&color=009E73&label=Docs
+[license-img]: https://img.shields.io/crates/l/spectrograms?style=for-the-badge&label=license&labelColor=gray
+[license]: https://github.com/jmg049/Spectrograms/blob/main/LICENSE

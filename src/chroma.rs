@@ -1,12 +1,13 @@
-use std::ops::Deref;
+use std::{num::NonZeroUsize, ops::Deref};
 
 /// Chroma feature extraction for music information retrieval.
 ///
 /// Chroma features represent the energy distribution across the 12 pitch classes
 /// of the Western musical scale, providing a robust representation of harmonic content.
 use ndarray::Array2;
+use non_empty_slice::NonEmptySlice;
 
-use crate::{SpectrogramError, SpectrogramResult, StftParams};
+use crate::{SpectrogramError, SpectrogramResult, StftParams, nzu};
 
 /// Number of pitch classes in Western music.
 pub const N_CHROMA: usize = 12;
@@ -18,7 +19,7 @@ pub struct ChromaParams {
     /// Reference tuning frequency in Hz (typically 440.0 for A4)
     tuning: f64,
     /// Number of octaves to consider
-    n_octaves: usize,
+    n_octaves: NonZeroUsize,
     /// Minimum frequency in Hz
     f_min: f64,
     /// Maximum frequency in Hz
@@ -30,6 +31,7 @@ pub struct ChromaParams {
 /// Normalization strategy for chroma features.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum ChromaNorm {
     /// No normalization
     None,
@@ -43,10 +45,11 @@ pub enum ChromaNorm {
 }
 
 impl Default for ChromaParams {
+    #[inline]
     fn default() -> Self {
         Self {
             tuning: 440.0,
-            n_octaves: 7,
+            n_octaves: nzu!(7),
             f_min: 32.7,   // C1
             f_max: 4186.0, // C8
             norm: ChromaNorm::L2,
@@ -63,6 +66,18 @@ impl ChromaParams {
     /// * `f_min` - Minimum frequency in Hz
     /// * `f_max` - Maximum frequency in Hz
     /// * `norm` - Normalization strategy
+    ///
+    /// # Returns
+    ///
+    /// `SpectrogramResult<Self>` - Ok with ChromaParams if valid
+    ///
+    /// # Errors
+    ///
+    /// Returns `SpectrogramError::InvalidInput` if:
+    /// * `tuning` <= 0 or not finite
+    /// * `f_min` <= 0 or not finite
+    /// * `f_max` <= `f_min`
+    #[inline]
     pub fn new(tuning: f64, f_min: f64, f_max: f64, norm: ChromaNorm) -> SpectrogramResult<Self> {
         if !(tuning > 0.0 && tuning.is_finite()) {
             return Err(SpectrogramError::invalid_input(
@@ -74,13 +89,14 @@ impl ChromaParams {
                 "f_min must be finite and > 0",
             ));
         }
-        if !(f_max > f_min) {
+        if f_max <= f_min {
             return Err(SpectrogramError::invalid_input("f_max must be > f_min"));
         }
 
         // Calculate number of octaves
         let n_octaves = ((f_max / f_min).log2().ceil() as usize).max(1);
-
+        // safety: n_octaves is at least 1
+        let n_octaves = unsafe { NonZeroUsize::new_unchecked(n_octaves) };
         Ok(Self {
             tuning,
             n_octaves,
@@ -93,11 +109,28 @@ impl ChromaParams {
     /// Create standard chroma parameters for music analysis.
     ///
     /// Uses A4=440Hz tuning, covering C1 to C8.
-    pub fn music_standard() -> SpectrogramResult<Self> {
-        Self::new(440.0, 32.7, 4186.0, ChromaNorm::L2)
+    #[inline]
+    #[must_use]
+    pub const fn music_standard() -> Self {
+        Self {
+            tuning: 440.0,
+            n_octaves: nzu!(7),
+            f_min: 32.7,   // C1
+            f_max: 4186.0, // C8
+            norm: ChromaNorm::L2,
+        }
     }
 
     /// Set the normalization strategy.
+    ///
+    /// # Arguments
+    ///
+    /// * `norm` - Normalization strategy
+    ///
+    /// # Returns
+    ///
+    /// `ChromaParams` - Updated chroma parameters with new normalization
+    #[inline]
     #[must_use]
     pub const fn with_norm(mut self, norm: ChromaNorm) -> Self {
         self.norm = norm;
@@ -105,32 +138,53 @@ impl ChromaParams {
     }
 
     /// Get the tuning frequency.
+    ///
+    /// # Returns
+    ///
+    /// `f64` - Tuning frequency in Hz
+    #[inline]
     #[must_use]
     pub const fn tuning(&self) -> f64 {
         self.tuning
     }
 
     /// Get the minimum frequency.
+    ///
+    /// # Returns
+    ///
+    /// `f64` - Minimum frequency in Hz
+    #[inline]
     #[must_use]
     pub const fn f_min(&self) -> f64 {
         self.f_min
     }
 
     /// Get the maximum frequency.
+    ///
+    /// # Returns
+    ///
+    /// `f64` - Maximum frequency in Hz
+    #[inline]
     #[must_use]
     pub const fn f_max(&self) -> f64 {
         self.f_max
     }
 
     /// Get the number of octaves.
+    ///
+    /// # Returns
+    ///
+    /// `NonZeroUsize` - Number of octaves
+    #[inline]
     #[must_use]
-    pub const fn n_octaves(&self) -> usize {
+    pub const fn n_octaves(&self) -> NonZeroUsize {
         self.n_octaves
     }
 }
 
 /// Chromagram representation with 12 pitch classes.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Chromagram {
     /// Chroma feature matrix with shape (12, `n_frames`)
     pub data: Array2<f64>,
@@ -140,24 +194,46 @@ pub struct Chromagram {
 
 impl Chromagram {
     /// Get the number of frames.
+    ///
+    /// # Returns
+    ///
+    /// `NonZeroUsize` - Number of time frames
+    #[inline]
     #[must_use]
-    pub fn n_frames(&self) -> usize {
-        self.data.ncols()
+    pub fn n_frames(&self) -> NonZeroUsize {
+        // safety: data has at least one column since there is at least one frame
+        unsafe { NonZeroUsize::new_unchecked(self.data.ncols()) }
     }
 
     /// Get the number of chroma bins (always 12).
+    ///
+    /// # Returns
+    ///
+    /// `NonZeroUsize` - Number of chroma bins (12)
+    #[inline]
     #[must_use]
-    pub fn n_bins(&self) -> usize {
-        self.data.nrows()
+    pub fn n_bins(&self) -> NonZeroUsize {
+        // safety: data has at least one row since there are 12 chroma bins
+        unsafe { NonZeroUsize::new_unchecked(self.data.nrows()) }
     }
 
     /// Get the parameters used to compute this chromagram.
+    ///
+    /// # Returns
+    ///
+    /// `&ChromaParams` - Reference to the chroma parameters
+    #[inline]
     #[must_use]
     pub const fn params(&self) -> &ChromaParams {
         &self.params
     }
 
     /// Get the chroma labels.
+    ///
+    /// # Returns
+    ///
+    /// `[&'static str; 12]` - Array of chroma labels from C to B
+    #[inline]
     #[must_use]
     pub const fn labels() -> [&'static str; 12] {
         [
@@ -167,6 +243,7 @@ impl Chromagram {
 }
 
 impl AsRef<Array2<f64>> for Chromagram {
+    #[inline]
     fn as_ref(&self) -> &Array2<f64> {
         &self.data
     }
@@ -175,6 +252,7 @@ impl AsRef<Array2<f64>> for Chromagram {
 impl Deref for Chromagram {
     type Target = Array2<f64>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data
     }
@@ -183,9 +261,24 @@ impl Deref for Chromagram {
 /// Build a chroma filterbank matrix.
 ///
 /// Maps FFT bins to the 12 pitch classes using a weighted projection.
+///
+/// # Arguments
+///
+/// * `sample_rate` - Sample rate in Hz
+/// * `n_fft` - FFT size
+/// * `params` - Chroma feature parameters
+///
+/// # Returns
+///
+/// A 2D array with shape (12, `n_bins`), where `n_bins` = `n_fft`/2 + 1.
+///
+/// # Errors
+///
+/// Returns `SpectrogramError` if input parameters are invalid.
+#[inline]
 pub fn build_chroma_filterbank(
     sample_rate: f64,
-    n_fft: usize,
+    n_fft: NonZeroUsize,
     params: &ChromaParams,
 ) -> SpectrogramResult<Array2<f64>> {
     use std::f64::consts::LN_2;
@@ -195,12 +288,9 @@ pub fn build_chroma_filterbank(
             "sample_rate must be finite and > 0",
         ));
     }
-    if n_fft == 0 {
-        return Err(SpectrogramError::invalid_input("n_fft must be > 0"));
-    }
 
-    let n_bins = n_fft / 2 + 1;
-    let freq_resolution = sample_rate / n_fft as f64;
+    let n_bins = n_fft.get() / 2 + 1;
+    let freq_resolution = sample_rate / n_fft.get() as f64;
 
     // Frequency for each FFT bin
     let fft_freqs: Vec<f64> = (0..n_bins).map(|k| k as f64 * freq_resolution).collect();
@@ -267,16 +357,21 @@ pub fn build_chroma_filterbank(
 /// # Returns
 ///
 /// A `Chromagram` with shape (12, `n_frames`).
+///
+/// # Errors
+///
+/// Returns `SpectrogramError` if the input spectrogram dimensions
+#[inline]
 pub fn chromagram_from_spectrogram(
     spectrogram: &Array2<f64>,
     sample_rate: f64,
-    n_fft: usize,
+    n_fft: NonZeroUsize,
     params: &ChromaParams,
 ) -> SpectrogramResult<Chromagram> {
     let n_bins = spectrogram.nrows();
     let n_frames = spectrogram.ncols();
 
-    let expected_bins = n_fft / 2 + 1;
+    let expected_bins = n_fft.get() / 2 + 1;
     if n_bins != expected_bins {
         return Err(SpectrogramError::dimension_mismatch(expected_bins, n_bins));
     }
@@ -364,26 +459,31 @@ fn apply_chroma_normalization(chroma: &mut Array2<f64>, norm: ChromaNorm) {
 ///
 /// A `Chromagram` with 12 pitch classes.
 ///
+/// # Errors
+///
+/// Returns `SpectrogramError` if STFT or chromagram computation fails.
+///
 /// # Examples
 ///
 /// ```
 /// use spectrograms::*;
-///
+/// use non_empty_slice::non_empty_vec;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let samples = vec![0.0; 16000];
-/// let stft = StftParams::new(2048, 512, WindowType::Hanning, true)?;
-/// let chroma_params = ChromaParams::music_standard()?;
+/// let samples = non_empty_vec![0.0; nzu!(16000)];
+/// let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true)?;
+/// let chroma_params = ChromaParams::music_standard();
 ///
 /// let chromagram = chromagram(&samples, &stft, 16000.0, &chroma_params)?;
 ///
-/// assert_eq!(chromagram.n_bins(), 12);
+/// assert_eq!(chromagram.n_bins(), nzu!(12));
 /// println!("Chromagram: {} pitch classes x {} frames",
 ///          chromagram.n_bins(), chromagram.n_frames());
 /// # Ok(())
 /// # }
 /// ```
-pub fn chromagram<S: AsRef<[f64]>>(
-    samples: S,
+#[inline]
+pub fn chromagram(
+    samples: &NonEmptySlice<f64>,
     stft_params: &StftParams,
     sample_rate: f64,
     chroma_params: &ChromaParams,

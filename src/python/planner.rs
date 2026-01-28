@@ -12,7 +12,8 @@ use super::params::{
     PyCqtParams, PyErbParams, PyLogHzParams, PyLogParams, PyMelParams, PySpectrogramParams,
 };
 use super::spectrogram::PySpectrogram;
-
+use non_empty_slice::NonEmptySlice;
+use std::num::NonZeroUsize;
 /// Spectrogram planner for creating reusable computation plans.
 ///
 /// Creating a plan is more expensive than a single computation, but plans can be
@@ -37,12 +38,12 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
     ///
     /// Returns
     /// -------
-    /// LinearPowerPlan
+    /// `LinearPowerPlan`
     ///     Plan for computing linear power spectrograms
     #[pyo3(signature = (params: "SpectrogramParams"), text_signature = "(params: SpectrogramParams) -> LinearPowerPlan")]
     fn linear_power_plan(&self, params: &PySpectrogramParams) -> PyResult<PyLinearPowerPlan> {
@@ -54,12 +55,12 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
     ///
     /// Returns
     /// -------
-    /// LinearMagnitudePlan
+    /// `LinearMagnitudePlan`
     ///     Plan for computing linear magnitude spectrograms
     #[pyo3(signature = (params: "SpectrogramParams"), text_signature = "(params: SpectrogramParams) -> LinearMagnitudePlan")]
     fn linear_magnitude_plan(
@@ -74,20 +75,20 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// db_params : LogParams
+    /// `db_params` : `LogParams`
     ///     Decibel conversion parameters
     ///
     /// Returns
     /// -------
-    /// LinearDbPlan
+    /// `LinearDbPlan`
     ///     Plan for computing linear decibel spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", db_params: "LogParams"), text_signature = "(params: SpectrogramParams, db_params: LogParams) -> LinearDbPlan")]
     fn linear_db_plan(
         &self,
         params: &PySpectrogramParams,
-        db_params: &PyLogParams,
+        db_params: PyLogParams,
     ) -> PyResult<PyLinearDbPlan> {
         let plan = self
             .inner
@@ -99,14 +100,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// mel_params : MelParams
+    /// `mel_params` : `MelParams`
     ///     Mel-scale filterbank parameters
     ///
     /// Returns
     /// -------
-    /// MelPowerPlan
+    /// `MelPowerPlan`
     ///     Plan for computing mel power spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", mel_params: "MelParams"), text_signature = "(params: SpectrogramParams, mel_params: MelParams) -> MelPowerPlan")]
     fn mel_power_plan(
@@ -124,14 +125,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// mel_params : MelParams
+    /// `mel_params` : `MelParams`
     ///     Mel-scale filterbank parameters
     ///
     /// Returns
     /// -------
-    /// MelMagnitudePlan
+    /// `MelMagnitudePlan`
     ///     Plan for computing mel magnitude spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", mel_params: "MelParams"), text_signature = "(params: SpectrogramParams, mel_params: MelParams) -> MelMagnitudePlan")]
     fn mel_magnitude_plan(
@@ -149,23 +150,23 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// mel_params : MelParams
+    /// `mel_params` : `MelParams`
     ///     Mel-scale filterbank parameters
-    /// db_params : LogParams
+    /// `db_params` : `LogParams`
     ///     Decibel conversion parameters
     ///
     /// Returns
     /// -------
-    /// MelDbPlan
+    /// `MelDbPlan`
     ///     Plan for computing mel decibel spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", mel_params: "MelParams", db_params: "LogParams"), text_signature = "(params: SpectrogramParams, mel_params: MelParams, db_params: LogParams) -> MelDbPlan")]
     fn mel_db_plan(
         &self,
         params: &PySpectrogramParams,
         mel_params: &PyMelParams,
-        db_params: &PyLogParams,
+        db_params: PyLogParams,
     ) -> PyResult<PyMelDbPlan> {
         let plan = self.inner.mel_plan::<Decibels>(
             &params.inner,
@@ -179,14 +180,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// erb_params : ErbParams
+    /// `erb_params` : `ErbParams`
     ///     ERB-scale filterbank parameters
     ///
     /// Returns
     /// -------
-    /// ErbPowerPlan
+    /// `ErbPowerPlan`
     ///     Plan for computing ERB power spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", erb_params: "ErbParams"), text_signature = "(params: SpectrogramParams, erb_params: ErbParams) -> ErbPowerPlan")]
     fn erb_power_plan(
@@ -204,14 +205,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// erb_params : ErbParams
+    /// `erb_params` : `ErbParams`
     ///     ERB-scale filterbank parameters
     ///
     /// Returns
     /// -------
-    /// ErbMagnitudePlan
+    /// `ErbMagnitudePlan`
     ///     Plan for computing ERB magnitude spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", erb_params: "ErbParams"), text_signature = "(params: SpectrogramParams, erb_params: ErbParams) -> ErbMagnitudePlan")]
     fn erb_magnitude_plan(
@@ -229,23 +230,23 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// erb_params : ErbParams
+    /// `erb_params` : `ErbParams`
     ///     ERB-scale filterbank parameters
-    /// db_params : LogParams
+    /// `db_params` : `LogParams`
     ///     Decibel conversion parameters
     ///
     /// Returns
     /// -------
-    /// ErbDbPlan
+    /// `ErbDbPlan`
     ///     Plan for computing ERB decibel spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", erb_params: "ErbParams", db_params: "LogParams"), text_signature = "(params: SpectrogramParams, erb_params: ErbParams, db_params: LogParams) -> ErbDbPlan")]
     fn erb_db_plan(
         &self,
         params: &PySpectrogramParams,
         erb_params: &PyErbParams,
-        db_params: &PyLogParams,
+        db_params: PyLogParams,
     ) -> PyResult<PyErbDbPlan> {
         let plan = self.inner.erb_plan::<Decibels>(
             &params.inner,
@@ -259,14 +260,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// loghz_params : LogHzParams
+    /// `loghz_params` : `LogHzParams`
     ///     Logarithmic Hz scale parameters
     ///
     /// Returns
     /// -------
-    /// LogHzPowerPlan
+    /// `LogHzPowerPlan`
     ///     Plan for computing logarithmic Hz power spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", loghz_params: "LogHzParams"), text_signature = "(params: SpectrogramParams, loghz_params: LogHzParams) -> LogHzPowerPlan")]
     fn loghz_power_plan(
@@ -284,14 +285,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// loghz_params : LogHzParams
+    /// `loghz_params` : `LogHzParams`
     ///     Logarithmic Hz scale parameters
     ///
     /// Returns
     /// -------
-    /// LogHzMagnitudePlan
+    /// `LogHzMagnitudePlan`
     ///     Plan for computing logarithmic Hz magnitude spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", loghz_params: "LogHzParams"), text_signature = "(params: SpectrogramParams, loghz_params: LogHzParams) -> LogHzMagnitudePlan")]
     fn loghz_magnitude_plan(
@@ -309,23 +310,23 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// loghz_params : LogHzParams
+    /// `loghz_params` : `LogHzParams`
     ///     Logarithmic Hz scale parameters
-    /// db_params : LogParams
+    /// `db_params` : `LogParams`
     ///     Decibel conversion parameters
     ///
     /// Returns
     /// -------
-    /// LogHzDbPlan
+    /// `LogHzDbPlan`
     ///     Plan for computing logarithmic Hz decibel spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", loghz_params: "LogHzParams", db_params: "LogParams"), text_signature = "(params: SpectrogramParams, loghz_params: LogHzParams, db_params: LogParams) -> LogHzDbPlan")]
     fn loghz_db_plan(
         &self,
         params: &PySpectrogramParams,
         loghz_params: &PyLogHzParams,
-        db_params: &PyLogParams,
+        db_params: PyLogParams,
     ) -> PyResult<PyLogHzDbPlan> {
         let plan = self.inner.log_hz_plan::<Decibels>(
             &params.inner,
@@ -339,14 +340,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// cqt_params : CqtParams
+    /// `cqt_params` : `CqtParams`
     ///     Constant-Q Transform parameters
     ///
     /// Returns
     /// -------
-    /// CqtPowerPlan
+    /// `CqtPowerPlan`
     ///     Plan for computing CQT power spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", cqt_params: "CqtParams"), text_signature = "(params: SpectrogramParams, cqt_params: CqtParams) -> CqtPowerPlan")]
     fn cqt_power_plan(
@@ -364,14 +365,14 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// cqt_params : CqtParams
+    /// `cqt_params` : `CqtParams`
     ///     Constant-Q Transform parameters
     ///
     /// Returns
     /// -------
-    /// CqtMagnitudePlan
+    /// `CqtMagnitudePlan`
     ///     Plan for computing CQT magnitude spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", cqt_params: "CqtParams"), text_signature = "(params: SpectrogramParams, cqt_params: CqtParams) -> CqtMagnitudePlan")]
     fn cqt_magnitude_plan(
@@ -389,23 +390,23 @@ impl PySpectrogramPlanner {
     ///
     /// Parameters
     /// ----------
-    /// params : SpectrogramParams
+    /// params : `SpectrogramParams`
     ///     Spectrogram parameters
-    /// cqt_params : CqtParams
+    /// `cqt_params` : `CqtParams`
     ///     Constant-Q Transform parameters
-    /// db_params : LogParams
+    /// `db_params` : `LogParams`
     ///     Decibel conversion parameters
     ///
     /// Returns
     /// -------
-    /// CqtDbPlan
+    /// `CqtDbPlan`
     ///     Plan for computing CQT decibel spectrograms
     #[pyo3(signature = (params: "SpectrogramParams", cqt_params: "CqtParams", db_params: "LogParams"), text_signature = "(params: SpectrogramParams, cqt_params: CqtParams, db_params: LogParams) -> CqtDbPlan")]
     fn cqt_db_plan(
         &self,
         params: &PySpectrogramParams,
         cqt_params: &PyCqtParams,
-        db_params: &PyLogParams,
+        db_params: PyLogParams,
     ) -> PyResult<PyCqtDbPlan> {
         let plan = self.inner.cqt_plan::<Decibels>(
             &params.inner,
@@ -432,7 +433,7 @@ macro_rules! impl_plan {
             /// Parameters
             /// ----------
             /// samples : numpy.typing.NDArray[numpy.float64]
-            ///     Audio samples as a 1D NumPy array
+            ///     Audio samples as a 1D array
             ///
             /// Returns
             /// -------
@@ -445,6 +446,9 @@ macro_rules! impl_plan {
                 samples: PyReadonlyArray1<f64>,
             ) -> PyResult<PySpectrogram> {
                 let samples = samples.as_slice()?;
+                let samples = NonEmptySlice::new(samples).ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err("Input samples cannot be empty")
+                })?;
                 let spec = self.inner.compute(samples)?;
                 Ok(PySpectrogram::$variant(spec))
             }
@@ -453,15 +457,15 @@ macro_rules! impl_plan {
             ///
             /// Parameters
             /// ----------
-            /// samples : numpy.typing.NDArray[numpy.float64]
-            ///     Audio samples as a 1D NumPy array
-            /// frame_idx : int
+            /// `samples` : numpy.typing.NDArray[numpy.float64]
+            ///     Audio samples as a 1D array
+            /// `frame_idx` : int
             ///     Frame index to compute
             ///
             /// Returns
             /// -------
             /// numpy.typing.NDArray[numpy.float64]
-            ///     1D NumPy array containing the frame data
+            ///     1D array containing the frame data
             #[pyo3(signature = (samples: "numpy.typing.NDArray[numpy.float64]",frame_idx: "int"), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], frame_idx: int) -> numpy.typing.NDArray[numpy.float64]")]
             fn compute_frame<'py>(
                 &mut self,
@@ -469,24 +473,28 @@ macro_rules! impl_plan {
                 samples: PyReadonlyArray1<f64>,
                 frame_idx: usize,
             ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+
                 let samples = samples.as_slice()?;
+                let samples = NonEmptySlice::new(samples).ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err("Input samples cannot be empty")
+                })?;
                 let frame = self.inner.compute_frame(samples, frame_idx)?;
-                Ok(PyArray1::from_vec(py, frame))
+                Ok(PyArray1::from_vec(py, frame.to_vec()))
             }
 
             /// Get the output shape for a given signal length.
             ///
             /// Parameters
             /// ----------
-            /// signal_length : int
+            /// `signal_length` : int
             ///     Length of the input signal
             ///
             /// Returns
             /// -------
             /// tuple[int, int]
-            ///     Tuple of (n_bins, n_frames)
+            ///     Tuple of (`n_bins`, `n_frames`)
             #[pyo3(signature = (signal_length: "int"), text_signature = "(signal_length: int) -> tuple[int, int]")]
-            fn output_shape(&self, signal_length: usize) -> PyResult<(usize, usize)> {
+            fn output_shape(&self, signal_length: NonZeroUsize ) -> PyResult<(NonZeroUsize , NonZeroUsize )> {
                 Ok(self.inner.output_shape(signal_length)?)
             }
         }

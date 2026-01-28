@@ -1,15 +1,16 @@
+use non_empty_slice::non_empty_vec;
 /// Window function comparison example
 ///
 /// This example demonstrates:
 /// - Using different window functions
 /// - Comparing their effects on spectrograms
 /// - Understanding window trade-offs
-use spectrograms::{LinearPowerSpectrogram, SpectrogramParams, StftParams, WindowType};
+use spectrograms::{LinearPowerSpectrogram, SpectrogramParams, StftParams, WindowType, nzu};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Generate a test signal: impulse (delta function)
     let sample_rate = 16000.0;
-    let mut samples = vec![0.0; 1600];
+    let mut samples = non_empty_vec![0.0; nzu!(1600)];
     samples[800] = 1.0; // Impulse in the middle
 
     println!("Generated impulse signal");
@@ -30,14 +31,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (name, window) in windows {
         // Set up parameters with this window
-        let stft = StftParams::new(512, 256, window, true)?;
+        let stft = StftParams::new(nzu!(512), nzu!(256), window, true)?;
         let params = SpectrogramParams::new(stft, sample_rate)?;
 
         // Compute spectrogram
         let spec = LinearPowerSpectrogram::compute(&samples, &params, None)?;
 
         // Analyze the spectrum at the impulse frame
-        let impulse_frame = spec.n_frames() / 2; // Middle frame
+        let impulse_frame = spec.n_frames().get() / 2; // Middle frame
         let frame_data = spec.data().column(impulse_frame);
 
         // Find peak and measure spectral spread
@@ -84,11 +85,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Window selection guide:");
-    println!("  • Rectangular: Best frequency resolution, worst spectral leakage");
-    println!("  • Hanning/Hamming: Good all-around choice, balanced trade-off");
-    println!("  • Blackman: Low sidelobes, wider main lobe");
-    println!("  • Kaiser: Tunable (β controls main lobe vs sidelobes)");
-    println!("  • Gaussian: Smooth roll-off, optimal time-frequency localization");
+    println!("  * Rectangular: Best frequency resolution, worst spectral leakage");
+    println!("  * Hanning/Hamming: Good all-around choice, balanced trade-off");
+    println!("  * Blackman: Low sidelobes, wider main lobe");
+    println!("  * Kaiser: Tunable (β controls main lobe vs sidelobes)");
+    println!("  * Gaussian: Smooth roll-off, optimal time-frequency localization");
 
     Ok(())
 }

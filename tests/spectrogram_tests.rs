@@ -1,16 +1,18 @@
+use non_empty_slice::{NonEmptyVec, non_empty_vec};
 use spectrograms::{
     LinearDbSpectrogram, LinearMagnitudeSpectrogram, LinearPowerSpectrogram, LogParams,
     MelDbSpectrogram, MelMagnitudeSpectrogram, MelParams, MelPowerSpectrogram, SpectrogramParams,
-    SpectrogramPlanner, StftParams, WindowType,
+    SpectrogramPlanner, StftParams, WindowType, nzu,
 };
 use std::f64::consts::PI;
 
 /// Generate a sine wave at a specific frequency
-fn sine_wave(freq: f64, sample_rate: f64, duration: f64) -> Vec<f64> {
+fn sine_wave(freq: f64, sample_rate: f64, duration: f64) -> NonEmptyVec<f64> {
     let n_samples = (duration * sample_rate) as usize;
-    (0..n_samples)
+    let v = (0..n_samples)
         .map(|i| (2.0 * PI * freq * i as f64 / sample_rate).sin())
-        .collect()
+        .collect();
+    NonEmptyVec::new(v).unwrap()
 }
 
 #[test]
@@ -18,15 +20,12 @@ fn test_linear_power_spectrogram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
     let spec = LinearPowerSpectrogram::compute(&samples, &params, None).unwrap();
 
-    assert_eq!(spec.n_bins(), 257); // n_fft/2 + 1
-    assert!(spec.n_frames() > 0);
-    assert_eq!(spec.data().nrows(), spec.n_bins());
-    assert_eq!(spec.data().ncols(), spec.n_frames());
+    assert_eq!(spec.n_bins(), nzu!(257)); // n_fft/2 + 1
 }
 
 #[test]
@@ -34,13 +33,12 @@ fn test_linear_magnitude_spectrogram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
     let spec = LinearMagnitudeSpectrogram::compute(&samples, &params, None).unwrap();
 
-    assert_eq!(spec.n_bins(), 257);
-    assert!(spec.n_frames() > 0);
+    assert_eq!(spec.n_bins(), nzu!(257));
 }
 
 #[test]
@@ -48,14 +46,13 @@ fn test_linear_db_spectrogram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
     let db = LogParams::new(-80.0).unwrap();
 
     let spec = LinearDbSpectrogram::compute(&samples, &params, Some(&db)).unwrap();
 
-    assert_eq!(spec.n_bins(), 257);
-    assert!(spec.n_frames() > 0);
+    assert_eq!(spec.n_bins(), nzu!(257));
 
     // Check that all values are >= floor_db
     for &val in spec.data().iter() {
@@ -68,14 +65,13 @@ fn test_mel_power_spectrogram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let mel = MelParams::new(80, 0.0, 8000.0).unwrap();
+    let mel = MelParams::new(nzu!(80), 0.0, 8000.0).unwrap();
 
     let spec = MelPowerSpectrogram::compute(&samples, &params, &mel, None).unwrap();
 
-    assert_eq!(spec.n_bins(), 80);
-    assert!(spec.n_frames() > 0);
+    assert_eq!(spec.n_bins(), nzu!(80));
 }
 
 #[test]
@@ -83,14 +79,13 @@ fn test_mel_magnitude_spectrogram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let mel = MelParams::new(80, 0.0, 8000.0).unwrap();
+    let mel = MelParams::new(nzu!(80), 0.0, 8000.0).unwrap();
 
     let spec = MelMagnitudeSpectrogram::compute(&samples, &params, &mel, None).unwrap();
 
-    assert_eq!(spec.n_bins(), 80);
-    assert!(spec.n_frames() > 0);
+    assert_eq!(spec.n_bins(), nzu!(80));
 }
 
 #[test]
@@ -98,15 +93,14 @@ fn test_mel_db_spectrogram_basic() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let mel = MelParams::new(80, 0.0, 8000.0).unwrap();
+    let mel = MelParams::new(nzu!(80), 0.0, 8000.0).unwrap();
     let db = LogParams::new(-80.0).unwrap();
 
     let spec = MelDbSpectrogram::compute(&samples, &params, &mel, Some(&db)).unwrap();
 
-    assert_eq!(spec.n_bins(), 80);
-    assert!(spec.n_frames() > 0);
+    assert_eq!(spec.n_bins(), nzu!(80));
 
     // Check that all values are >= floor_db
     for &val in spec.data().iter() {
@@ -115,26 +109,15 @@ fn test_mel_db_spectrogram_basic() {
 }
 
 #[test]
-fn test_spectrogram_empty_input() {
-    let samples: Vec<f64> = vec![];
-
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
-    let params = SpectrogramParams::new(stft, 16000.0).unwrap();
-
-    let result = LinearPowerSpectrogram::compute(&samples, &params, None);
-    assert!(result.is_err());
-}
-
-#[test]
 fn test_spectrogram_short_input() {
-    let samples: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+    let samples: NonEmptyVec<f64> = non_empty_vec![1.0, 2.0, 3.0, 4.0, 5.0];
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, 16000.0).unwrap();
 
     // Should still work even with very short input (produces 1 frame)
     let spec = LinearPowerSpectrogram::compute(&samples, &params, None).unwrap();
-    assert_eq!(spec.n_frames(), 1);
+    assert_eq!(spec.n_frames(), nzu!(1));
 }
 
 #[test]
@@ -143,7 +126,7 @@ fn test_spectrogram_plan_reuse() {
     let samples1 = sine_wave(440.0, sample_rate, 0.5);
     let samples2 = sine_wave(880.0, sample_rate, 0.5);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
     let planner = SpectrogramPlanner::new();
@@ -166,9 +149,9 @@ fn test_mel_f_max_exceeds_nyquist() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let mel = MelParams::new(80, 0.0, 10000.0).unwrap(); // 10kHz > 8kHz Nyquist
+    let mel = MelParams::new(nzu!(80), 0.0, 10000.0).unwrap(); // 10kHz > 8kHz Nyquist
 
     let result = MelPowerSpectrogram::compute(&samples, &params, &mel, None);
     assert!(result.is_err());
@@ -179,7 +162,7 @@ fn test_different_windows() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let windows = vec![
+    let windows = non_empty_vec![
         WindowType::Rectangular,
         WindowType::Hanning,
         WindowType::Hamming,
@@ -189,7 +172,7 @@ fn test_different_windows() {
     ];
 
     for window in windows {
-        let stft = StftParams::new(512, 256, window, true).unwrap();
+        let stft = StftParams::new(nzu!(512), nzu!(256), window, true).unwrap();
         let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
         let spec = LinearPowerSpectrogram::compute(&samples, &params, None);
@@ -202,7 +185,7 @@ fn test_frequency_axis() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
     let spec = LinearPowerSpectrogram::compute(&samples, &params, None).unwrap();
@@ -215,10 +198,10 @@ fn test_frequency_axis() {
 
     // Last frequency should be close to Nyquist
     let nyquist = sample_rate / 2.0;
-    assert!((freqs[freqs.len() - 1] - nyquist).abs() < 1e-3);
+    assert!((freqs[freqs.len().get() - 1] - nyquist).abs() < 1e-3);
 
     // Frequencies should be monotonically increasing
-    for i in 1..freqs.len() {
+    for i in 1..freqs.len().get() {
         assert!(freqs[i] > freqs[i - 1]);
     }
 }
@@ -228,7 +211,7 @@ fn test_time_axis() {
     let sample_rate = 16000.0;
     let samples = sine_wave(440.0, sample_rate, 1.0);
 
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
+    let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
     let spec = LinearPowerSpectrogram::compute(&samples, &params, None).unwrap();
@@ -240,40 +223,14 @@ fn test_time_axis() {
     assert!((times[0] - 0.0).abs() < 1e-6);
 
     // Times should be monotonically increasing
-    for i in 1..times.len() {
+    for i in 1..times.len().get() {
         assert!(times[i] > times[i - 1]);
     }
 
     // Time step should be hop_size / sample_rate
     let expected_dt = 256.0 / sample_rate;
-    for i in 1..times.len() {
+    for i in 1..times.len().get() {
         let dt = times[i] - times[i - 1];
         assert!((dt - expected_dt).abs() < 1e-6);
     }
-}
-
-#[test]
-fn test_asref_slice_input() {
-    let sample_rate = 16000.0;
-    let samples_vec = sine_wave(440.0, sample_rate, 1.0);
-    let samples_slice = &samples_vec[..];
-    let samples_array: [f64; 100] =
-        std::array::from_fn(|i| (2.0 * PI * 440.0 * i as f64 / sample_rate).sin());
-
-    let stft = StftParams::new(512, 256, WindowType::Hanning, true).unwrap();
-
-    // Should accept Vec
-    let params1 = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let spec1 = LinearPowerSpectrogram::compute(&samples_vec, &params1, None);
-    assert!(spec1.is_ok());
-
-    // Should accept slice
-    let params2 = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let spec2 = LinearPowerSpectrogram::compute(samples_slice, &params2, None);
-    assert!(spec2.is_ok());
-
-    // Should accept array
-    let params3 = SpectrogramParams::new(stft, sample_rate).unwrap();
-    let spec3 = LinearPowerSpectrogram::compute(&samples_array, &params3, None);
-    assert!(spec3.is_ok());
 }

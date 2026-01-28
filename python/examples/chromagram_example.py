@@ -50,9 +50,9 @@ def main():
     A4 = 440.0
 
     # Generate a C major chord (C4, E4, G4)
-    C4 = A4 * 2**(-9/12)   # C4 = 261.63 Hz
-    E4 = A4 * 2**(-5/12)   # E4 = 329.63 Hz
-    G4 = A4 * 2**(-2/12)   # G4 = 392.00 Hz
+    C4 = A4 * 2 ** (-9 / 12)  # C4 = 261.63 Hz
+    E4 = A4 * 2 ** (-5 / 12)  # E4 = 329.63 Hz
+    G4 = A4 * 2 ** (-2 / 12)  # G4 = 392.00 Hz
 
     c_major = generate_chord(sample_rate, duration, [C4, E4, G4], "C major")
 
@@ -63,8 +63,8 @@ def main():
 
     # Generate an A minor chord (A4, C5, E5)
     A4_note = A4
-    C5 = A4 * 2**(3/12)    # C5 = 523.25 Hz
-    E5 = A4 * 2**(7/12)    # E5 = 659.25 Hz
+    C5 = A4 * 2 ** (3 / 12)  # C5 = 523.25 Hz
+    E5 = A4 * 2 ** (7 / 12)  # E5 = 659.25 Hz
 
     a_minor = generate_chord(sample_rate, duration, [A4_note, C5, E5], "A minor")
 
@@ -82,10 +82,10 @@ def main():
 
     # STFT parameters (larger FFT for better frequency resolution)
     stft = sg.StftParams(
-        n_fft=4096,     # Larger FFT for music
-        hop_size=512,   # ~23ms hop
+        n_fft=4096,  # Larger FFT for music
+        hop_size=512,  # ~23ms hop
         window="hanning",
-        centre=True
+        centre=True,
     )
 
     print(f"\nSTFT parameters:")
@@ -104,13 +104,17 @@ def main():
     chroma_c_major = sg.compute_chromagram(c_major, stft, sample_rate, chroma_params)
 
     print("✓ C major chromagram computed")
-    print(f"  Shape: {chroma_c_major.shape} (12 pitch classes × {chroma_c_major.shape[1]} frames)")
+    print(
+        f"  Shape: {chroma_c_major.shape} (12 pitch classes x {chroma_c_major.shape[1]} frames)"
+    )
 
     print("\nComputing chromagram for A minor chord...")
     chroma_a_minor = sg.compute_chromagram(a_minor, stft, sample_rate, chroma_params)
 
     print("✓ A minor chromagram computed")
-    print(f"  Shape: {chroma_a_minor.shape} (12 pitch classes × {chroma_a_minor.shape[1]} frames)")
+    print(
+        f"  Shape: {chroma_a_minor.shape} (12 pitch classes x {chroma_a_minor.shape[1]} frames)"
+    )
 
     # ========================================================================
     # Analyze chromagram content
@@ -120,7 +124,7 @@ def main():
     print("=" * 60)
 
     # Pitch class names
-    pitch_classes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    pitch_classes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
     # Average over time for each chord
     c_major_avg = np.mean(chroma_c_major, axis=1)
@@ -135,8 +139,8 @@ def main():
     print("-" * 50)
 
     for i, (pc, energy) in enumerate(zip(pitch_classes, c_major_avg)):
-        bar = '█' * int(energy * 20)
-        marker = ' ← Expected' if pc in ['C', 'E', 'G'] else ''
+        bar = "█" * int(energy * 20)
+        marker = " ← Expected" if pc in ["C", "E", "G"] else ""
         print(f"{pc:>12}  {energy:>8.3f}  {bar:<20}{marker}")
 
     print("\nA Minor Chord - Average Chroma Profile:")
@@ -144,8 +148,8 @@ def main():
     print("-" * 50)
 
     for i, (pc, energy) in enumerate(zip(pitch_classes, a_minor_avg)):
-        bar = '█' * int(energy * 20)
-        marker = ' ← Expected' if pc in ['A', 'C', 'E'] else ''
+        bar = "█" * int(energy * 20)
+        marker = " ← Expected" if pc in ["A", "C", "E"] else ""
         print(f"{pc:>12}  {energy:>8.3f}  {bar:<20}{marker}")
 
     # ========================================================================
@@ -157,13 +161,13 @@ def main():
 
     # Define chord templates (which pitch classes are in each chord)
     chord_templates = {
-        'C major': [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],  # C, E, G
-        'A minor': [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],  # A, C, E
-        'G major': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],  # G, B, D (B=11, D=2)
-        'F major': [1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],  # F, A, C
+        "C major": [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],  # C, E, G
+        "A minor": [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],  # A, C, E
+        "G major": [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],  # G, B, D (B=11, D=2)
+        "F major": [1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],  # F, A, C
     }
     # Fix G major template
-    chord_templates['G major'] = [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1]  # D, G, B
+    chord_templates["G major"] = [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1]  # D, G, B
 
     def recognize_chord(chroma_profile, templates):
         """Recognize chord using template matching."""
@@ -174,7 +178,9 @@ def main():
 
         for chord_name, template in templates.items():
             template_array = np.array(template, dtype=float)
-            template_normalized = template_array / (np.linalg.norm(template_array) + 1e-10)
+            template_normalized = template_array / (
+                np.linalg.norm(template_array) + 1e-10
+            )
 
             # Cosine similarity
             score = np.dot(chroma_normalized, template_normalized)

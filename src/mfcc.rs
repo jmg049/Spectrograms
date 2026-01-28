@@ -1,19 +1,26 @@
-use std::ops::Deref;
+use std::{num::NonZeroUsize, ops::Deref};
 
 /// Mel-Frequency Cepstral Coefficients (MFCC) computation.
 ///
 /// MFCCs are widely used features in speech and audio processing, representing
 /// the short-term power spectrum of a sound on a mel scale.
 use ndarray::Array2;
+use non_empty_slice::{NonEmptySlice, NonEmptyVec};
 
-use crate::{SpectrogramError, SpectrogramResult, StftParams};
+use crate::{SpectrogramError, SpectrogramResult, StftParams, nzu};
 
 /// MFCC computation parameters.
+///
+/// # Fields
+///
+/// - `n_mfcc`: Number of MFCC coefficients to compute
+/// - `include_c0`: Whether to include the 0th coefficient (energy)
+/// - `lifter`: Lifter parameter for cepstral liftering (0 = no liftering)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MfccParams {
     /// Number of MFCC coefficients to compute
-    n_mfcc: usize,
+    n_mfcc: NonZeroUsize,
     /// Whether to include the 0th coefficient (energy)
     include_c0: bool,
     /// Lifter parameter for cepstral liftering (0 = no liftering)
@@ -21,9 +28,10 @@ pub struct MfccParams {
 }
 
 impl Default for MfccParams {
+    #[inline]
     fn default() -> Self {
         Self {
-            n_mfcc: 13,
+            n_mfcc: nzu!(13),
             include_c0: true,
             lifter: 22,
         }
@@ -36,26 +44,43 @@ impl MfccParams {
     /// # Arguments
     ///
     /// * `n_mfcc` - Number of MFCC coefficients to return
-    pub fn new(n_mfcc: usize) -> SpectrogramResult<Self> {
-        if n_mfcc == 0 {
-            return Err(SpectrogramError::invalid_input("n_mfcc must be > 0"));
-        }
-
-        Ok(Self {
+    ///
+    /// # Returns
+    ///
+    /// An `MfccParams` instance with default settings.
+    #[inline]
+    #[must_use]
+    pub const fn new(n_mfcc: NonZeroUsize) -> Self {
+        Self {
             n_mfcc,
             include_c0: true,
             lifter: 22,
-        })
+        }
     }
 
     /// Standard MFCC parameters for speech recognition (13 coefficients).
-    pub fn speech_standard() -> SpectrogramResult<Self> {
-        Self::new(13)
+    ///
+    /// # Returns
+    ///
+    /// An `MfccParams` instance with 13 coefficients, C0 included, and lifter of 22.
+    #[inline]
+    #[must_use]
+    pub const fn speech_standard() -> Self {
+        Self::new(nzu!(13))
     }
 
     /// Set whether to include the 0th coefficient.
     ///
     /// The 0th coefficient represents the overall energy and is sometimes excluded.
+    ///
+    /// # Arguments
+    ///
+    /// * `include_c0` - `true` to include C0, `false` to exclude it
+    ///
+    /// # Returns
+    ///
+    /// The updated `MfccParams` with the specified C0 inclusion.
+    #[inline]
     #[must_use]
     pub const fn with_c0(mut self, include_c0: bool) -> Self {
         self.include_c0 = include_c0;
@@ -66,6 +91,15 @@ impl MfccParams {
     ///
     /// Liftering applies a sinusoidal weighting to emphasize mid-range coefficients.
     /// Common values: 22 (default), 0 (no liftering).
+    ///
+    /// # Arguments
+    ///
+    /// * `lifter` - Lifter value (0 = no liftering)
+    ///
+    /// # Returns
+    ///
+    /// The lifter value (0 = no liftering).
+    #[inline]
     #[must_use]
     pub const fn with_lifter(mut self, lifter: usize) -> Self {
         self.lifter = lifter;
@@ -73,18 +107,33 @@ impl MfccParams {
     }
 
     /// Get the number of MFCC coefficients.
+    ///
+    /// # Returns
+    ///
+    /// The number of MFCC coefficients to compute.
+    #[inline]
     #[must_use]
-    pub const fn n_mfcc(&self) -> usize {
+    pub const fn n_mfcc(&self) -> NonZeroUsize {
         self.n_mfcc
     }
 
     /// Get whether C0 is included.
+    ///
+    /// # Returns
+    ///
+    /// `true` if C0 is included, `false` otherwise.
+    #[inline]
     #[must_use]
     pub const fn include_c0(&self) -> bool {
         self.include_c0
     }
 
     /// Get the lifter parameter.
+    ///
+    /// # Returns
+    ///
+    /// The lifter value (0 = no liftering).
+    #[inline]
     #[must_use]
     pub const fn lifter(&self) -> usize {
         self.lifter
@@ -93,6 +142,7 @@ impl MfccParams {
 
 /// MFCC features representation.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mfcc {
     /// MFCC coefficient matrix with shape (`n_mfcc`, `n_frames`)
     pub data: Array2<f64>,
@@ -101,6 +151,7 @@ pub struct Mfcc {
 }
 
 impl AsRef<Array2<f64>> for Mfcc {
+    #[inline]
     fn as_ref(&self) -> &Array2<f64> {
         &self.data
     }
@@ -109,6 +160,7 @@ impl AsRef<Array2<f64>> for Mfcc {
 impl Deref for Mfcc {
     type Target = Array2<f64>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data
     }
@@ -116,18 +168,35 @@ impl Deref for Mfcc {
 
 impl Mfcc {
     /// Get the number of MFCC coefficients.
+    ///
+    /// # Returns
+    ///
+    /// The number of coefficients (rows in the data matrix).
+    #[inline]
     #[must_use]
-    pub fn n_coefficients(&self) -> usize {
-        self.data.nrows()
+    pub fn n_coefficients(&self) -> NonZeroUsize {
+        // safety: data has at least one row since n_mfcc is NonZeroUsize
+        unsafe { NonZeroUsize::new_unchecked(self.data.nrows()) }
     }
 
     /// Get the number of frames.
+    ///
+    /// # Returns
+    ///
+    /// The number of frames (columns in the data matrix).
+    #[inline]
     #[must_use]
-    pub fn n_frames(&self) -> usize {
-        self.data.ncols()
+    pub fn n_frames(&self) -> NonZeroUsize {
+        // safety: data has at least one column since there is at least one frame
+        unsafe { NonZeroUsize::new_unchecked(self.data.ncols()) }
     }
 
     /// Get the parameters used to compute these MFCCs.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `MfccParams`.
+    #[inline]
     #[must_use]
     pub const fn params(&self) -> &MfccParams {
         &self.params
@@ -147,6 +216,11 @@ impl Mfcc {
 /// # Returns
 ///
 /// An `Mfcc` structure with shape (`n_mfcc`, `n_frames`).
+///
+/// # Errors
+///
+/// Returns an error if `n_mfcc` is greater than `n_mels`.
+#[inline]
 pub fn mfcc_from_log_mel(
     log_mel_spec: &Array2<f64>,
     params: &MfccParams,
@@ -154,22 +228,27 @@ pub fn mfcc_from_log_mel(
     let n_mels = log_mel_spec.nrows();
     let n_frames = log_mel_spec.ncols();
 
-    if params.n_mfcc > n_mels {
+    if params.n_mfcc.get() > n_mels {
         return Err(SpectrogramError::invalid_input("n_mfcc must be <= n_mels"));
     }
 
     // Apply DCT-II to each frame
-    let mut mfcc_data = Array2::<f64>::zeros((params.n_mfcc, n_frames));
+    let mut mfcc_data = Array2::<f64>::zeros((params.n_mfcc.get(), n_frames));
+
+    // Preallocate buffer to avoid per-frame allocation
+    let mut mel_frame = vec![0.0; n_mels];
 
     for frame_idx in 0..n_frames {
-        // Extract mel spectrum for this frame
-        let mel_frame: Vec<f64> = (0..n_mels).map(|i| log_mel_spec[[i, frame_idx]]).collect();
+        // Extract mel spectrum for this frame into reusable buffer
+        for i in 0..n_mels {
+            mel_frame[i] = log_mel_spec[[i, frame_idx]];
+        }
 
         // Apply DCT-II
         let dct_coeffs = dct_ii(&mel_frame);
 
         // Store first n_mfcc coefficients
-        for (coeff_idx, &val) in dct_coeffs.iter().enumerate().take(params.n_mfcc) {
+        for (coeff_idx, &val) in dct_coeffs.iter().enumerate().take(params.n_mfcc.get()) {
             mfcc_data[[coeff_idx, frame_idx]] = val;
         }
     }
@@ -180,7 +259,7 @@ pub fn mfcc_from_log_mel(
     }
 
     // Optionally remove C0
-    let final_data = if !params.include_c0 && params.n_mfcc > 1 {
+    let final_data = if !params.include_c0 && params.n_mfcc > nzu!(1) {
         // Remove first row (C0)
         mfcc_data.slice(ndarray::s![1.., ..]).to_owned()
     } else {
@@ -196,42 +275,40 @@ pub fn mfcc_from_log_mel(
 /// Compute Discrete Cosine Transform (DCT-II).
 ///
 /// DCT-II is used to decorrelate mel-filterbank energies.
-fn dct_ii(input: &[f64]) -> Vec<f64> {
-    use std::f64::consts::PI;
-
+fn dct_ii(input: &[f64]) -> NonEmptyVec<f64> {
     let n = input.len();
     let mut output = vec![0.0; n];
 
-    for k in 0..n {
-        let mut sum = 0.0;
-        for (i, &val) in input.iter().enumerate() {
-            sum += val * (PI * k as f64 * (i as f64 + 0.5) / n as f64).cos();
-        }
-        output[k] = sum;
+    for (k, sample) in output.iter_mut().enumerate().take(n) {
+        *sample = input.iter().enumerate().fold(0.0, |acc, (i, &val)| {
+            val.mul_add(
+                (std::f64::consts::PI * k as f64 * (i as f64 + 0.5) / n as f64).cos(),
+                acc,
+            )
+        });
     }
-
-    output
+    // safety: output is non-empty since n > 0
+    unsafe { NonEmptyVec::new_unchecked(output) }
 }
 
 /// Apply cepstral liftering to MFCC coefficients.
 ///
 /// Liftering applies a sinusoidal weighting to emphasize mid-range coefficients.
 fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
-    use std::f64::consts::PI;
-
     let n_mfcc = mfcc.nrows();
     let n_frames = mfcc.ncols();
 
     // Compute lifter weights
     let mut weights = vec![0.0; n_mfcc];
-    for i in 0..n_mfcc {
-        weights[i] = (lifter as f64 / 2.0).mul_add((PI * i as f64 / lifter as f64).sin(), 1.0);
+    for (i, w) in weights.iter_mut().enumerate().take(n_mfcc) {
+        *w = (lifter as f64 / 2.0)
+            .mul_add((std::f64::consts::PI * i as f64 / lifter as f64).sin(), 1.0);
     }
 
     // Apply weights to each frame
     for frame_idx in 0..n_frames {
-        for coeff_idx in 0..n_mfcc {
-            mfcc[[coeff_idx, frame_idx]] *= weights[coeff_idx];
+        for (coeff_idx, &weight) in weights.iter().enumerate().take(n_mfcc) {
+            mfcc[[coeff_idx, frame_idx]] *= weight;
         }
     }
 }
@@ -253,29 +330,35 @@ fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
 ///
 /// An `Mfcc` structure containing the coefficients.
 ///
+/// # Errors
+///
+/// Returns an error if any step of the computation fails.
+///
 /// # Examples
 ///
 /// ```
 /// use spectrograms::*;
+/// use non_empty_slice::non_empty_vec;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let samples = vec![0.0; 16000];
-/// let stft = StftParams::new(512, 160, WindowType::Hanning, true)?;
-/// let mfcc_params = MfccParams::speech_standard()?;
+/// let samples = non_empty_vec![0.0; nzu!(16000)];
+/// let stft = StftParams::new(nzu!(512), nzu!(160), WindowType::Hanning, true)?;
+/// let mfcc_params = MfccParams::speech_standard();
 ///
-/// let mfccs = mfcc(&samples, &stft, 16000.0, 40, &mfcc_params)?;
+/// let mfccs = mfcc(&samples, &stft, 16000.0, nzu!(40), &mfcc_params)?;
 ///
-/// assert_eq!(mfccs.n_coefficients(), 13);
+/// assert_eq!(mfccs.n_coefficients(), nzu!(13));
 /// println!("MFCCs: {} coefficients x {} frames",
 ///          mfccs.n_coefficients(), mfccs.n_frames());
 /// # Ok(())
 /// # }
 /// ```
-pub fn mfcc<S: AsRef<[f64]>>(
-    samples: S,
+#[inline]
+pub fn mfcc(
+    samples: &NonEmptySlice<f64>,
     stft_params: &StftParams,
     sample_rate: f64,
-    n_mels: usize,
+    n_mels: NonZeroUsize,
     mfcc_params: &MfccParams,
 ) -> SpectrogramResult<Mfcc> {
     use crate::{LogParams, MelDbSpectrogram, MelParams, SpectrogramParams};

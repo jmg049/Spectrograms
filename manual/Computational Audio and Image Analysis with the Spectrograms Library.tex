@@ -1,0 +1,213 @@
+\documentclass[a4paper,11pt]{article}
+
+% ========================================
+% Page Layout and Geometry
+% ========================================
+\usepackage[margin=0.75in, top=0.5in, bottom=0.75in]{geometry}
+
+% ========================================
+% Mathematical Packages
+% ========================================
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+
+% ========================================
+% Graphics and Color
+% ========================================
+\usepackage{graphicx}
+\usepackage[dvipsnames]{xcolor}
+
+% ========================================
+% Tables and Layout
+% ========================================
+\usepackage{multicol}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{array}
+
+% ========================================
+% Lists and Enumeration
+% ========================================
+\usepackage{enumitem}
+\setlist{itemsep=2pt, parsep=2pt}
+
+% ========================================
+% Code Listings
+% ========================================
+\usepackage{needspace}
+\usepackage{mdframed}
+\usepackage{listings}
+\lstset{
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  backgroundcolor=\color{gray!10},
+  commentstyle=\color{ForestGreen},
+  keywordstyle=\color{blue},
+  stringstyle=\color{red},
+  numbers=none,
+  xleftmargin=10pt,
+  xrightmargin=10pt,
+  aboveskip=8pt,
+  belowskip=8pt
+}
+
+% Unbreakable framed environment for code
+\surroundwithmdframed[
+  linecolor=black,
+  linewidth=0.5pt,
+  backgroundcolor=gray!10,
+  skipabove=8pt,
+  skipbelow=8pt,
+  innerleftmargin=10pt,
+  innerrightmargin=10pt,
+  innertopmargin=5pt,
+  innerbottommargin=5pt,
+  nobreak=true
+]{lstlisting}
+
+% ========================================
+% Definition Boxes and Theorems
+% ========================================
+\usepackage[most]{tcolorbox}
+
+% Definition box style
+\newtcolorbox{definition}[1][]{
+  colback=blue!5!white,
+  colframe=blue!75!black,
+  fonttitle=\bfseries,
+  title=Definition,
+  #1
+}
+
+% Concept box for important terms
+\newtcolorbox{concept}[1]{
+  colback=green!5!white,
+  colframe=green!60!black,
+  fonttitle=\bfseries,
+  title=#1,
+  before skip=10pt,
+  after skip=10pt
+}
+
+% Important note box
+\newtcolorbox{importantnote}{
+  colback=orange!5!white,
+  colframe=orange!75!black,
+  fonttitle=\bfseries,
+  title=Important Note,
+  before skip=10pt,
+  after skip=10pt
+}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+
+% ========================================
+% Hyperlinks and References
+% ========================================
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=red!50!black,
+  urlcolor=blue!50!black,
+  bookmarks=true,
+  bookmarksopen=true,
+  pdfauthor={Jack Geraghty},
+  pdftitle={Computational Audio and Image Analysis with the
+  Spectrograms Library}
+]{hyperref}
+
+% Better equation referencing
+\usepackage[capitalize,noabbrev]{cleveref}
+\crefname{equation}{Equation}{Equations}
+\crefname{section}{Section}{Sections}
+\crefname{figure}{Figure}{Figures}
+\crefname{table}{Table}{Tables}
+
+% ========================================
+% Bibliography
+% ========================================
+\usepackage[
+  backend=biber,
+  style=numeric,
+  sorting=nyt,
+  maxbibnames=99
+]{biblatex}
+\addbibresource{references.bib}
+
+% ========================================
+% Music Notation (if needed)
+% ========================================
+\usepackage{musicography}
+
+% ========================================
+% Custom Commands
+% ========================================
+
+% Math operators
+\DeclareMathOperator{\DFT}{DFT}
+\DeclareMathOperator{\FFT}{FFT}
+\DeclareMathOperator{\IFFT}{IFFT}
+\DeclareMathOperator{\STFT}{STFT}
+\DeclareMathOperator{\CQT}{CQT}
+\DeclareMathOperator{\MFCC}{MFCC}
+
+% Complex conjugate
+\newcommand{\conj}[1]{#1^*}
+
+% Real and imaginary parts
+\DeclareMathOperator{\Real}{Re}
+\DeclareMathOperator{\Imag}{Im}
+
+% Floor and ceiling
+\DeclarePairedDelimiter{\floor}{\lfloor}{\rfloor}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+
+% Absolute value and norm
+\DeclarePairedDelimiter{\abs}{\lvert}{\rvert}
+\DeclarePairedDelimiter{\norm}{\lVert}{\rVert}
+
+% Code inline
+\newcommand{\code}[1]{\texttt{#1}}
+
+% Emphasis for technical terms on first use
+\newcommand{\termdef}[1]{\textbf{\textit{#1}}}
+
+% ========================================
+% Typography and Spacing
+% ========================================
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+% Better spacing in equations
+\setlength{\jot}{8pt}
+
+\title{Computational Audio and Image Analysis with the
+\texttt{Spectrograms} Library}
+\author{Jack Geraghty}
+\date{}
+
+% ========================================
+% Document Content
+% ========================================
+\begin{document}
+\maketitle
+\input{manual.tex}
+
+% ========================================
+% Python API Reference Guide
+% ========================================
+\input{python_guide.tex}
+
+% ========================================
+% Bibliography
+% ========================================
+\newpage
+\printbibliography[title={References}]
+
+\end{document}
