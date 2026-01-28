@@ -7,6 +7,7 @@
 ## Fast spectrogram computation library powered by Rust.
 
 </div>
+
 ## Features
 
 - **Multiple Spectrogram Types**: Linear, Mel, ERB frequency scales
