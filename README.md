@@ -2,7 +2,7 @@
 
 # Spectrograms
 
-[![Crates.io][crate-img]][crate] [![Docs.rs][docs-img]][docs] [![License: MIT][license-img]][license]
+[![Crates.io][crate-img]][crate] [![Docs.rs][docs-img]][docs] [![PyPI][pypi-img]][pypi] [![PyDocs][docs-img-py]][docs-python] [![License: MIT][license-img]][license]
 
 ## FFT-based computations for audio and image processing with Rust and Python bindings.
 
@@ -917,10 +917,16 @@ If you use this library in academic work, please cite:
 **Note**: This library focuses on computing ffts, spectrograms, and related transforms. For complete audio analysis pipelines, combine it with audio I/O libraries like [audio_samples](https://github.com/jmg049/audio_samples) and your preferred plotting tools.
 
 [crate]: https://crates.io/crates/spectrograms
-[crate-img]: https://img.shields.io/crates/v/audio_samples_io?style=for-the-badge&color=009E73&label=crates.io
+[crate-img]: https://img.shields.io/crates/v/spectrograms?style=for-the-badge&color=009E73&label=crates.io
 
 [docs]: https://docs.rs/spectrograms
 [docs-img]: https://img.shields.io/badge/docs.rs-online-009E73?style=for-the-badge&labelColor=gray
 
 [license-img]: https://img.shields.io/crates/l/spectrograms?style=for-the-badge&label=license&labelColor=gray  
 [license]: https://github.com/jmg049/Spectrograms/blob/main/LICENSE
+
+[pypi]: https://pypi.org/project/spectrograms/
+[pypi-img]: https://img.shields.io/pypi/v/spectrograms?style=for-the-badge&color=009E73&label=PyPI
+
+[docs-python]: https://jmg049.github.io/Spectrograms/
+[docs-img-py]: https://img.shields.io/pypi/v/spectrograms?style=for-the-badge&color=009E73&label=PyDocs
