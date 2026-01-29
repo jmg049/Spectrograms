@@ -43,7 +43,7 @@ Batch Processing
 
 **batch_processing.py**
   Efficient batch processing using the planner API.
-  Demonstrates 1.5-3x speedup by reusing FFT plans across multiple signals.
+  Demonstrates speedup by reusing FFT plans across multiple signals.
 
   .. code-block:: bash
 
@@ -78,6 +78,17 @@ Audio Features
   .. code-block:: bash
 
      python python/examples/chromagram_example.py
+
+Machine Learning Integration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**ml/pytorch_dlpack.py**
+  DLPack protocol integration with PyTorch.
+  Demonstrates  tensor exchange, chromagram conversion, and neural network pipelines.
+
+  .. code-block:: bash
+
+     python python/examples/ml/pytorch_dlpack.py
 
 Image Processing Examples
 --------------------------
@@ -191,4 +202,5 @@ See Also
 - :doc:`planner_guide` - Efficient batch processing guide
 - :doc:`audio_features` - Audio feature extraction guide
 - :doc:`image_processing` - Image processing guide
+- :doc:`ml_integration` - Machine learning integration guide
 - :doc:`performance` - Performance tips and benchmarks

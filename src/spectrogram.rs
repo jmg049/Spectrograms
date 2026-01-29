@@ -249,7 +249,6 @@ where
             .ensure_sizes(self.stft.n_fft, self.stft.out_len, n_bins);
 
         // Main loop: fill each frame (column)
-        // TODO: Parallelize with rayon once thread-safety issues are resolved
         for frame_idx in 0..n_frames.get() {
             // CQT needs unwindowed frames because its kernels already contain windowing.
             // Other mappings use the FFT spectrum, so they need the windowed frame.
@@ -590,7 +589,7 @@ impl StftResult {
     ///
     /// # Returns
     ///
-    /// An Array2<f64> containing the norms of each complex number in self.data.
+    /// An Array2\<f64\> containing the norms of each complex number in self.data.
     #[inline]
     pub fn norm(&self) -> Array2<f64> {
         self.as_ref().mapv(Complex::norm)
@@ -2193,18 +2192,28 @@ pub fn make_window(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<f64> 
             }
         }
         WindowType::Kaiser { beta } => {
-            (0..n_fft).for_each(|i| {
-                let n = i as f64;
-                let n_max: f64 = (n_fft - 1) as f64;
-                let alpha: f64 = (n - n_max / 2.0) / (n_max / 2.0);
-                let bessel_arg = beta * alpha.mul_add(-alpha, 1.0).sqrt();
-                // Simplified approximation of modified Bessel function
-                let x = 1.0
-                    + bessel_arg / 2.0
-                        // Normalize by I0(beta) approximation
-                        / (1.0 + beta / 2.0);
-                w[i] = x;
-            });
+            if n_fft == 1 {
+                w[0] = 1.0;
+            } else {
+                let denom = modified_bessel_i0(beta);
+                let n_max = (n_fft - 1) as f64 / 2.0;
+
+                for (i, value) in w.iter_mut().enumerate() {
+                    let n = i as f64 - n_max;
+                    let ratio = if n_max == 0.0 {
+                        0.0
+                    } else {
+                        let normalized = n / n_max;
+                        (1.0 - normalized * normalized).max(0.0)
+                    };
+                    let arg = beta * ratio.sqrt();
+                    *value = if denom == 0.0 {
+                        0.0
+                    } else {
+                        modified_bessel_i0(arg) / denom
+                    };
+                }
+            }
         }
         WindowType::Gaussian { std } => (0..n_fft).for_each(|i| {
             let n = i as f64;
@@ -2226,6 +2235,30 @@ pub fn make_window(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<f64> 
 
     // safety: window is guaranteed non-empty since n_fft > 0
     unsafe { NonEmptyVec::new_unchecked(w) }
+}
+
+fn modified_bessel_i0(x: f64) -> f64 {
+    let ax = x.abs();
+    if ax <= 3.75 {
+        let t = x / 3.75;
+        let t2 = t * t;
+        1.0 + t2
+            * (3.515_622_9
+                + t2 * (3.089_942_4
+                    + t2 * (1.206_749_2
+                        + t2 * (0.265_973_2 + t2 * (0.036_076_8 + t2 * 0.004_581_3)))))
+    } else {
+        let t = 3.75 / ax;
+        let poly = 0.398_942_28
+            + t * (0.013_285_92
+                + t * (0.002_253_19
+                    + t * (-0.001_575_65
+                        + t * (0.009_162_81
+                            + t * (-0.020_577_06
+                                + t * (0.026_355_37 + t * (-0.016_476_33 + t * 0.003_923_77)))))));
+
+        (ax.exp() / (ax.sqrt() * (2.0 * std::f64::consts::PI).sqrt())) * poly
+    }
 }
 
 /// Convert Hz to mel scale using Slaney formula (librosa default, htk=False).
@@ -2594,6 +2627,20 @@ where
     #[must_use]
     pub const fn data(&self) -> &Array2<f64> {
         &self.data
+    }
+
+    /// Consume the spectrogram and extract the data matrix.
+    ///
+    /// This method moves the data out of the spectrogram, consuming it.
+    /// Useful for transferring ownership to Python without copying.
+    ///
+    /// # Returns
+    ///
+    /// The owned spectrogram data matrix.
+    #[inline]
+    #[must_use]
+    pub fn into_data(self) -> Array2<f64> {
+        self.data
     }
 
     /// Axes of the spectrogram
@@ -3291,7 +3338,7 @@ where
 
 /// Linear frequency scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum LinearHz {
@@ -3300,7 +3347,7 @@ pub enum LinearHz {
 
 /// Logarithmic frequency scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum LogHz {
@@ -3309,7 +3356,7 @@ pub enum LogHz {
 
 /// Mel frequency scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Mel {
@@ -3318,7 +3365,7 @@ pub enum Mel {
 
 /// ERB/gammatone frequency scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Erb {
@@ -3328,7 +3375,7 @@ pub type Gammatone = Erb;
 
 /// Constant-Q Transform frequency scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Cqt {
@@ -3339,7 +3386,7 @@ pub enum Cqt {
 
 /// Power amplitude scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Power {
@@ -3348,7 +3395,7 @@ pub enum Power {
 
 /// Decibel amplitude scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Decibels {
@@ -3357,7 +3404,7 @@ pub enum Decibels {
 
 /// Magnitude amplitude scale
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(feature = "python", pyclass(from_py_object))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum Magnitude {
@@ -4740,7 +4787,7 @@ pub fn istft(
     hop_size: NonZeroUsize,
     window: WindowType,
     center: bool,
-) -> SpectrogramResult<Vec<f64>> {
+) -> SpectrogramResult<NonEmptyVec<f64>> {
     use crate::fft_backend::{C2rPlan, C2rPlanner, r2c_output_size};
 
     let n_bins = stft_matrix.nrows();
@@ -4773,11 +4820,13 @@ pub fn istft(
     // Calculate output length
     let pad = if center { n_fft / 2 } else { 0 };
     let output_len = (n_frames - 1) * hop_size + n_fft;
-    let unpadded_len = output_len.saturating_sub(2 * pad);
+    // safety: output_len > 0 since n_frames > 0 and n_fft, hop_size > 0
+    let output_len = unsafe { NonZeroUsize::new_unchecked(output_len) };
+    let unpadded_len = output_len.get().saturating_sub(2 * pad);
 
     // Allocate output buffer and normalization buffer
-    let mut output = vec![0.0; output_len];
-    let mut norm = vec![0.0; output_len];
+    let mut output = non_empty_vec![0.0; output_len];
+    let mut norm = non_empty_vec![0.0; output_len];
 
     // Overlap-add synthesis
     let mut frame_buffer = vec![Complex::new(0.0, 0.0); n_bins];
@@ -4801,7 +4850,7 @@ pub fn istft(
         let start = frame_idx * hop_size;
         for i in 0..n_fft {
             let pos = start + i;
-            if pos < output_len {
+            if pos < output_len.get() {
                 output[pos] += time_frame[i];
                 norm[pos] += window_samples[i] * window_samples[i];
             }
@@ -4809,7 +4858,7 @@ pub fn istft(
     }
 
     // Normalize by window energy
-    for i in 0..output_len {
+    for i in 0..output_len.get() {
         if norm[i] > 1e-10 {
             output[i] /= norm[i];
         }
@@ -4819,7 +4868,11 @@ pub fn istft(
     if center && unpadded_len > 0 {
         let start = pad;
         let end = start + unpadded_len;
-        output = output[start..end.min(output_len)].to_vec();
+        // safety: start < end <= output_len, therefore slice is non-empty
+        output = unsafe {
+            NonEmptySlice::new_unchecked(&output[start..end.min(output_len.get())])
+                .to_non_empty_vec()
+        };
     }
 
     Ok(output)

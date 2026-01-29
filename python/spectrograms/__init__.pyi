@@ -48,13 +48,12 @@ class WindowType:
     and spectral leakage in FFT-based analysis.
     """
 
-    @classmethod
-    def rectangular(cls) -> WindowType:
-        """Create a rectangular (no) window - best frequency resolution but high leakage.
-
+    rectangular: WindowType
+    """Create a rectangular (no) window - best frequency resolution but high leakage.
         :return: Rectangular window type
-        """
-        ...
+    """
+    ...
+
     """
     Create a Hanning window - good general-purpose window with moderate leakage.
 
@@ -544,6 +543,45 @@ class Spectrogram:
     @property
     def params(self) -> SpectrogramParams:
         """Get the computation parameters."""
+        ...
+
+    def astype(self, dtype: DTypeLike) -> npt.NDArray:
+        """Cast the spectrogram data to a different data type.
+
+        :param dtype: Desired data type (e.g., np.float32, np.float64)
+        :return: Spectrogram data as a NumPy array of specified dtype
+        """
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the device type and device ID for DLPack protocol.
+
+        Returns (1, 0) for CPU device.
+
+        :return: Tuple of (device_type, device_id)
+        """
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the spectrogram data as a DLPack capsule for  tensor exchange.
+
+        This method implements the DLPack protocol, enabling efficient data sharing with
+        deep learning frameworks like PyTorch, JAX, and TensorFlow without copying data.
+
+        :param stream: Must be None for CPU tensors
+        :param max_version: Maximum DLPack version supported by the consumer
+        :param dl_device: Target device (device_type, device_id). Must be (1, 0) for CPU
+        :param copy: If True, create a copy of the data
+        :return: A DLPack capsule containing the tensor data
+        :raises BufferError: If parameters are invalid for CPU tensors
+        """
         ...
 
 # ============================================================================

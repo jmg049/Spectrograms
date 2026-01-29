@@ -96,7 +96,7 @@ power: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512)
 magnitude: npt.NDArray[np.float64] = sg.compute_magnitude_spectrum(samples[:512], 512)
 
 # With windowing (sec:windows)
-power_windowed: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512, window=WindowType.hanning())
+power_windowed: npt.NDArray[np.float64] = sg.compute_power_spectrum(samples[:512], 512, window=WindowType.hanning)
 \end{lstlisting}
 
 \needspace{10\baselineskip}
@@ -111,9 +111,9 @@ Window functions from \cref{sec:windows}:
 
 \begin{lstlisting}[language=Python]
 # WindowType class methods
-rect: sg.WindowType = sg.WindowType.rectangular()
-hann: sg.WindowType = sg.WindowType.hanning()
-hamming: sg.WindowType = sg.WindowType.hamming()
+rect: sg.WindowType = sg.WindowTyperectangular
+hann: sg.WindowType = sg.WindowType.hanning
+hamming: sg.WindowType = sg.WindowType.hamming
 blackman: sg.WindowType = sg.WindowType.blackman()
 
 # Use with compute functions
@@ -146,7 +146,7 @@ STFT parameters from \cref{subsec:stft_definition}:
 
 \begin{lstlisting}[language=Python]
 # Manual configuration
-window: sg.WindowType = sg.WindowType.hanning()
+window: sg.WindowType = sg.WindowType.hanning
 stft: sg.StftParams = sg.StftParams(
     n_fft=512,
     hop_size=160,
@@ -581,9 +581,9 @@ sharpened = sg.sharpen_fft(image, amount=1.5)
 \textbf{WindowType:}
 
 \begin{lstlisting}[language=Python]
-sg.WindowType.rectangular()
-sg.WindowType.hanning()
-sg.WindowType.hamming()
+sg.WindowTyperectangular
+sg.WindowType.hanning
+sg.WindowType.hamming
 sg.WindowType.blackman()
 sg.WindowType.kaiser(beta: float)
 sg.WindowType.gaussian(std: float)

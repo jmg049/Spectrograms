@@ -38,7 +38,9 @@ def main():
     print(f"Generated {len(signals)} signals")
 
     # Set up parameters
-    stft = sg.StftParams(n_fft=512, hop_size=256, window="hanning", centre=True)
+    stft = sg.StftParams(
+        n_fft=512, hop_size=256, window=sg.WindowType.hanning, centre=True
+    )
     params = sg.SpectrogramParams(stft, sample_rate=sample_rate)
     mel_params = sg.MelParams(n_mels=80, f_min=0.0, f_max=8000.0)
     db_params = sg.LogParams(floor_db=-80.0)

@@ -4,7 +4,7 @@
 
 [![PyPI][pypi-img]][pypi] [![Docs][docs-img]][docs] [![License: MIT][license-img]][license]
 
-## Fast spectrogram computation library powered by Rust.
+## Fast spectrogram computation library powered by Rust
 
 </div>
 
@@ -31,6 +31,7 @@ cd Spectrograms/
 # In pyproject.toml under [tool.maturin], change "realfft" to `"fftw"
 maturin develop --release
 ```
+
 ## Benchmark Results
 
 Check out the [benchmark results](PYTHON_BENCHMARK.md) for detailed performance comparisons against NumPy and SciPy implementations across various configurations and signal types.
@@ -49,7 +50,7 @@ t = np.linspace(0, 1, sr)
 samples = np.sin(2 * np.pi * 440 * t)
 
 # Create parameters
-stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning())
+stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning)
 params = sg.SpectrogramParams(stft, sample_rate=sr)
 
 # Compute spectrogram
@@ -71,7 +72,7 @@ samples = np.random.randn(16000)  # Replace with real audio
 sr = 16000
 
 # Configure parameters
-stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning())
+stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning)
 params = sg.SpectrogramParams(stft, sample_rate=sr)
 mel_params = sg.MelParams(n_mels=80, f_min=0.0, f_max=8000.0)
 db_params = sg.LogParams(floor_db=-80.0)
@@ -94,7 +95,7 @@ import numpy as np
 import spectrograms as sg
 
 # Setup
-stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning())
+stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning)
 params = sg.SpectrogramParams(stft, sample_rate=16000)
 mel_params = sg.MelParams(n_mels=80, f_min=0.0, f_max=8000.0)
 db_params = sg.LogParams(floor_db=-80.0)
@@ -108,14 +109,12 @@ signals = [np.random.randn(16000) for _ in range(100)]
 spectrograms = [plan.compute(signal) for signal in signals]
 ```
 
-The planner API provides 1.5-3x speedup for batch processing by reusing FFT plans.
-
 ## Advanced Features
 
 ### MFCCs (Mel-Frequency Cepstral Coefficients)
 
 ```python
-stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning())
+stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning)
 mfcc_params = sg.MfccParams(n_mfcc=13)
 
 mfccs = sg.compute_mfcc(samples, stft, sample_rate=16000, n_mels=40, mfcc_params=mfcc_params)
@@ -125,7 +124,7 @@ mfccs = sg.compute_mfcc(samples, stft, sample_rate=16000, n_mels=40, mfcc_params
 ### Chromagram (Pitch Class Profiles)
 
 ```python
-stft = sg.StftParams(n_fft=4096, hop_size=512, window=sg.WindowType.hanning())
+stft = sg.StftParams(n_fft=4096, hop_size=512, window=sg.WindowType.hanning)
 chroma_params = sg.ChromaParams.music_standard()
 
 chroma = sg.compute_chromagram(samples, stft, sample_rate=22050, chroma_params=chroma_params)
@@ -143,6 +142,7 @@ stft_data = sg.compute_stft(samples, params)
 ## Window Functions
 
 Supported window functions:
+
 - `"hanning"` - Hann window (default)
 - `"hamming"` - Hamming window
 - `"blackman"` - Blackman window
@@ -151,6 +151,7 @@ Supported window functions:
 - `"gaussian=std"` - Gaussian window with std parameter (e.g., `"gaussian=0.4"`)
 
 Example:
+
 ```python
 stft = sg.StftParams(n_fft=512, hop_size=256, window="kaiser=8.0")
 ```
@@ -214,21 +215,25 @@ np.abs(spectrogram).shape  # works just fine
 All compute functions release the Python GIL during computation.
 
 **Linear spectrograms:**
+
 - `compute_linear_power_spectrogram(samples, params)`
 - `compute_linear_magnitude_spectrogram(samples, params)`
 - `compute_linear_db_spectrogram(samples, params, db_params)`
 
 **Mel spectrograms:**
+
 - `compute_mel_power_spectrogram(samples, params, mel_params)`
 - `compute_mel_magnitude_spectrogram(samples, params, mel_params)`
 - `compute_mel_db_spectrogram(samples, params, mel_params, db_params)`
 
 **ERB spectrograms:**
+
 - `compute_erb_power_spectrogram(samples, params, erb_params)`
 - `compute_erb_magnitude_spectrogram(samples, params, erb_params)`
 - `compute_erb_db_spectrogram(samples, params, erb_params, db_params)`
 
 **Other features:**
+
 - `compute_stft(samples, params)` - Raw STFT (complex output)
 - `compute_cqt(samples, sample_rate, cqt_params, hop_size)` - Constant-Q Transform
 - `compute_chromagram(samples, stft_params, sample_rate, chroma_params)`
@@ -253,17 +258,17 @@ shape = plan.output_shape(signal_length)
 ```
 
 Available plan types match the convenience functions:
+
 - `linear_power_plan`, `linear_magnitude_plan`, `linear_db_plan`
 - `mel_power_plan`, `mel_magnitude_plan`, `mel_db_plan`
 - `erb_power_plan`, `erb_magnitude_plan`, `erb_db_plan`
 
-
 ## Performance Notes
 
-- **Plan Reuse**: Creating FFT plans is expensive. Reuse plans via the `SpectrogramPlanner` API for 1.5-3x speedup in batch processing.
+- **Plan Reuse**: Creating FFT plans is expensive. Reuse plans via the `SpectrogramPlanner` API for a speedup in batch processing.
 - **FFT Size**: Powers of 2 (256, 512, 1024, 2048) are significantly faster than arbitrary sizes.
 - **GIL Release**: All compute functions release the Python GIL, allowing parallel processing of multiple audio files.
-- **Backend**: The default `realfft` backend is pure Rust with no system dependencies. Try building from source to enable the FFTW backend. It *may* offer better performance. 
+- **Backend**: The default `realfft` backend is pure Rust with no system dependencies. Try building from source to enable the FFTW backend. It *may* offer better performance.
 
 ## License
 
@@ -271,9 +276,9 @@ MIT License
 
 ## Links
 
-- **GitHub**: https://github.com/jmg049/Spectrograms
-- **Documentation**: https://jmg049.github.io/Spectrograms
-- **PyPI**: https://pypi.org/project/spectrograms/
+- **GitHub**: <https://github.com/jmg049/Spectrograms>
+- **Documentation**: <https://jmg049.github.io/Spectrograms>
+- **PyPI**: <https://pypi.org/project/spectrograms/>
 
 ## Contributing
 

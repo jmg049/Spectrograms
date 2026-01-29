@@ -294,46 +294,14 @@ pub fn magnitude_spectrum_2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2
 #[must_use]
 pub fn fftshift<T: Clone>(arr: Array2<T>) -> Array2<T> {
     let (nrows, ncols) = arr.dim();
-    let row_half = nrows / 2;
-    let col_half = ncols / 2;
-
-    let mut result = arr.clone();
-
-    // Swap quadrants:
-    // Original layout:  [0,0] [0,1]
-    //                   [1,0] [1,1]
-    // After shift:      [1,1] [1,0]
-    //                   [0,1] [0,0]
-
-    // Quadrant 0,0 -> shifted position (row_half, col_half)
-    for i in 0..row_half {
-        for j in 0..col_half {
-            result[[i + row_half, j + col_half]] = arr[[i, j]].clone();
-        }
+    if nrows == 0 || ncols == 0 {
+        return arr;
     }
 
-    // Quadrant 0,1 -> shifted position (row_half, 0)
-    for i in 0..row_half {
-        for j in col_half..ncols {
-            result[[i + row_half, j - col_half]] = arr[[i, j]].clone();
-        }
-    }
+    let row_shift = nrows / 2;
+    let col_shift = ncols / 2;
 
-    // Quadrant 1,0 -> shifted position (0, col_half)
-    for i in row_half..nrows {
-        for j in 0..col_half {
-            result[[i - row_half, j + col_half]] = arr[[i, j]].clone();
-        }
-    }
-
-    // Quadrant 1,1 -> shifted position (0, 0)
-    for i in row_half..nrows {
-        for j in col_half..ncols {
-            result[[i - row_half, j - col_half]] = arr[[i, j]].clone();
-        }
-    }
-
-    result
+    shift_2d(arr, row_shift, col_shift)
 }
 
 /// Inverse of [`fftshift`] - shift center back to corners.
@@ -351,37 +319,34 @@ pub fn fftshift<T: Clone>(arr: Array2<T>) -> Array2<T> {
 #[must_use]
 pub fn ifftshift<T: Clone>(arr: Array2<T>) -> Array2<T> {
     let (nrows, ncols) = arr.dim();
-    let row_half = nrows.div_ceil(2); // Ceiling division for odd sizes
-    let col_half = ncols.div_ceil(2);
-
-    let mut result = arr.clone();
-
-    // Inverse swap of quadrants
-    for i in 0..row_half {
-        for j in 0..col_half {
-            result[[i, j]] = arr[[i + nrows - row_half, j + ncols - col_half]].clone();
-        }
+    if nrows == 0 || ncols == 0 {
+        return arr;
     }
 
-    for i in 0..row_half {
-        for j in col_half..ncols {
-            result[[i, j]] = arr[[i + nrows - row_half, j - col_half]].clone();
-        }
+    let row_shift = nrows.div_ceil(2);
+    let col_shift = ncols.div_ceil(2);
+
+    shift_2d(arr, row_shift, col_shift)
+}
+
+fn shift_2d<T: Clone>(arr: Array2<T>, row_shift: usize, col_shift: usize) -> Array2<T> {
+    let (nrows, ncols) = arr.dim();
+    if nrows == 0 || ncols == 0 {
+        return arr;
     }
 
-    for i in row_half..nrows {
-        for j in 0..col_half {
-            result[[i, j]] = arr[[i - row_half, j + ncols - col_half]].clone();
-        }
+    let row_shift = row_shift % nrows;
+    let col_shift = col_shift % ncols;
+
+    if row_shift == 0 && col_shift == 0 {
+        return arr;
     }
 
-    for i in row_half..nrows {
-        for j in col_half..ncols {
-            result[[i, j]] = arr[[i - row_half, j - col_half]].clone();
-        }
-    }
-
-    result
+    Array2::from_shape_fn((nrows, ncols), |(i, j)| {
+        let src_i = (i + row_shift) % nrows;
+        let src_j = (j + col_shift) % ncols;
+        arr[[src_i, src_j]].clone()
+    })
 }
 
 /// Shift zero-frequency component to center for 1D array.
@@ -396,13 +361,8 @@ pub fn ifftshift<T: Clone>(arr: Array2<T>) -> Array2<T> {
 #[inline]
 #[must_use]
 pub fn fftshift_1d<T: Clone>(arr: Vec<T>) -> Vec<T> {
-    let n = arr.len();
-    let half = n / 2;
-
-    let mut result = Vec::with_capacity(n);
-    result.extend_from_slice(&arr[half..]);
-    result.extend_from_slice(&arr[..half]);
-    result
+    let len = arr.len();
+    rotate_left(arr, len / 2)
 }
 
 /// Inverse of fftshift for 1D arrays.
@@ -417,12 +377,23 @@ pub fn fftshift_1d<T: Clone>(arr: Vec<T>) -> Vec<T> {
 #[inline]
 #[must_use]
 pub fn ifftshift_1d<T: Clone>(arr: Vec<T>) -> Vec<T> {
+    let len = arr.len();
+    rotate_left(arr, len.div_ceil(2))
+}
+
+fn rotate_left<T: Clone>(arr: Vec<T>, shift: usize) -> Vec<T> {
     let n = arr.len();
-    let half = n.div_ceil(2);
+    if n == 0 {
+        return arr;
+    }
+    let k = shift % n;
+    if k == 0 {
+        return arr;
+    }
 
     let mut result = Vec::with_capacity(n);
-    result.extend_from_slice(&arr[n - half..]);
-    result.extend_from_slice(&arr[..n - half]);
+    result.extend_from_slice(&arr[k..]);
+    result.extend_from_slice(&arr[..k]);
     result
 }
 

@@ -1,5 +1,5 @@
 """
-Spectro-Temporal Modulation Transfer Function (STMTF) — Verifiable Test
+Spectro-Temporal Modulation Transfer Function (STMTF)
 
 Expected peaks:
     Temporal modulation  ≈ ±6 Hz

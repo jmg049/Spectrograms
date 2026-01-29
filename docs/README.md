@@ -96,4 +96,3 @@ Use the deployment script to create a zip file for upload:
 ../deploy_docs.sh
 ```
 
-This creates `audio_samples_docs.zip` ready for deployment.

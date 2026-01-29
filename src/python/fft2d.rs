@@ -29,7 +29,7 @@ fn extract_array<'py>(
         return array_result
             .extract::<PyReadonlyArray2<f64>>()
             .map_err(|e| {
-                pyo3::exceptions::PyTypeError::new_err(format!("Failed to extract array: {}", e))
+                pyo3::exceptions::PyTypeError::new_err(format!("Failed to extract array: {e}"))
             });
     }
 
@@ -56,7 +56,7 @@ fn extract_array_1d<'py>(
         return array_result
             .extract::<PyReadonlyArray1<f64>>()
             .map_err(|e| {
-                pyo3::exceptions::PyTypeError::new_err(format!("Failed to extract 1D array: {}", e))
+                pyo3::exceptions::PyTypeError::new_err(format!("Failed to extract 1D array: {e}"))
             });
     }
 
@@ -89,6 +89,8 @@ fn extract_array_1d<'py>(
 /// >>> spectrum.shape
 /// (128, 65)
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (data: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(data: numpy.typing.NDArray[numpy.float64])")]
 pub fn fft2d(py: Python, data: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<Complex64>>> {
     let data_arr = extract_array(py, data)?;
     let data_view = data_arr.as_array();
@@ -125,6 +127,7 @@ pub fn fft2d(py: Python, data: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<Comple
 /// >>> np.allclose(image, reconstructed)
 /// True
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (spectrum: "numpy.typing.NDArray[numpy.complex64]", output_ncols: "int"), text_signature = "(spectrum: numpy.typing.NDArray[numpy.complex64], output_ncols: int)")]
 pub fn ifft2d(
     py: Python,
@@ -164,6 +167,8 @@ pub fn ifft2d(
 /// >>> power[0, 0]  # DC component should have all energy
 /// 16777216.0
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (data: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(data: numpy.typing.NDArray[numpy.float64])")]
 pub fn power_spectrum_2d(py: Python, data: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64>>> {
     let data_arr = extract_array(py, data)?;
     let data_view = data_arr.as_array();
@@ -187,6 +192,8 @@ pub fn power_spectrum_2d(py: Python, data: &Bound<'_, PyAny>) -> PyResult<Py<PyA
 /// numpy.typing.NDArray[numpy.float64]
 ///     Magnitude spectrum with shape (nrows, ncols/2 + 1)
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (data: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(data: numpy.typing.NDArray[numpy.float64])")]
 pub fn magnitude_spectrum_2d(py: Python, data: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64>>> {
     let data_arr = extract_array(py, data)?;
     let data_view = data_arr.as_array();
@@ -208,6 +215,8 @@ pub fn magnitude_spectrum_2d(py: Python, data: &Bound<'_, PyAny>) -> PyResult<Py
 /// numpy.typing.NDArray[numpy.float64]
 ///     Shifted array with DC component at center
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (arr: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(arr: numpy.typing.NDArray[numpy.float64])")]
 pub fn fftshift(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64>>> {
     let arr_data = extract_array(py, arr)?;
     let arr_owned = arr_data.as_array().to_owned();
@@ -229,6 +238,8 @@ pub fn fftshift(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64>
 /// numpy.typing.NDArray[numpy.float64]
 ///     Shifted array with DC component at corners
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (arr: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(arr: numpy.typing.NDArray[numpy.float64])")]
 pub fn ifftshift(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64>>> {
     let arr_data = extract_array(py, arr)?;
     let arr_owned = arr_data.as_array().to_owned();
@@ -250,6 +261,8 @@ pub fn ifftshift(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64
 /// numpy.typing.NDArray[numpy.float64]
 ///     Shifted array with DC component at center
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (arr: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(arr: numpy.typing.NDArray[numpy.float64])")]
 pub fn fftshift_1d(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray1<f64>>> {
     let arr_data = extract_array_1d(py, arr)?;
     let arr_vec = arr_data.as_slice()?.to_vec();
@@ -269,6 +282,8 @@ pub fn fftshift_1d(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray1<f
 /// numpy.typing.NDArray[numpy.float64]
 ///     Shifted array
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (arr: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(arr: numpy.typing.NDArray[numpy.float64])")]
 pub fn ifftshift_1d(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray1<f64>>> {
     let arr_data = extract_array_1d(py, arr)?;
     let arr_vec = arr_data.as_slice()?.to_vec();
@@ -302,6 +317,7 @@ pub fn ifftshift_1d(py: Python, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyArray1<
 /// >>> freqs_hz = sg.fftfreq(100, frame_period)
 /// >>> # Returns frequencies in Hz
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (n, d = 1.0), text_signature = "(n: int, d: float = 1.0)")]
 pub fn fftfreq(py: Python, n: usize, d: f64) -> Py<PyArray<f64, numpy::Ix1>> {
     let freqs = rust_fft2d::fftfreq(n, d);
@@ -331,6 +347,7 @@ pub fn fftfreq(py: Python, n: usize, d: f64) -> Py<PyArray<f64, numpy::Ix1>> {
 /// >>> freqs = sg.rfftfreq(8, 1.0)
 /// >>> # Returns: [0.0, 0.125, 0.25, 0.375, 0.5]
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (n, d = 1.0), text_signature = "(n: int, d: float = 1.0)")]
 pub fn rfftfreq(py: Python, n: usize, d: f64) -> Py<numpy::PyArray<f64, numpy::Ix1>> {
     let freqs = rust_fft2d::rfftfreq(n, d);
@@ -360,6 +377,7 @@ pub fn rfftfreq(py: Python, n: usize, d: f64) -> Py<numpy::PyArray<f64, numpy::I
 /// >>> kernel.sum()  # Should be ~1.0
 /// 1.0
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (size: "int", sigma: "float"), text_signature = "(size: int, sigma: float)")]
 pub fn gaussian_kernel_2d(py: Python, size: usize, sigma: f64) -> PyResult<Py<PyArray2<f64>>> {
     let size = std::num::NonZeroUsize::new(size).ok_or_else(|| {
@@ -392,6 +410,8 @@ pub fn gaussian_kernel_2d(py: Python, size: usize, sigma: f64) -> PyResult<Py<Py
 /// >>> kernel = sg.gaussian_kernel_2d(9, 2.0)
 /// >>> blurred = sg.convolve_fft(image, kernel)
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (image: "numpy.typing.NDArray[numpy.float64]", kernel: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(image: numpy.typing.NDArray[numpy.float64], kernel: numpy.typing.NDArray[numpy.float64])")]
 pub fn convolve_fft(
     py: Python,
     image: &Bound<'_, PyAny>,
@@ -421,6 +441,8 @@ pub fn convolve_fft(
 /// numpy.typing.NDArray[numpy.float64]
 ///     Filtered image
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (image: "numpy.typing.NDArray[numpy.float64]", cutoff_fraction: "float"), text_signature = "(image: numpy.typing.NDArray[numpy.float64], cutoff_fraction: float)")]
 pub fn lowpass_filter(
     py: Python,
     image: &Bound<'_, PyAny>,
@@ -448,6 +470,8 @@ pub fn lowpass_filter(
 /// numpy.typing.NDArray[numpy.float64]
 ///     Filtered image with edges emphasized
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (image: "numpy.typing.NDArray[numpy.float64]", cutoff_fraction: "float"), text_signature = "(image: numpy.typing.NDArray[numpy.float64], cutoff_fraction: float)")]
 pub fn highpass_filter(
     py: Python,
     image: &Bound<'_, PyAny>,
@@ -477,6 +501,8 @@ pub fn highpass_filter(
 /// numpy.typing.NDArray[numpy.float64]
 ///     Filtered image
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (image: "numpy.typing.NDArray[numpy.float64]", low_cutoff: "float", high_cutoff: "float"), text_signature = "(image: numpy.typing.NDArray[numpy.float64], low_cutoff: float, high_cutoff: float)")]
 pub fn bandpass_filter(
     py: Python,
     image: &Bound<'_, PyAny>,
@@ -503,6 +529,8 @@ pub fn bandpass_filter(
 /// numpy.typing.NDArray[numpy.float64]
 ///     Edge-detected image
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (image: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(image: numpy.typing.NDArray[numpy.float64])")]
 pub fn detect_edges_fft(py: Python, image: &Bound<'_, PyAny>) -> PyResult<Py<PyArray2<f64>>> {
     let image_arr = extract_array(py, image)?;
     let image_view = image_arr.as_array();
@@ -526,6 +554,8 @@ pub fn detect_edges_fft(py: Python, image: &Bound<'_, PyAny>) -> PyResult<Py<PyA
 /// numpy.typing.NDArray[numpy.float64]
 ///     Sharpened image
 #[pyfunction]
+#[inline]
+#[pyo3(signature = (image: "numpy.typing.NDArray[numpy.float64]", amount: "float"), text_signature = "(image: numpy.typing.NDArray[numpy.float64], amount: float)")]
 pub fn sharpen_fft(
     py: Python,
     image: &Bound<'_, PyAny>,
@@ -552,7 +582,7 @@ pub fn sharpen_fft(
 /// >>> for _ in range(10):
 /// ...     image = np.random.randn(128, 128)
 /// ...     spectrum = planner.fft2d(image)
-#[pyclass(name = "Fft2dPlanner")]
+#[pyclass(name = "Fft2dPlanner", skip_from_py_object)]
 pub struct PyFft2dPlanner {
     inner: RustFft2dPlanner,
 }
@@ -561,7 +591,7 @@ pub struct PyFft2dPlanner {
 impl PyFft2dPlanner {
     /// Create a new 2D FFT planner.
     #[new]
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             inner: RustFft2dPlanner::new(),
         }
@@ -579,7 +609,7 @@ impl PyFft2dPlanner {
     /// numpy.typing.NDArray[numpy.complex64]
     ///     Complex 2D array with shape (nrows, ncols/2 + 1)
     #[pyo3(signature = (data: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(data: numpy.typing.NDArray[numpy.float64])")]
-    pub fn fft2d(
+    fn fft2d(
         &mut self,
         py: Python,
         data: PyReadonlyArray2<f64>,
@@ -608,7 +638,7 @@ impl PyFft2dPlanner {
     /// numpy.typing.NDArray[numpy.float64]
     ///     Real 2D array
     #[pyo3(signature = (spectrum: "numpy.typing.NDArray[numpy.complex64]", output_ncols: "int"), text_signature = "(spectrum: numpy.typing.NDArray[numpy.complex64], output_ncols: int)")]
-    pub fn ifft2d(
+    fn ifft2d(
         &mut self,
         py: Python,
         spectrum: PyReadonlyArray2<Complex64>,
@@ -625,7 +655,7 @@ impl PyFft2dPlanner {
 
     /// Compute 2D power spectrum using cached plans.
     #[pyo3(signature = (data: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(data: numpy.typing.NDArray[numpy.float64])")]
-    pub fn power_spectrum_2d(
+    fn power_spectrum_2d(
         &mut self,
         py: Python,
         data: PyReadonlyArray2<f64>,
@@ -639,7 +669,7 @@ impl PyFft2dPlanner {
 
     /// Compute 2D magnitude spectrum using cached plans.
     #[pyo3(signature = (data: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(data: numpy.typing.NDArray[numpy.float64])")]
-    pub fn magnitude_spectrum_2d(
+    fn magnitude_spectrum_2d(
         &mut self,
         py: Python,
         data: PyReadonlyArray2<f64>,

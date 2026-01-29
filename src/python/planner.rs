@@ -19,7 +19,7 @@ use std::num::NonZeroUsize;
 /// Creating a plan is more expensive than a single computation, but plans can be
 /// reused for multiple signals with the same parameters, providing significant
 /// performance benefits for batch processing.
-#[pyclass(name = "SpectrogramPlanner")]
+#[pyclass(name = "SpectrogramPlanner", skip_from_py_object)]
 pub struct PySpectrogramPlanner {
     inner: SpectrogramPlanner,
 }
@@ -442,7 +442,7 @@ macro_rules! impl_plan {
             #[pyo3(signature = (samples: "numpy.typing.NDArray[numpy.float64]"), text_signature = "(samples: numpy.typing.NDArray[numpy.float64]) -> Spectrogram")]
             fn compute(
                 &mut self,
-                _py: Python,
+                py: Python,
                 samples: PyReadonlyArray1<f64>,
             ) -> PyResult<PySpectrogram> {
                 let samples = samples.as_slice()?;
@@ -450,7 +450,7 @@ macro_rules! impl_plan {
                     pyo3::exceptions::PyValueError::new_err("Input samples cannot be empty")
                 })?;
                 let spec = self.inner.compute(samples)?;
-                Ok(PySpectrogram::$variant(spec))
+                Ok(PySpectrogram::from_spectrogram(py, spec))
             }
 
             /// Compute a single frame of the spectrogram.

@@ -15,7 +15,7 @@ use crate::{
 ///
 /// Represents window functions used for spectral analysis. Different windows provide
 /// different trade-offs between frequency resolution and spectral leakage.
-#[pyclass(name = "WindowType")]
+#[pyclass(name = "WindowType", from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PyWindowType {
     pub(crate) inner: WindowType,
@@ -276,7 +276,7 @@ impl From<WindowType> for PyWindowType {
 }
 
 /// STFT parameters for spectrogram computation.
-#[pyclass(name = "StftParams")]
+#[pyclass(name = "StftParams", from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PyStftParams {
     pub(crate) inner: StftParams,
@@ -357,7 +357,7 @@ impl PyStftParams {
 
 /// Decibel conversion parameters.
 
-#[pyclass(name = "LogParams")]
+#[pyclass(name = "LogParams", from_py_object)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PyLogParams {
     pub(crate) inner: LogParams,
@@ -388,7 +388,7 @@ impl PyLogParams {
 }
 
 /// Spectrogram computation parameters.
-#[pyclass(name = "SpectrogramParams")]
+#[pyclass(name = "SpectrogramParams", from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PySpectrogramParams {
     pub(crate) inner: SpectrogramParams,
@@ -490,7 +490,7 @@ impl From<PySpectrogramParams> for SpectrogramParams {
 }
 
 /// Mel filterbank normalization strategy.
-#[pyclass(name = "MelNorm")]
+#[pyclass(name = "MelNorm", from_py_object)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PyMelNorm {
     /// No normalization (triangular filters with peak = 1.0).
@@ -507,58 +507,60 @@ pub enum PyMelNorm {
 impl PyMelNorm {
     #[classattr]
     const fn none() -> Self {
-        PyMelNorm::None
+        Self::None
     }
 
     #[classattr]
     const fn slaney() -> Self {
-        PyMelNorm::Slaney
+        Self::Slaney
     }
 
     #[classattr]
     const fn l1() -> Self {
-        PyMelNorm::L1
+        Self::L1
     }
 
     #[classattr]
     const fn l2() -> Self {
-        PyMelNorm::L2
+        Self::L2
     }
 
     fn __repr__(&self) -> String {
         match self {
-            PyMelNorm::None => "MelNorm.None".to_string(),
-            PyMelNorm::Slaney => "MelNorm.Slaney".to_string(),
-            PyMelNorm::L1 => "MelNorm.L1".to_string(),
-            PyMelNorm::L2 => "MelNorm.L2".to_string(),
+            Self::None => "MelNorm.None".to_string(),
+            Self::Slaney => "MelNorm.Slaney".to_string(),
+            Self::L1 => "MelNorm.L1".to_string(),
+            Self::L2 => "MelNorm.L2".to_string(),
         }
     }
 }
 
 impl From<PyMelNorm> for MelNorm {
+    #[inline]
     fn from(py_norm: PyMelNorm) -> Self {
         match py_norm {
-            PyMelNorm::None => MelNorm::None,
-            PyMelNorm::Slaney => MelNorm::Slaney,
-            PyMelNorm::L1 => MelNorm::L1,
-            PyMelNorm::L2 => MelNorm::L2,
+            PyMelNorm::None => Self::None,
+            PyMelNorm::Slaney => Self::Slaney,
+            PyMelNorm::L1 => Self::L1,
+            PyMelNorm::L2 => Self::L2,
         }
     }
 }
 
 impl From<MelNorm> for PyMelNorm {
+    #[inline]
     fn from(norm: MelNorm) -> Self {
         match norm {
-            MelNorm::None => PyMelNorm::None,
-            MelNorm::Slaney => PyMelNorm::Slaney,
-            MelNorm::L1 => PyMelNorm::L1,
-            MelNorm::L2 => PyMelNorm::L2,
+            MelNorm::None => Self::None,
+            MelNorm::Slaney => Self::Slaney,
+            MelNorm::L1 => Self::L1,
+            MelNorm::L2 => Self::L2,
         }
     }
 }
 
 /// Mel-scale filterbank parameters.
-#[pyclass(name = "MelParams")]
+#[pyclass(name = "MelParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyMelParams {
     pub(crate) inner: MelParams,
@@ -606,8 +608,7 @@ impl PyMelParams {
                     "l2" => MelNorm::L2,
                     _ => {
                         return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                            "Invalid norm string: '{}'. Must be one of: 'none', 'slaney', 'l1', 'l2'",
-                            s
+                            "Invalid norm string: '{s}'. Must be one of: 'none', 'slaney', 'l1', 'l2'"
                         )));
                     }
                 }
@@ -668,7 +669,7 @@ impl PyMelParams {
 }
 
 /// ERB-scale (Equivalent Rectangular Bandwidth) filterbank parameters.
-#[pyclass(name = "ErbParams")]
+#[pyclass(name = "ErbParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyErbParams {
     pub(crate) inner: ErbParams,
@@ -726,7 +727,7 @@ impl PyErbParams {
 }
 
 /// Logarithmic frequency scale parameters.
-#[pyclass(name = "LogHzParams")]
+#[pyclass(name = "LogHzParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyLogHzParams {
     pub(crate) inner: LogHzParams,
@@ -784,7 +785,7 @@ impl PyLogHzParams {
 }
 
 /// Constant-Q Transform parameters.
-#[pyclass(name = "CqtParams")]
+#[pyclass(name = "CqtParams", from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PyCqtParams {
     pub(crate) inner: CqtParams,
@@ -824,7 +825,7 @@ impl PyCqtParams {
     }
 }
 
-#[pyclass(name = "ChromaNorm")]
+#[pyclass(name = "ChromaNorm", from_py_object)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct PyChromaNorm {
     pub(crate) inner: ChromaNorm,
@@ -884,7 +885,7 @@ impl From<PyChromaNorm> for ChromaNorm {
 }
 
 /// Chromagram (pitch class profile) parameters.
-#[pyclass(name = "ChromaParams")]
+#[pyclass(name = "ChromaParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyChromaParams {
     pub(crate) inner: ChromaParams,
@@ -968,7 +969,7 @@ impl From<PyChromaParams> for ChromaParams {
 }
 /// MFCC (Mel-Frequency Cepstral Coefficients) parameters.
 
-#[pyclass(name = "MfccParams")]
+#[pyclass(name = "MfccParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyMfccParams {
     pub(crate) inner: MfccParams,

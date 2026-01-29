@@ -423,6 +423,36 @@ fn test_fftshift_complex() {
     assert_complex_arrays_close(&data, &restored, EPSILON);
 }
 
+#[test]
+fn test_fftshift_roundtrip_odd_size() {
+    let data = Array2::<f64>::from_shape_fn((7, 5), |(i, j)| (i * 5 + j) as f64);
+
+    let shifted = fftshift(data.clone());
+    let restored = ifftshift(shifted);
+
+    assert_real_arrays_close(&data, &restored, EPSILON);
+}
+
+#[test]
+fn test_fftshift_1d_roundtrip_odd_length() {
+    let data = vec![0, 1, 2, 3, 4];
+    let shifted = fftshift_1d(data.clone());
+    assert_eq!(shifted, vec![2, 3, 4, 0, 1]);
+
+    let restored = ifftshift_1d(shifted);
+    assert_eq!(restored, data);
+}
+
+#[test]
+fn test_fftshift_1d_roundtrip_even_length() {
+    let data = vec![0, 1, 2, 3, 4, 5];
+    let shifted = fftshift_1d(data.clone());
+    assert_eq!(shifted, vec![3, 4, 5, 0, 1, 2]);
+
+    let restored = ifftshift_1d(shifted);
+    assert_eq!(restored, data);
+}
+
 // TODO: fftshift/ifftshift roundtrip for odd sizes needs investigation
 // The roundtrip may not be perfect for odd-sized arrays due to center calculation
 // #[test]

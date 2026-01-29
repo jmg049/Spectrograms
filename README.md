@@ -4,7 +4,7 @@
 
 [![Crates.io][crate-img]][crate] [![Docs.rs][docs-img]][docs] [![PyPI][pypi-img]][pypi] [![PyDocs][docs-img-py]][docs-python] [![License: MIT][license-img]][license]
 
-## FFT-based computations for audio and image processing with Rust and Python bindings.
+## FFT-based computations for audio and image processing with Rust and Python bindings
 
 </div>
 
@@ -17,23 +17,32 @@ If you want to learn more on the background of spectrograms and FFTs in audio/im
 ## Features
 
 ### Core Features
+
 - **Plan-Based Computation**: Reuse and cache FFT plans for speedup on batch processing
-- **Two FFT Backends**: pure-Rust RealFFT/RustFFT (default) or FFTW 
+- **Two FFT Backends**: pure-Rust RealFFT/RustFFT (default) or FFTW
 - **Type-Safe Rust API**: Compile-time guarantees for fft and spectrogram types
 - **Python Bindings**: Fast computation with NumPy integration and GIL-free execution. Outperforms NumPy/SciPy implementations across a wide range of configurations, all while providing a type-safe and simple API.
 
 ### Audio Processing
+
 - **Multiple Frequency Scales**: Linear, Mel, ERB, and CQT
 - **Multiple Amplitude Scales**: Power, Magnitude, and Decibels
 - **Advanced Audio Features**: MFCC, Chromagram, and raw STFT
 - **Streaming Support**: Frame-by-frame processing for real-time applications
 
 ### Image Processing
+
 - **2D FFT Operations**: Fast 2D Fourier transforms for images
 - **Spatial Filtering**: Low-pass, high-pass, and band-pass filters
 - **Convolution**: FFT-based convolution (faster for large kernels)
 - **Edge Detection**: Frequency-domain edge emphasis
 
+### Machine Learning Integration (Python)
+
+- **DLPack Protocol**:  tensor exchange with PyTorch, JAX, and TensorFlow
+- **Framework Support**: Convenience modules for PyTorch (`spectrograms.torch`) and JAX (`spectrograms.jax`)
+- **Metadata Preservation**: Optional retention of frequency/time axes and parameters
+- **Batching Utilities**: Efficient multi-spectrogram batching for training
 
 ## Why Choose Spectrograms?
 
@@ -81,7 +90,6 @@ Alongside this, the crate uses `NonZeroUsize` from the standard library to ensur
 
 To avoid having to constantly called `NonZeroUsize::new(constant)?` the crates provides the `nzu!` macro to create `NonZeroUsize` values at compile time.
 
-
 <table>
 <tr>
 <th>Rust</th>
@@ -91,9 +99,10 @@ To avoid having to constantly called `NonZeroUsize::new(constant)?` the crates p
 <td>
 
 ```rust
+use non_empty_slice::NonEmptyVec;
+use spectrograms::*;
 use std::f64::consts::PI;
-use non_empty_slice::non_empty_vec;
-// 1 second of 440 Hz sine wave
+
 let sample_rate = 16000.0;
 let samples: Vec<f64> = (0..16000)
     .map(|i| {
@@ -101,7 +110,8 @@ let samples: Vec<f64> = (0..16000)
         (2.0 * PI * 440.0 * t).sin()
     })
     .collect();
-let samples = non_empty_vec(samples);
+let samples = NonEmptyVec::new(samples).unwrap();
+samples
 ```
 
 </td>
@@ -109,6 +119,7 @@ let samples = non_empty_vec(samples);
 
 ```python
 import numpy as np
+import spectrograms as sg
 
 # 1 second of 440 Hz sine wave
 sample_rate = 16000
@@ -131,43 +142,34 @@ samples = np.sin(2 * np.pi * 440 * t)
 <td>
 
 ```rust
-use spectrograms::*;
-
+let samples = samples();
 // Configure parameters
 let stft = StftParams::new(
-    nzu!(512),                 // FFT size
-    nzu!(256),                 // hop size
+    nzu!(512),           // FFT size
+    nzu!(256),           // hop size
     WindowType::Hanning, // window
-    true                 // centre frames
+    true,                // centre frames
 )?;
 
 let params = SpectrogramParams::new(
-    stft,
-    sample_rate
+    stft, 16000.0, // sample rate
 )?;
 
 // Compute power spectrogram
-let spec = LinearPowerSpectrogram::compute(
-    &samples,
-    &params,
-    None
-)?;
+let spec = LinearPowerSpectrogram::compute(samples.as_non_empty_slice(), &params, None)?;
 
-println!("Shape: {} bins x {} frames",
-    spec.n_bins(), spec.n_frames());
+println!("Shape: {} bins x {} frames", spec.n_bins(), spec.n_frames());
 ```
 
 </td>
 <td>
 
 ```python
-import spectrograms as sg
-
 # Configure parameters
 stft = sg.StftParams(
     n_fft=512,
     hop_size=256,
-    window=sg.WindowType.hanning(),
+    window=sg.WindowType.hanning,
     centre=True
 )
 
@@ -204,40 +206,34 @@ Due to the interpretated nature of Python there is no compile-time guarantee for
 <td>
 
 ```rust
-use spectrograms::*;
-
+let samples = samples();
 let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true)?;
 let params = SpectrogramParams::new(stft, 16000.0)?;
 
 // Mel filterbank
 let mel = MelParams::new(
-    nzu!(80),      // n_mels
-    0.0,     // f_min
-    8000.0   // f_max
+    nzu!(80), // n_mels
+    0.0,      // f_min
+    8000.0,   // f_max
 )?;
 
 // dB scaling
 let db = LogParams::new(-80.0)?;
 
 // Compute mel spectrogram in dB
-let spec = MelDbSpectrogram::compute(
-    &samples, &params, &mel, Some(&db)
-)?;
+let spec = MelDbSpectrogram::compute(&samples, &params, &mel, Some(&db))?;
 
 // Access data
 println!("Mel bands: {}", spec.n_bins());
 println!("Frames: {}", spec.n_frames());
-println!("Frequency range: {:?}",
-    spec.axes().frequency_range());
+println!("Frequency range: {:?}", spec.axes().frequency_range());
 ```
 
 </td>
 <td>
 
 ```python
-import spectrograms as sg
-
-stft = sg.StftParams(512, 256, sg.WindowType.hanning(), True)
+stft = sg.StftParams(512, 256, sg.WindowType.hanning, True)
 params = sg.SpectrogramParams(stft, 16000)
 
 # Mel filterbank
@@ -283,9 +279,9 @@ Reuse FFT plans when processing multiple signals:
 use spectrograms::*;
 use non_empty_slice::non_empty_vec;
 let signals = vec![
-    non_empty_vec![0.0; 16000],
-    non_empty_vec![0.0; 16000],
-    non_empty_vec![0.0; 16000],
+    non_empty_vec![0.0; nzu!(16000)],
+    non_empty_vec![0.0; nzu!(16000)],
+    non_empty_vec![0.0; nzu!(16000)],
 ];
 
 let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true)?;
@@ -301,7 +297,7 @@ let mut plan = planner.mel_plan::<Decibels>(
 
 // Reuse for all signals (much faster!)
 for signal in signals {
-    let spec = plan.compute(&signal)?;
+    let _spec = plan.compute(&signal)?;
     // Process spec...
 }
 ```
@@ -310,18 +306,15 @@ for signal in signals {
 <td>
 
 ```python
-import spectrograms as sg
-import numpy as np
-
 signals = [
     np.random.randn(16000),
     np.random.randn(16000),
     np.random.randn(16000),
 ]
 
-stft = sg.StftParams(nzu!(512), nzu!(256), sg.WindowType.hanning(), True)
+stft = sg.StftParams(512, 256, sg.WindowType.hanning, True)
 params = sg.SpectrogramParams(stft, 16000)
-mel = sg.MelParams(nzu!(80), 0.0, 8000.0)
+mel = sg.MelParams(80, 0.0, 8000.0)
 db = sg.LogParams(-80.0)
 
 # Create plan once
@@ -340,6 +333,97 @@ for signal in signals:
 
 ---
 
+## Machine Learning Integration (Python)
+
+Convert spectrograms to PyTorch or JAX tensors using the DLPack protocol for data sharing:
+
+<table>
+<tr>
+<th>PyTorch</th>
+<th>JAX</th>
+</tr>
+<tr>
+<td>
+
+```python
+import spectrograms as sg
+import spectrograms.torch  # Adds .to_torch()
+import torch
+
+# Compute spectrogram
+stft = sg.StftParams(512, 256, sg.WindowType.hanning)
+params = sg.SpectrogramParams(stft, 16000)
+mel = sg.MelParams(128, 0.0, 8000.0)
+
+spec = sg.compute_mel_power_spectrogram(
+    samples, params, mel
+)
+
+#  conversion to PyTorch
+tensor = spec.to_torch(device='cuda')
+
+# With metadata preservation
+result = spec.to_torch(
+    device='cuda',
+    with_metadata=True
+)
+print(result.tensor.shape)
+print(result.frequencies[:5])
+print(result.times[:5])
+
+# Batch multiple spectrograms
+specs = [
+    sg.compute_mel_power_spectrogram(s, params, mel)
+    for s in audio_batch
+]
+batch = sg.torch.batch(specs, device='cuda')
+```
+
+</td>
+<td>
+
+```python
+import spectrograms as sg
+import spectrograms.jax  # Adds .to_jax()
+import jax
+
+# Compute spectrogram
+stft = sg.StftParams(512, 256, sg.WindowType.hanning)
+params = sg.SpectrogramParams(stft, 16000)
+mel = sg.MelParams(128, 0.0, 8000.0)
+
+spec = sg.compute_mel_power_spectrogram(
+    samples, params, mel
+)
+
+#  conversion to JAX
+array = spec.to_jax(device='gpu')
+
+# With metadata preservation
+result = spec.to_jax(
+    device='gpu',
+    with_metadata=True
+)
+print(result.array.shape)
+print(result.frequencies[:5])
+print(result.times[:5])
+
+# Batch multiple spectrograms
+specs = [
+    sg.compute_mel_power_spectrogram(s, params, mel)
+    for s in audio_batch
+]
+batch = sg.jax.batch(specs, device='gpu')
+```
+
+</td>
+</tr>
+</table>
+
+**Standard DLPack:** Also works directly with `torch.from_dlpack()`, `jax.dlpack.from_dlpack()`, and TensorFlow.
+
+---
+
 ## 2D FFT and Image Processing
 
 Perform 2D FFTs, convolution, and spatial filtering on images:
@@ -353,9 +437,9 @@ Perform 2D FFTs, convolution, and spatial filtering on images:
 <td>
 
 ```rust
+use ndarray::Array2;
 use spectrograms::fft2d::*;
 use spectrograms::image_ops::*;
-use ndarray::Array2;
 
 // Create a 256x256 image
 let image = Array2::<f64>::from_shape_fn((256, 256), |(i, j)| {
@@ -368,22 +452,21 @@ println!("Spectrum shape: {:?}", spectrum.shape());
 // Output: [256, 129] due to Hermitian symmetry
 
 // Apply Gaussian blur via FFT
-let kernel = gaussian_kernel_2d(9, 2.0);
-let blurred = convolve_fft(&image.view(), &kernel.view())?;
+let kernel = gaussian_kernel_2d(spectrograms::nzu!(9), 2.0)?;
+
+let _blurred = convolve_fft(&image.view(), &kernel.view())?;
 
 // Apply high-pass filter for edge detection
-let edges = highpass_filter(&image.view(), 0.1)?;
+let _edges = highpass_filter(&image.view(), 0.1)?;
 
 // Compute power spectrum
-let power = power_spectrum_2d(&image.view())?;
+let _power = power_spectrum_2d(&image.view())?;
 ```
 
 </td>
 <td>
 
 ```python
-import spectrograms as sg
-import numpy as np
 
 # Create a 256x256 image
 image = np.zeros((256, 256), dtype=np.float64)
@@ -424,8 +507,8 @@ Reuse 2D FFT plans for faster processing:
 <td>
 
 ```rust
-use spectrograms::fft2d::Fft2dPlanner;
 use ndarray::Array2;
+use spectrograms::fft2d::Fft2dPlanner;
 
 let images = vec![
     Array2::<f64>::zeros((256, 256)),
@@ -439,7 +522,7 @@ let mut planner = Fft2dPlanner::new();
 // Reuse for all images (faster!)
 for image in &images {
     let spectrum = planner.fft2d(&image.view())?;
-    let power = spectrum.mapv(|c| c.norm_sqr());
+    let _power = spectrum.mapv(|c| c.norm_sqr());
     // Process power spectrum...
 }
 ```
@@ -448,9 +531,6 @@ for image in &images {
 <td>
 
 ```python
-import spectrograms as sg
-import numpy as np
-
 images = [
     np.random.randn(256, 256),
     np.random.randn(256, 256),
@@ -486,8 +566,7 @@ for image in images:
 <td>
 
 ```rust
-use spectrograms::*;
-
+let samples = samples();
 let stft = StftParams::new(nzu!(512), nzu!(160), WindowType::Hanning, true)?;
 let mfcc_params = MfccParams::new(nzu!(13));
 
@@ -495,8 +574,8 @@ let mfccs = mfcc(
     &samples,
     &stft,
     16000.0,
-    nzu!(40),  // n_mels
-    &mfcc_params
+    nzu!(40), // n_mels
+    &mfcc_params,
 )?;
 
 // Shape: (13, n_frames)
@@ -507,9 +586,7 @@ println!("MFCCs: {} x {}", mfccs.nrows(), mfccs.ncols());
 <td>
 
 ```python
-import spectrograms as sg
-
-stft = sg.StftParams(512, 160, sg.WindowType.hanning(), True)
+stft = sg.StftParams(512, 160, sg.WindowType.hanning, True)
 mfcc_params = sg.MfccParams(n_mfcc=13)
 
 mfccs = sg.compute_mfcc(
@@ -539,29 +616,22 @@ print(f"MFCCs: {mfccs.shape}")
 <td>
 
 ```rust
-use spectrograms::*;
-
+let samples = samples();
 let stft = StftParams::new(nzu!(4096), nzu!(512), WindowType::Hanning, true)?;
-let chroma_params = ChromaParams::music_standard()?;
+let chroma_params = ChromaParams::music_standard();
 
-let chroma = chromagram(
-    &samples,
-    &stft,
-    22050.0,
-    &chroma_params
-)?;
+let chroma = chromagram(&samples, &stft, 22050.0, &chroma_params)?;
 
 // Shape: (12, n_frames) - one row per pitch class
 println!("Chroma: {} x {}", chroma.nrows(), chroma.ncols());
+
 ```
 
 </td>
 <td>
 
 ```python
-import spectrograms as sg
-
-stft = sg.StftParams(4096, 512, sg.WindowType.hanning(), True)
+stft = sg.StftParams(4096, 512, sg.WindowType.hanning, True)
 chroma_params = sg.ChromaParams.music_standard()
 
 chroma = sg.compute_chromagram(
@@ -649,22 +719,34 @@ let hann = WindowType::Hanning;
 let gauss = WindowType::Gaussian { std: 0.4 };
 
 // Generate windows
-let hann_window = WindowType::hanning_window(nzu!(512));
-let kaiser_window = WindowType::kaiser(nzu!(512), 8.0);
+let hann_window = make_window(WindowType::Hanning, nzu!(512));
+let kaiser_window = make_window(WindowType::Kaiser { beta: 8.0 }, nzu!(512));
 // etc.
+
+// Custom windows
+fn my_window_func(n_fft: usize) -> Vec<f64> {
+    (0..n_fft).map(|i| (i as f64 / n_fft as f64).sin()).collect()
+}
+let custom_window = WindowType::Custom(my_window_func);
 ```
 
 </td>
 <td>
 
 ```python
-# Use class methods
+# Use class methods for defining types
 window = sg.WindowType.hanning
 kaiser = sg.WindowType.kaiser(beta=8.0)
 gauss = sg.WindowType.gaussian(std=0.4)
 
-# Or from string
-stft = sg.StftParams(512, 256, "kaiser=8.0", True)
+# Or create the actual windows
+sg.WindowType.hanning_window(n_fft)
+sg.WindowType.kaiser_window(n_fft, beta=8.0)
+# etc.
+
+# Custom window from SciPy
+from scipy.signal.windows import tukey
+scipy_window = sg.WindowType.custom(tukey(n_fft, alpha=0.5))
 ```
 
 </td>
@@ -774,18 +856,37 @@ params = spec.params
 Comprehensive examples in both languages:
 
 **Rust** (`examples/`):
-- [`basic_linear.rs`](examples/basic_linear.rs) - Simple linear spectrogram
-- [`mel_spectrogram.rs`](examples/mel_spectrogram.rs) - Mel spectrogram with dB scaling
-- [`reuse_plan.rs`](examples/reuse_plan.rs) - Batch processing with plan reuse
-- [`compare_windows.rs`](examples/compare_windows.rs) - Window function comparison
+
 - [`amplitude_scales.rs`](examples/amplitude_scales.rs) - Power, Magnitude, and dB
+- [`basic_linear.rs`](examples/basic_linear.rs) - Simple linear spectrogram
+- ['compare_windows.rs'](examples/compare_windows.rs) - Window function effects
+- ['fft_padding_demo.rs'](examples/fft_padding_demo.rs) - FFT zero-padding effects
+- ['fft2d_basic.rs'](examples/fft2d_basic.rs) - 2D FFT basics
+- ['image_blur_fft.rs'](examples/image_blur_fft.rs) - FFT-based image blurring
+- ['image_edge_detection.rs'](examples/image_edge_detection.rs) - Frequency-domain edge detection
+- [`mel_spectrogram.rs`](examples/mel_spectrogram.rs) - Mel spectrogram with dB scaling
+- ['readme_snippets.rs'](examples/readme_snippets.rs) - Code snippets from README
+- ['reuse_plan.rs'](examples/reuse_plan.rs) - Batch processing with plan reuse
+- [`serde_example.rs`](examples/serde_example.rs) - Serialization with Serde
+- ['stft_batch.rs'](examples/stft_batch.rs) - Batch STFT computation
+- ['stft_multichannel.rs'](examples/stft_multichannel.rs) - Multichannel STFT
+- ['stft_streaming.rs'](examples/stft_streaming.rs) - Streaming STFT processing
+- ['stmtf.rs'](examples/stmtf.rs) - Spectro-Temporal Modulation Transfer Function (STMTF)
 
 **Python** (`python/examples/`):
+
 - [`basic_linear.py`](python/examples/basic_linear.py) - Linear spectrogram basics
+- [`batch_processing.py`](python/examples/batch_processing.py) - Efficient batch processing
+- [`chromagram_example.py`](python/examples/chromagram_example.py) - Pitch class profiles
+- ['compare_windows.py'](python/examples/compare_windows.py) - Window function effects
+- ['custom_window.py'](python/examples/custom_window.py) - Using custom windows
+- ['fft2d_basic.py'](python/examples/fft2d_basic.py) - 2D FFT basics
+- ['image_blur_fft.py'](python/examples/image_blur_fft.py) - FFT-based image blurring
+- ['image_edge_detection.py'](python/examples/image_edge_detection.py) - Frequency-domain edge detection
 - [`mel_spectrogram.py`](python/examples/mel_spectrogram.py) - Mel spectrograms
 - [`mfcc_example.py`](python/examples/mfcc_example.py) - MFCC computation
-- [`chromagram_example.py`](python/examples/chromagram_example.py) - Pitch class profiles
-- [`batch_processing.py`](python/examples/batch_processing.py) - Efficient batch processing
+- ['readme_snippets.py'](python/examples/readme_snippets.py) - Code snippets from README
+- ['stmtf.py'](python/examples/stmtf.py) - Spectro-Temporal Modulation Transfer Function (STMTF)
 - [`streaming.py`](python/examples/streaming.py) - Real-time frame-by-frame processing
 
 <table>
@@ -838,17 +939,18 @@ The Rust library requires exactly one FFT backend:
   - Works everywhere
 
 Additional flags:
+
 - **`python`**: Enables Python bindings
 - **`serde`**: Enables serialization support
 
 ```toml
 # Pure Rust, no Python
 [dependencies]
-spectrograms = { version = "0.2", default-features = false, features = ["realfft"] }
+spectrograms = { version = "1.0.0", default-features = false, features = ["realfft"] }
 
 # FFTW backend with Python
 [dependencies]
-spectrograms = { version = "0.2", default-features = false, features = ["fftw", "python"] }
+spectrograms = { version = "1.0.0", default-features = false, features = ["fftw", "python"] }
 ```
 
 ---
@@ -863,7 +965,6 @@ cargo bench
 
 For Python, a comprehensive benchmark notebook is available at `python/examples/notebook.ipynb` with results comparing ``spectrograms`` to numpy and ``scipy.fft``.
 
-
 |Operator |Rust (ms)|Rust Std|Numpy (ms)|Numpy Std|Scipy (ms)|Scipy Std|Avg Speedup vs NumPy|Avg Speedup vs SciPy|
 |---------|---------|--------|----------|---------|----------|---------|--------------------|--------------------|
 |db       |0.257    |0.165   |0.350     |0.251    |0.451     |0.366    |1.363               |1.755               |
@@ -872,7 +973,6 @@ For Python, a comprehensive benchmark notebook is available at `python/examples/
 |magnitude|0.140    |0.089   |0.198     |0.133    |0.319     |0.277    |1.419               |2.287               |
 |mel      |0.180    |0.139   |0.630     |0.851    |0.612     |0.801    |3.506               |3.406               |
 |power    |0.126    |0.082   |0.205     |0.141    |0.327     |0.288    |1.630               |2.603               |
-
 
 For the full benchmark results, see [PYTHON_BENCHMARK](PYTHON_BENCHMARK.md).
 
@@ -897,6 +997,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## FAQ / Troubleshooting
+
+- **Q: I get an error about not being able to cast an `ndarray` to an `ndarray`.
+  * A: This is a common issue when using the Python bindings. This occurs when the calling function expects a different dtype than what was provided. For example, a ML feature function may expect a `float32` array, whereas, by default, the library computes spectrograms in `float64` for maximum precision. To fix this simply call `.astype(np.float32)` on the spectrogram before passing it to the ML function. I plan to investigate better ways to handle this in the future, such as allowing users to specify the dtype when computing spectrograms.
+  This is not always necessary, depending on the function being called, for example, ``numpy`` functions will call the `__array__` method which will automatically cast to the expected dtype.
+
 ---
 
 ## Citation
@@ -904,10 +1010,10 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 If you use this library in academic work, please cite:
 
 ```bibtex
-@software{spectrograms2025,
+@software{spectrograms2026,
   author = {Geraghty, Jack},
   title = {Spectrograms: High-Performance Spectrogram Computation},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/jmg049/Spectrograms}
 }
 ```

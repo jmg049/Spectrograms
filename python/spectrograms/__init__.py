@@ -27,7 +27,7 @@ Audio Example:
     >>> samples = np.sin(2 * np.pi * 440 * t)
     >>>
     >>> # Create parameters
-    >>> stft = sg.StftParams(n_fft=512, hop_size=256, window="hanning")
+    >>> stft = sg.StftParams(n_fft=512, hop_size=256, window= sg.WindowType.hanning)
     >>> params = sg.SpectrogramParams(stft, sample_rate=sr)
     >>>
     >>> # Compute spectrogram
@@ -116,11 +116,3 @@ __all__ = [
     # Version
     "__version__",
 ]
-
-# For backwards compatibility, alias CQT functions if available
-try:
-    compute_cqt = compute_cqt_power_spectrogram
-    __all__.append("compute_cqt")
-except NameError:
-    # CQT not available in this build
-    pass

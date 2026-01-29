@@ -82,7 +82,7 @@ macro_rules! impl_py_compute_fns {
                     )
                 })?;
 
-                Ok(PySpectrogram::$variant(spec))
+                Ok(PySpectrogram::from_spectrogram(py, spec))
             }
 
         )+
@@ -176,7 +176,8 @@ macro_rules! impl_filterbank_compute_fns {
                     )
                 })?;
 
-                Ok(PySpectrogram::$variant(spec))
+                // Create PySpectrogram with Python-allocated data
+                Ok(PySpectrogram::from_spectrogram(py, spec))
             }
         )+
     };
@@ -322,7 +323,7 @@ pub fn compute_cqt_power_spectrogram(
             db.map(|d| &d.inner),
         )
     })?;
-    Ok(PySpectrogram::CqtPower(spec))
+    Ok(PySpectrogram::from_spectrogram(py, spec))
 }
 
 /// Compute a Constant-Q Transform magnitude spectrogram.
@@ -368,7 +369,7 @@ pub fn compute_cqt_magnitude_spectrogram(
             db.map(|d| &d.inner),
         )
     })?;
-    Ok(PySpectrogram::CqtMagnitude(spec))
+    Ok(PySpectrogram::from_spectrogram(py, spec))
 }
 
 /// Compute a Constant-Q Transform decibel spectrogram.
@@ -414,7 +415,7 @@ pub fn compute_cqt_db_spectrogram(
             db.map(|d| &d.inner),
         )
     })?;
-    Ok(PySpectrogram::CqtDb(spec))
+    Ok(PySpectrogram::from_spectrogram(py, spec))
 }
 
 /// Compute a chromagram (pitch class profile).
@@ -570,6 +571,7 @@ pub fn compute_stft(
 ///
 /// Complex FFT as a 1D `NumPy` array of complex128 with length `n_fft/2+1`
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "Optional[int]" = None,
@@ -596,6 +598,7 @@ pub fn compute_fft(
 
 /// Compute the real FFT of a signal.
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "int"
@@ -637,6 +640,7 @@ pub fn compute_rfft(
 /// ------
 /// `DimensionMismatch` - If samples length doesn't equal `n_fft`
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "int",
@@ -684,6 +688,7 @@ pub fn compute_power_spectrum(
 ///
 /// `DimensionMismatch` - If samples length doesn't equal `n_fft`
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "int",
@@ -730,6 +735,7 @@ pub fn compute_magnitude_spectrum(
 ///
 /// `DimensionMismatch` - If spectrum length doesn't equal `n_fft/2+1`
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (
     spectrum: "numpy.typing.NDArray[numpy.complex128]",
     n_fft: "int"
@@ -773,6 +779,7 @@ pub fn compute_irfft(
 ///
 /// `DimensionMismatch` - If STFT matrix shape doesn't match parameters
 #[pyfunction]
+#[inline]
 #[pyo3(signature = (
     stft_matrix: "numpy.typing.NDArray[numpy.complex64]",
     n_fft: "int",
@@ -798,7 +805,7 @@ pub fn compute_istft(
 
     let result = py.detach(|| istft(&stft_array, n_fft, hop_size, window.inner, center))?;
 
-    Ok(PyArray1::from_vec(py, result).unbind())
+    Ok(PyArray1::from_vec(py, result.to_vec()).unbind())
 }
 
 /// Register all convenience functions with the Python module.

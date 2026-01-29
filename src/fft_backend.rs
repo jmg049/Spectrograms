@@ -791,7 +791,7 @@ pub mod plan_cache {
         let plan = planner.plan_r2c(n_fft)?;
         let plan = Arc::new(plan);
 
-        // Evict oldest plan if cache is full (simple FIFO eviction)
+        // Evict an arbitrary plan if cache is full (HashMap iteration order)
         if cache.len() >= MAX_CACHED_PLANS {
             if let Some(key) = cache.keys().next().copied() {
                 cache.remove(&key);
@@ -831,7 +831,7 @@ pub mod plan_cache {
         let plan = planner.plan_c2r(n_fft)?;
         let plan = Arc::new(plan);
 
-        // Evict oldest plan if cache is full
+        // Evict an arbitrary plan if cache is full (HashMap iteration order)
         if cache.len() >= MAX_CACHED_PLANS {
             if let Some(key) = cache.keys().next().copied() {
                 cache.remove(&key);

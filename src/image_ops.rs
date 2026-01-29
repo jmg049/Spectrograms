@@ -75,7 +75,7 @@ use crate::{SpectrogramError, SpectrogramResult};
 /// # Performance
 ///
 /// For repeated convolutions with the same kernel size, consider using a
-/// planner from the [`fft2d`](crate::fft2d) module to cache FFT plans.
+/// planner from the [`fft2d`](mod@crate::fft2d) module to cache FFT plans.
 #[inline]
 pub fn convolve_fft(
     image: &ArrayView2<f64>,

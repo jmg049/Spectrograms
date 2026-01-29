@@ -13,21 +13,22 @@ use crate::{SpectrogramError, SpectrogramResult, WindowType, nzu};
 /// CQT parameters
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub struct CqtParams {
     /// Number of bins per octave
-    bins_per_octave: NonZeroUsize,
+    pub bins_per_octave: NonZeroUsize,
     /// Number of octaves to cover
-    n_octaves: NonZeroUsize,
+    pub n_octaves: NonZeroUsize,
     /// Minimum frequency (Hz)
-    f_min: f64,
+    pub f_min: f64,
     /// Q factor (constant quality factor)
-    q_factor: f64,
+    pub q_factor: f64,
     /// Window type for kernel generation
-    window: WindowType,
+    pub window: WindowType,
     /// Sparsity threshold (0.0 = no sparsity, 0.01 = 1% threshold)
-    sparsity_threshold: f64,
+    pub sparsity_threshold: f64,
     /// Whether to normalize kernels
-    normalize: bool,
+    pub normalize: bool,
 }
 
 impl CqtParams {
@@ -67,6 +68,31 @@ impl CqtParams {
             sparsity_threshold: 0.01,
             normalize: true,
         })
+    }
+
+    #[inline]
+    #[must_use]
+    /// Create new CQT parameters without validation (unsafe).
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that:
+    /// - `bins_per_octave` and `n_octaves` are non-zero (guaranteed by type)
+    /// - `f_min` is > 0 and finite
+    pub unsafe fn new_unchecked(
+        bins_per_octave: NonZeroUsize,
+        n_octaves: NonZeroUsize,
+        f_min: f64,
+    ) -> Self {
+        Self {
+            bins_per_octave,
+            n_octaves,
+            f_min,
+            q_factor: 1.0 / ((1.0 / bins_per_octave.get() as f64).exp2() - 1.0),
+            window: WindowType::Hanning,
+            sparsity_threshold: 0.01,
+            normalize: true,
+        }
     }
 
     /// Set the Q factor manually (overrides default based on `bins_per_octave`).
@@ -188,6 +214,87 @@ impl CqtParams {
             .collect();
         // safety: num_bins() is non-zero
         unsafe { NonEmptyVec::new_unchecked(freqs) }
+    }
+
+    /// Percussion default config
+    ///
+    /// # Returns
+    ///
+    /// `CqtParams` - CQT parameters optimized for percussive sounds
+    #[inline]
+    #[must_use]
+    pub fn percussive() -> Self {
+        // safety: The parameters provided are valid and will not cause any panics or invalid states. bins_per_octave and n_octaves are non-zero, and f_min is > 0.
+        unsafe { Self::new_unchecked(nzu!(12), nzu!(7), 32.7) }
+    }
+
+    /// Onset detection default config
+    ///
+    /// # Returns
+    ///
+    /// `CqtParams` - CQT parameters optimized for onset detection
+    #[inline]
+    #[must_use]
+    pub fn onset_detection() -> Self {
+        // safety: The parameters provided are valid and will not cause any panics or invalid states. bins_per_octave and n_octaves are non-zero, and f_min is > 0.
+        let mut params = unsafe { Self::new_unchecked(nzu!(24), nzu!(6), 55.0) };
+        params.q_factor = 0.5; // Lower Q for better time resolution
+        params.sparsity_threshold = 0.02;
+        params.normalize = true;
+        params
+    }
+
+    /// Create a CQT configuration optimized for chord detection.
+    ///
+    /// Uses settings that balance frequency resolution with computational
+    /// efficiency for real-time chord detection applications.
+    ///
+    /// # Returns
+    ///
+    /// `CqtParams` - CQT parameters optimized for chord detection
+    #[inline]
+    #[must_use]
+    pub fn chord_detection() -> Self {
+        // safety: The parameters provided are valid and will not cause any panics or invalid states. bins_per_octave and n_octaves are non-zero, and f_min is > 0.
+        let mut params = unsafe { Self::new_unchecked(nzu!(36), nzu!(5), 82.4) };
+        params.q_factor = 0.8; // Moderate Q for chord detection
+        params.sparsity_threshold = 0.02;
+        params.normalize = true;
+        params
+    }
+
+    /// Create a CQT configuration optimized for harmonic analysis.
+    ///
+    /// Uses 24 bins per octave for quarter-tone resolution,
+    /// providing detailed harmonic analysis capabilities.
+    ///
+    /// # Returns
+    ///
+    /// `CqtParams` - CQT parameters optimized for harmonic analysis
+    #[inline]
+    #[must_use]
+    pub fn harmonic() -> Self {
+        // safety: The parameters provided are valid and will not cause any panics or invalid states. bins_per_octave and n_octaves are non-zero, and f_min is > 0.
+        let mut params = unsafe { Self::new_unchecked(nzu!(24), nzu!(7), 55.0) };
+        params.q_factor = 1.0; // Standard Q for harmonic analysis
+        params.sparsity_threshold = 0.005;
+        params.normalize = true;
+        params
+    }
+
+    /// Create a CQT configuration optimized for musical analysis.
+    ///
+    /// Uses 12 bins per octave for chromatic scale analysis,
+    /// starting from C1 (32.7 Hz) for full piano range coverage.
+    #[inline]
+    #[must_use]
+    pub fn musical() -> Self {
+        // safety: The parameters provided are valid and will not cause any panics or invalid states. bins_per_octave and n_octaves are non-zero, and f_min is > 0.
+        let mut params = unsafe { Self::new_unchecked(nzu!(12), nzu!(7), 32.7) };
+        params.q_factor = 1.0; // Standard Q for musical analysis
+        params.sparsity_threshold = 0.01;
+        params.normalize = true;
+        params
     }
 }
 

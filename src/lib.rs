@@ -47,7 +47,7 @@
 //!
 //! - [`audio`] - Audio processing (spectrograms, MFCC, chroma, pitch analysis)
 //! - [`image`] - Image processing (convolution, filtering, frequency analysis)
-//! - [`fft`] - Core FFT operations (1D and 2D transforms)
+//! - [`mod@fft`] - Core FFT operations (1D and 2D transforms)
 //!
 //! All functionality is also exported at the crate root for convenience.
 //!
@@ -80,7 +80,6 @@
 //! - **Plan-based computation**: Reuse FFT plans for efficient batch processing
 //! - **Comprehensive window functions**: Hanning, Hamming, Blackman, Kaiser, Gaussian, etc.
 //! - **Type-safe API**: Compile-time guarantees for spectrogram types
-//! - **Zero-copy design**: Efficient memory usage with minimal allocations
 //!
 //! # Quick Start
 //!

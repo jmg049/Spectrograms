@@ -21,10 +21,17 @@ Features
 - **Edge detection**: Frequency-domain edge emphasis
 - **Image enhancement**: Sharpening and feature enhancement
 
+**Machine Learning Integration:**
+
+- **DLPack protocol**:  tensor exchange with PyTorch, JAX, and TensorFlow
+- **Framework support**: Convenience modules for PyTorch and JAX
+- **Metadata preservation**: Optional retention of frequency/time axes
+- **Batching utilities**: Efficient multi-spectrogram batching for training
+
 **Performance:**
 
 - **High performance**: Rust implementation with FFTW support
-- **Batch processing**: Reusable plans for efficient processing (1.5-3x speedup)
+- **Batch processing**: Reusable plans for efficient processing
 - **GIL release**: All functions release Python GIL for parallel processing
 - **Type-safe**: Full type stubs for IDE support
 
@@ -51,6 +58,23 @@ Audio Processing
 
    spec = sg.compute_mel_power_spectrogram(samples, params, mel_params)
    print(f"Shape: {spec.shape}")
+
+Machine Learning
+~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   import spectrograms as sg
+   import spectrograms.torch  # or spectrograms.jax
+
+   # Compute spectrogram
+   spec = sg.compute_mel_power_spectrogram(samples, params, mel_params)
+
+   # Convert to PyTorch tensor ( via DLPack)
+   tensor = spec.to_torch(device='cuda')
+
+   # Or use JAX
+   array = spec.to_jax(device='gpu')
 
 Image Processing
 ~~~~~~~~~~~~~~~~
@@ -94,6 +118,7 @@ Contents
    guide/planner_guide
    guide/audio_features
    guide/image_processing
+   guide/ml_integration
    guide/performance
    guide/examples
 

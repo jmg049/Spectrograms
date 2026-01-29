@@ -60,7 +60,7 @@ def main():
     stft = sg.StftParams(
         n_fft=512,  # 32ms frames at 16kHz
         hop_size=160,  # 10ms hop (typical for speech)
-        window="hanning",
+        window=sg.WindowType.hanning,
         centre=True,
     )
 

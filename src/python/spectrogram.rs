@@ -1,173 +1,56 @@
 //! Python spectrogram result class.
 
-use std::{
-    num::NonZeroUsize,
-    ops::{Deref, DerefMut},
-};
-
-use ndarray::Array2;
 use numpy::PyArray2;
 use pyo3::prelude::*;
 
-use crate::{
-    AmpScaleSpec, Cqt, Decibels, Gammatone, LinearHz, LogHz, Magnitude, Mel, Power, Spectrogram,
-    SpectrogramParams,
-};
+use crate::{AmpScaleSpec, Spectrogram, SpectrogramParams};
 
 use super::params::PySpectrogramParams;
-
-macro_rules! dispatch_inner {
-    ($self:expr, |$inner:ident| $body:expr) => {
-        match $self {
-            PySpectrogramInner::LinearPower($inner) => $body,
-            PySpectrogramInner::LinearMagnitude($inner) => $body,
-            PySpectrogramInner::LinearDb($inner) => $body,
-
-            PySpectrogramInner::LogHzPower($inner) => $body,
-            PySpectrogramInner::LogHzMagnitude($inner) => $body,
-            PySpectrogramInner::LogHzDb($inner) => $body,
-
-            PySpectrogramInner::GammatonePower($inner) => $body,
-            PySpectrogramInner::GammatoneMagnitude($inner) => $body,
-            PySpectrogramInner::GammatoneDb($inner) => $body,
-
-            PySpectrogramInner::MelPower($inner) => $body,
-            PySpectrogramInner::MelMagnitude($inner) => $body,
-            PySpectrogramInner::MelDb($inner) => $body,
-
-            PySpectrogramInner::CqtPower($inner) => $body,
-            PySpectrogramInner::CqtMagnitude($inner) => $body,
-            PySpectrogramInner::CqtDb($inner) => $body,
-        }
-    };
-}
-
-macro_rules! forward_methods {
-    (
-        $(
-            fn $name:ident (&self $(, $arg:ident : $ty:ty )* ) -> $ret:ty ;
-        )*
-    ) => {
-        $(
-            pub fn $name(&self $(, $arg : $ty )* ) -> $ret {
-                dispatch_inner!(self, |inner| inner.$name($($arg),*))
-            }
-        )*
-    };
-}
-
-#[derive(Debug, Clone)]
-enum PySpectrogramInner {
-    // Linear
-    LinearPower(TypedSpectrogramInner<LinearHz, Power>),
-    LinearMagnitude(TypedSpectrogramInner<LinearHz, Magnitude>),
-    LinearDb(TypedSpectrogramInner<LinearHz, Decibels>),
-    // Log Frequency
-    LogHzPower(TypedSpectrogramInner<LogHz, Power>),
-    LogHzMagnitude(TypedSpectrogramInner<LogHz, Magnitude>),
-    LogHzDb(TypedSpectrogramInner<LogHz, Decibels>),
-    // Gammatone
-    GammatonePower(TypedSpectrogramInner<Gammatone, Power>),
-    GammatoneMagnitude(TypedSpectrogramInner<Gammatone, Magnitude>),
-    GammatoneDb(TypedSpectrogramInner<Gammatone, Decibels>),
-    // Mel
-    MelPower(TypedSpectrogramInner<Mel, Power>),
-    MelMagnitude(TypedSpectrogramInner<Mel, Magnitude>),
-    MelDb(TypedSpectrogramInner<Mel, Decibels>),
-    // Cqt
-    CqtPower(TypedSpectrogramInner<Cqt, Power>),
-    CqtMagnitude(TypedSpectrogramInner<Cqt, Magnitude>),
-    CqtDb(TypedSpectrogramInner<Cqt, Decibels>),
-}
-
-impl PySpectrogramInner {
-    forward_methods! {
-        fn data(&self) -> &Array2<f64>;
-        fn n_frames(&self) -> NonZeroUsize;
-        fn n_bins(&self) -> NonZeroUsize;
-        fn params(&self) -> &SpectrogramParams;
-        fn db_range(&self) -> Option<(f64, f64)>;
-        fn times(&self) -> &[f64];
-        fn frequencies(&self) -> &[f64];
-        fn frequency_range(&self) -> (f64, f64);
-        fn duration(&self) -> f64;
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedSpectrogramInner<FreqScale, AmpScale>
-where
-    FreqScale: Copy + Clone + 'static,
-    AmpScale: AmpScaleSpec + 'static,
-{
-    spectrogram: Spectrogram<FreqScale, AmpScale>,
-}
-
-impl<FreqScale, AmpScale> TypedSpectrogramInner<FreqScale, AmpScale>
-where
-    FreqScale: Copy + Clone + 'static,
-    AmpScale: AmpScaleSpec + 'static,
-{
-    pub(crate) const fn new(spectrogram: Spectrogram<FreqScale, AmpScale>) -> Self {
-        Self { spectrogram }
-    }
-}
-
-impl<FreqScale, AmpScale> AsRef<Spectrogram<FreqScale, AmpScale>>
-    for TypedSpectrogramInner<FreqScale, AmpScale>
-where
-    FreqScale: Copy + Clone + 'static,
-    AmpScale: AmpScaleSpec + 'static,
-{
-    fn as_ref(&self) -> &Spectrogram<FreqScale, AmpScale> {
-        &self.spectrogram
-    }
-}
-
-impl<FreqScale, AmpScale> AsMut<Spectrogram<FreqScale, AmpScale>>
-    for TypedSpectrogramInner<FreqScale, AmpScale>
-where
-    FreqScale: Copy + Clone + 'static,
-    AmpScale: AmpScaleSpec + 'static,
-{
-    fn as_mut(&mut self) -> &mut Spectrogram<FreqScale, AmpScale> {
-        &mut self.spectrogram
-    }
-}
-
-impl<FreqScale, AmpScale> Deref for TypedSpectrogramInner<FreqScale, AmpScale>
-where
-    FreqScale: Copy + Clone + 'static,
-    AmpScale: AmpScaleSpec + 'static,
-{
-    type Target = Spectrogram<FreqScale, AmpScale>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.spectrogram
-    }
-}
-
-impl<FreqScale, AmpScale> DerefMut for TypedSpectrogramInner<FreqScale, AmpScale>
-where
-    FreqScale: Copy + Clone + 'static,
-    AmpScale: AmpScaleSpec + 'static,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.spectrogram
-    }
-}
 
 /// Spectrogram computation result.
 ///
 /// Contains the spectrogram data as a `NumPy` array along with frequency and time axes and the parameters used to create it.
 ///
-#[derive(Debug, Clone)]
-#[pyclass(name = "Spectrogram")]
+#[pyclass(name = "Spectrogram", skip_from_py_object)]
 pub struct PySpectrogram {
-    spectrogram_type: PySpectrogramInner,
+    py_data: Py<PyArray2<f64>>,
+    // Extracted metadata (no longer storing full Spectrogram to avoid duplication)
+    frequencies: Vec<f64>,
+    times: Vec<f64>,
+    params: SpectrogramParams,
+    db_range: Option<(f64, f64)>,
 }
 
-impl PySpectrogram {}
+impl PySpectrogram {
+    /// Create a PySpectrogram from computed Rust spectrogram.
+    /// Extracts metadata and transfers data ownership to Python (!).
+    pub(crate) fn from_spectrogram<FreqScale, AmpScale>(
+        py: Python<'_>,
+        spec: Spectrogram<FreqScale, AmpScale>,
+    ) -> Self
+    where
+        FreqScale: Copy + Clone + 'static,
+        AmpScale: AmpScaleSpec + 'static,
+    {
+        // Extract metadata before consuming spectrogram
+        let frequencies = spec.frequencies().to_vec();
+        let times = spec.times().to_vec();
+        let params = spec.params().clone();
+        let db_range = spec.db_range();
+
+        // Transfer ownership of Array2 to Python (NO COPY!)
+        let array = spec.into_data();
+        let py_data = PyArray2::from_owned_array(py, array).unbind();
+
+        Self {
+            py_data,
+            frequencies,
+            times,
+            params,
+            db_range,
+        }
+    }
+}
 
 #[pymethods]
 impl PySpectrogram {
@@ -179,9 +62,8 @@ impl PySpectrogram {
     ///     2D `NumPy` array with shape (`n_bins`, `n_frames`)
     #[getter]
     fn data<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
-        let inner_data: &Array2<f64> = self.spectrogram_type.data();
-
-        PyArray2::from_array(py, inner_data)
+        // Return the Python-allocated array (no copy!)
+        self.py_data.bind(py).clone()
     }
 
     /// Get the frequency axis values.
@@ -192,7 +74,7 @@ impl PySpectrogram {
     ///     List of frequency values (Hz or scale-specific units)
     #[getter]
     fn frequencies(&self) -> &[f64] {
-        self.spectrogram_type.frequencies()
+        &self.frequencies
     }
 
     /// Get the time axis values.
@@ -203,7 +85,7 @@ impl PySpectrogram {
     ///     List of time values in seconds
     #[getter]
     fn times(&self) -> &[f64] {
-        self.spectrogram_type.times()
+        &self.times
     }
 
     /// Get the number of frequency bins.
@@ -213,8 +95,8 @@ impl PySpectrogram {
     /// int
     ///     Number of frequency bins
     #[getter]
-    fn n_bins(&self) -> usize {
-        self.spectrogram_type.n_bins().get()
+    const fn n_bins(&self) -> usize {
+        self.frequencies.len()
     }
 
     /// Get the number of time frames.
@@ -224,8 +106,8 @@ impl PySpectrogram {
     /// int
     ///     Number of time frames
     #[getter]
-    fn n_frames(&self) -> usize {
-        self.spectrogram_type.n_frames().get()
+    const fn n_frames(&self) -> usize {
+        self.times.len()
     }
 
     /// Get the shape of the spectrogram.
@@ -235,7 +117,7 @@ impl PySpectrogram {
     /// tuple[int, int]
     ///     Tuple of (`n_bins`, `n_frames`)
     #[getter]
-    fn shape(&self) -> (usize, usize) {
+    const fn shape(&self) -> (usize, usize) {
         (self.n_bins(), self.n_frames())
     }
 
@@ -246,7 +128,14 @@ impl PySpectrogram {
     /// tuple[float, float]
     ///     Tuple of (`f_min`, `f_max`) in Hz or scale-specific units
     fn frequency_range(&self) -> (f64, f64) {
-        self.spectrogram_type.frequency_range()
+        if self.frequencies.is_empty() {
+            (0.0, 0.0)
+        } else {
+            (
+                self.frequencies[0],
+                self.frequencies[self.frequencies.len() - 1],
+            )
+        }
     }
 
     /// Get the total duration.
@@ -256,7 +145,11 @@ impl PySpectrogram {
     /// float
     ///     Duration in seconds
     fn duration(&self) -> f64 {
-        self.spectrogram_type.duration()
+        if self.times.is_empty() {
+            0.0
+        } else {
+            self.times[self.times.len() - 1]
+        }
     }
 
     /// Get the decibel range if applicable.
@@ -265,8 +158,8 @@ impl PySpectrogram {
     /// -------
     /// tuple[float, float] or None
     ///     Tuple of (`min_db`, `max_db`) for decibel-scaled spectrograms, None otherwise
-    fn db_range(&self) -> Option<(f64, f64)> {
-        self.spectrogram_type.db_range()
+    const fn db_range(&self) -> Option<(f64, f64)> {
+        self.db_range
     }
 
     /// Get the computation parameters.
@@ -277,18 +170,22 @@ impl PySpectrogram {
     ///     The `SpectrogramParams` used to compute this spectrogram
     #[getter]
     fn params(&self) -> PySpectrogramParams {
-        self.spectrogram_type.params().clone().into()
+        self.params.clone().into()
     }
 
     fn __repr__(&self) -> String {
-        format!("{:?}", self.spectrogram_type)
+        format!(
+            "Spectrogram(shape=({}, {}))",
+            self.n_bins(),
+            self.n_frames()
+        )
     }
 
     fn __str__(&self) -> String {
         self.__repr__()
     }
 
-    fn __len__(&self) -> usize {
+    const fn __len__(&self) -> usize {
         self.n_frames()
     }
 
@@ -299,10 +196,22 @@ impl PySpectrogram {
     /// numpy.typing.NDArray[numpy.float64]
     ///     Transposed 2D `NumPy` array with shape (`n_frames`, `n_bins`)
     #[getter]
-    fn T<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
-        let data = self.spectrogram_type.data();
-        let data_t = data.t();
-        PyArray2::from_array(py, &data_t.to_owned())
+    #[allow(non_snake_case)]
+    fn T<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let arr = self.py_data.bind(py);
+        // Use numpy's .T property for transpose
+        arr.getattr("T").map(|t| t.clone().into_any())
+    }
+
+    #[pyo3(signature = (dtype), text_signature = "($self, dtype)")]
+    fn astype<'py>(
+        &'py self,
+        py: Python<'py>,
+        dtype: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let arr = self.py_data.bind(py);
+        arr.call_method1("astype", (dtype,))
+            .map(pyo3::Bound::into_any)
     }
 
     #[pyo3(signature = (dtype=None), text_signature = "($self, dtype=None)")]
@@ -311,8 +220,7 @@ impl PySpectrogram {
         py: Python<'py>,
         dtype: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let data = self.spectrogram_type.data();
-        let arr = PyArray2::from_array(py, data);
+        let arr = self.py_data.bind(py);
 
         if let Some(dt) = dtype {
             // Convert to requested dtype
@@ -320,7 +228,7 @@ impl PySpectrogram {
             Ok(casted)
         } else {
             // Return as-is (f64)
-            Ok(arr.into_any())
+            Ok(arr.clone().into_any())
         }
     }
 
@@ -329,57 +237,124 @@ impl PySpectrogram {
         py: Python<'py>,
         idx: &Bound<'py, PyAny>,
     ) -> PyResult<Py<PyAny>> {
-        let data = self.spectrogram_type.data();
-        let arr = PyArray2::from_array(py, data);
+        let arr = self.py_data.bind(py);
         let sliced: Bound<'py, PyAny> = arr.get_item(idx)?;
         Ok(sliced.unbind())
     }
-}
 
-macro_rules! impl_py_spectrogram_ctor {
-    (
-        $(
-            ($freq_scale:ty, $amp_scale:ty, $variant:ident)
-        ),+ $(,)?
-    ) => {
-        #[allow(non_snake_case)]
-        impl PySpectrogram {
-            $(
-                pub(crate) const fn $variant(
-                    spectrogram: Spectrogram<$freq_scale, $amp_scale>
-                ) -> Self {
-                    Self {
-                        spectrogram_type: PySpectrogramInner::$variant(
-                            TypedSpectrogramInner::new(spectrogram)
-                        ),
-                    }
-                }
-            )+
+    /// Return the device type and device ID for DLPack protocol.
+    ///
+    /// Returns
+    /// -------
+    /// tuple[int, int]
+    ///     A tuple of (device_type, device_id). Always returns (1, 0) for CPU.
+    ///
+    /// Notes
+    /// -----
+    /// This method is part of the DLPack protocol for tensor exchange.
+    /// Device type 1 indicates CPU. This library only supports CPU tensors.
+    #[staticmethod]
+    const fn __dlpack_device__() -> (i32, i32) {
+        (1, 0) // (kDLCPU, device_id=0)
+    }
+
+    /// Export the spectrogram data as a DLPack capsule for tensor exchange.
+    ///
+    /// This method implements the DLPack protocol, enabling efficient data sharing with
+    /// deep learning frameworks like PyTorch, JAX, and TensorFlow without copying data.
+    ///
+    /// Parameters
+    /// ----------
+    /// stream : int, optional
+    ///     Must be None for CPU tensors. Provided for protocol compatibility.
+    /// max_version : tuple[int, int], optional
+    ///     Maximum DLPack version supported by the consumer. Must be >= (1, 0).
+    /// dl_device : tuple[int, int], optional
+    ///     Target device (device_type, device_id). If specified, must be (1, 0) for CPU.
+    /// copy : bool, optional
+    ///     If True, create a copy of the data. If False or None (default), return
+    ///     a view when possible.
+    ///
+    /// Returns
+    /// -------
+    /// PyCapsule
+    ///     A DLPack capsule named "dltensor" containing the tensor data.
+    ///
+    /// Raises
+    /// ------
+    /// BufferError
+    ///     If stream is not None, if the requested device is not CPU, or if the
+    ///     requested DLPack version is not supported.
+    ///
+    /// Examples
+    /// --------
+    /// >>> import spectrograms as sg
+    /// >>> import torch
+    /// >>> import numpy as np
+    /// >>>
+    /// >>> samples = np.random.randn(16000)
+    /// >>> stft = sg.StftParams(n_fft=512, hop_size=256, window= sg.WindowType.hanning)
+    /// >>> params = sg.SpectrogramParams(stft, sample_rate=16000.0)
+    /// >>> spec = sg.compute_mel_power_spectrogram(samples, params, n_mels=128)
+    /// >>>
+    /// >>> # conversion to PyTorch
+    /// >>> tensor = torch.from_dlpack(spec)
+    /// >>> print(tensor.shape, tensor.dtype)
+    ///
+    /// Notes
+    /// -----
+    /// The DLPack protocol enables data exchange between Python array libraries.
+    /// The returned capsule can be consumed by frameworks supporting DLPack (PyTorch, JAX,
+    /// TensorFlow, etc.) using their respective `from_dlpack()` functions.
+    ///
+    /// The data remains owned by the Python array until all consumers release it.
+    #[pyo3(signature = (*, stream=None, max_version=None, dl_device=None, copy=None))]
+    fn __dlpack__<'py>(
+        &self,
+        py: Python<'py>,
+        stream: Option<&Bound<'py, PyAny>>,
+        max_version: Option<(u32, u32)>,
+        dl_device: Option<(i32, i32)>,
+        copy: Option<bool>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyCapsule>> {
+        use crate::python::dlpack::{DLPACK_FLAG_BITMASK_IS_COPIED, create_dlpack_capsule};
+
+        // Validate: stream must be None for CPU
+        if stream.is_some() {
+            return Err(pyo3::exceptions::PyBufferError::new_err(
+                "stream must be None for CPU tensors",
+            ));
         }
-    };
-}
 
-impl_py_spectrogram_ctor! {
-    // Linear
-    (LinearHz, Power, LinearPower),
-    (LinearHz, Magnitude, LinearMagnitude),
-    (LinearHz, Decibels, LinearDb),
-    // LogHz
-    (LogHz, Power, LogHzPower),
-    (LogHz, Magnitude, LogHzMagnitude),
-    (LogHz, Decibels, LogHzDb),
-    // Gammatone
-    (Gammatone, Power, GammatonePower),
-    (Gammatone, Magnitude, GammatoneMagnitude),
-    (Gammatone, Decibels, GammatoneDb),
-    // Mel
-    (Mel, Power, MelPower),
-    (Mel, Magnitude, MelMagnitude),
-    (Mel, Decibels, MelDb),
-    // Cqt
-    (Cqt, Power, CqtPower),
-    (Cqt, Magnitude, CqtMagnitude),
-    (Cqt, Decibels, CqtDb),
+        // Validate: version must be >= 1.0
+        if let Some((major, minor)) = max_version {
+            if major < 1 {
+                return Err(pyo3::exceptions::PyBufferError::new_err(format!(
+                    "Unsupported DLPack version: {major}.{minor}"
+                )));
+            }
+        }
+
+        // Validate: only CPU device supported
+        if let Some((dev_type, dev_id)) = dl_device {
+            if dev_type != 1 || dev_id != 0 {
+                return Err(pyo3::exceptions::PyBufferError::new_err(
+                    "Only CPU device (1, 0) is supported",
+                ));
+            }
+        }
+
+        // Handle copy parameter
+        let mut flags = 0u64;
+        if copy == Some(true) {
+            flags |= DLPACK_FLAG_BITMASK_IS_COPIED;
+        }
+
+        // Use the Python-allocated array directly (true !)
+        let arr = self.py_data.bind(py).clone();
+
+        create_dlpack_capsule(py, &arr, flags)
+    }
 }
 
 /// Register the spectrogram class with the Python module.

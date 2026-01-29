@@ -1,7 +1,7 @@
 Performance and Benchmarks
 ===========================
 
-The spectrograms library is designed for high performance, with a Rust core and zero-copy Python bindings.
+The spectrograms library is designed for high performance, with a Rust core and  Python bindings.
 
 Benchmark Results
 -----------------
@@ -65,7 +65,7 @@ Key Findings
 2. **Basic operations** (Power, Magnitude, dB) show 1.4-2.6x speedups from:
 
    - Rust's performance
-   - Zero-copy NumPy integration
+   -  NumPy integration
    - GIL release during computation
 
 3. **Consistency**: Low standard deviations show reliable, predictable performance
@@ -124,17 +124,15 @@ Always use plans for batch processing:
 
 .. code-block:: python
 
-   # ❌ Slow: Creates new plan every iteration
+   # Slow: Creates new plan every iteration
    for signal in signals:
        spec = sg.compute_mel_db_spectrogram(signal, params, mel_params, db_params)
 
-   # ✅ Fast: Reuses plan
+   # Fast: Reuses plan
    planner = sg.SpectrogramPlanner()
    plan = planner.mel_db_plan(params, mel_params, db_params)
    for signal in signals:
        spec = plan.compute(signal)
-
-**Speedup: 1.5-3x** depending on operation type.
 
 2. Choose Power-of-2 FFT Sizes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -143,12 +141,12 @@ FFT algorithms are optimized for power-of-2 sizes:
 
 .. code-block:: python
 
-   # ✅ Fast
+   # Fast
    stft = sg.StftParams(n_fft=512, ...)   # 2^9
    stft = sg.StftParams(n_fft=1024, ...)  # 2^10
    stft = sg.StftParams(n_fft=2048, ...)  # 2^11
 
-   # ❌ Slower
+   # Slower
    stft = sg.StftParams(n_fft=1000, ...)  # Not power-of-2
 
 3. Streaming for Real-Time Applications
@@ -166,7 +164,51 @@ For real-time processing, use frame-by-frame computation:
 
 This minimizes latency and memory usage.
 
-4. Batch Processing with Parallelism
+4.  DLPack Transfers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using ML frameworks, leverage the DLPack protocol for  tensor exchange:
+
+.. code-block:: python
+
+   import spectrograms as sg
+   import spectrograms.torch as sgt
+
+   # Compute spectrograms on CPU (fast with Rust)
+   specs = [
+       sg.compute_mel_power_spectrogram(audio, params, mel_params)
+       for audio in batch
+   ]
+
+   #  transfer to GPU
+   gpu_batch = sgt.batch(specs, device='cuda')
+
+**Benefits:**
+
+- No data copying from spectrogram to tensor
+- Direct memory sharing between library and framework
+- Efficient batch transfer to GPU
+
+**Memory Note:** Keep the original ``Spectrogram`` objects alive while using tensors, as they share memory:
+
+.. code-block:: python
+
+   # ✓ Good: Spectrogram kept in scope
+   spec = sg.compute_mel_power_spectrogram(samples, params, mel_params)
+   tensor = torch.from_dlpack(spec)
+   result = model(tensor)
+
+   # ✗ Bad: Spectrogram may be garbage collected
+   tensor = torch.from_dlpack(
+       sg.compute_mel_power_spectrogram(samples, params, mel_params)
+   )
+
+See :doc:`ml_integration` for complete ML integration guide.
+
+5. Batch Processing with Parallelism
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Since computation releases the GIL, process multiple files in parallel:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Since computation releases the GIL, process multiple files in parallel:
@@ -183,40 +225,6 @@ Since computation releases the GIL, process multiple files in parallel:
 
    with ThreadPoolExecutor(max_workers=4) as executor:
        results = list(executor.map(process_file, signals))
-
-5. Choose the Right Backend
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The library supports two FFT backends:
-
-- **RealFFT** (default): Pure Rust, no dependencies, good performance
-- **FFTW**: Requires system library, may be faster for specific sizes
-
-If performance is critical, benchmark both backends for your specific use case.
-
-Backend Comparison
-~~~~~~~~~~~~~~~~~~
-
-Performance depends on FFT size, system architecture, and available SIMD instructions. General guidelines:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 35 35
-
-   * - FFT Size
-     - RealFFT
-     - FFTW
-   * - Small (≤ 512)
-     - Excellent
-     - Excellent
-   * - Medium (1024-2048)
-     - Excellent
-     - Excellent (slightly faster)
-   * - Large (≥ 4096)
-     - Good
-     - Better
-
-Both backends provide substantial speedups over NumPy/SciPy.
 
 Measuring Your Performance
 ---------------------------

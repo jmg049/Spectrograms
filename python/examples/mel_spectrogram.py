@@ -38,7 +38,9 @@ def main():
     print(f"  Samples: {len(samples)}")
 
     # Configure parameters
-    stft = sg.StftParams(n_fft=512, hop_size=256, window="hanning", centre=True)
+    stft = sg.StftParams(
+        n_fft=512, hop_size=256, window=sg.WindowType.hanning, centre=True
+    )
     params = sg.SpectrogramParams(stft, sample_rate=sample_rate)
 
     # Mel filterbank parameters

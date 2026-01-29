@@ -84,7 +84,7 @@ def main():
     stft = sg.StftParams(
         n_fft=4096,  # Larger FFT for music
         hop_size=512,  # ~23ms hop
-        window="hanning",
+        window=sg.WindowType.hanning,
         centre=True,
     )
 

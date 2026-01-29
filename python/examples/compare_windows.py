@@ -27,28 +27,27 @@ def main():
         + 0.6 * np.sin(2 * np.pi * 659 * t)
     )
 
-    print(f"\nTest signal:")
+    print("\nTest signal:")
     print(f"  Sample rate: {sample_rate} Hz")
     print(f"  Duration: {duration} s")
-    print(f"  Frequencies: 440 Hz, 554 Hz, 659 Hz (A major chord)")
+    print("  Frequencies: 440 Hz, 554 Hz, 659 Hz (A major chord)")
 
     # Window functions to compare
     windows = [
-        ("hanning", "Hann Window"),
-        ("hamming", "Hamming Window"),
-        ("blackman", "Blackman Window"),
-        ("bartlett", "Bartlett (Triangular) Window"),
-        ("rectangular", "Rectangular Window (no windowing)"),
-        ("kaiser=5.0", "Kaiser Window (β=5.0)"),
-        ("kaiser=8.6", "Kaiser Window (β=8.6)"),
-        ("gaussian=0.4", "Gaussian Window (σ=0.4)"),
+        ("rectangular", sg.WindowType.rectangular),
+        ("hanning", sg.WindowType.hanning),
+        ("hamming", sg.WindowType.hamming),
+        ("blackman", sg.WindowType.blackman),
+        ("kaiser=5.0", sg.WindowType.kaiser(5.0)),
+        ("kaiser=8.6", sg.WindowType.kaiser(8.6)),
+        ("gaussian=0.4", sg.WindowType.gaussian(0.4)),
     ]
 
     # Common STFT parameters
     n_fft = 512
     hop_size = 256
 
-    print(f"\nSTFT configuration:")
+    print("\nSTFT configuration:")
     print(f"  FFT size: {n_fft}")
     print(f"  Hop size: {hop_size}")
 
@@ -56,12 +55,12 @@ def main():
 
     # Compute spectrogram with each window
     for window_name, window_desc in windows:
-        print(f"\n" + "-" * 60)
+        print("\n" + "-" * 60)
         print(f"{window_desc}")
         print("-" * 60)
 
         stft = sg.StftParams(
-            n_fft=n_fft, hop_size=hop_size, window=window_name, centre=True
+            n_fft=n_fft, hop_size=hop_size, window=window_desc, centre=True
         )
 
         params = sg.SpectrogramParams(stft, sample_rate=sample_rate)
@@ -76,7 +75,7 @@ def main():
         avg_power = np.mean(spec.data, axis=1)
         top_bins = np.argsort(avg_power)[-3:][::-1]  # Top 3 bins, descending
 
-        print(f"\nTop 3 frequency peaks:")
+        print("\nTop 3 frequency peaks:")
         for i, bin_idx in enumerate(top_bins):
             freq = spec.frequencies[bin_idx]
             power = avg_power[bin_idx]

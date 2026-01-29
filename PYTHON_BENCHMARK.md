@@ -4,7 +4,7 @@
 
 **spectrograms** (Rust implementation with Python bindings) against **straightforward NumPy reference implementations** and **SciPy implementations** for common audio spectrogram operations.
 
-**Key insight**: While the likes of the NumPy implementations *can* be optimized to match spectrograms' performance, **spectrograms provides these optimizations out-of-the-box**. Users get high-performance implementations without needing to understand pre-computation, filterbank caching, or memory layout optimizations --- they just call the function and get optimal performance automatically. 
+**Key insight**: While the likes of the NumPy implementations *can* be optimized to match spectrograms' performance, **spectrograms provides these optimizations out-of-the-box**. Users get high-performance implementations without needing to understand pre-computation, filterbank caching, or memory layout optimizations --- they just call the function and get optimal performance automatically.
 
 ![[Mean performance speedup across all parameter configurations and signal types](./imgs/spectrograms_vs_numpy_avg_speedup.png)](./imgs/spectrograms_vs_numpy_avg_speedup.png)
 
@@ -62,14 +62,15 @@
 ## Test Setup
 
 **Signal fixtures** (5 types):
+
 - 440 Hz sine wave (1 second)
 - 3 kHz sine wave (1 second)
 - White noise (1 second)
 - Chirp (100-3000 Hz sweep)
 - Unit impulse
 
-
 **Benchmark protocol**:
+
 - Configurable parameter sweeps
 - 10 warmup iterations
 - 100 timed iterations per operation
@@ -91,12 +92,14 @@ jupyter lab notebook python/examples/notebook.ipynb
 ## Implementation Notes
 
 **spectrograms optimizations** (applied automatically):
+
 - Pre-computed filterbanks for Mel/ERB/LogHz during plan creation
 - Sparse matrix operations for filterbank application
 - Minimal memory allocation (pre-allocated workspace buffers)
-- Native Rust implementation with zero-copy Python bindings
+- Native Rust implementation with  Python bindings
 
 **NumPy reference implementations** (naive approach):
+
 - Runtime filterbank computation
 - Dense matrix operations
 - Per-call memory allocation

@@ -73,6 +73,50 @@ For perceptually-scaled analysis (common in speech and music):
        samples, params, mel_params, db_params
    )
 
+Machine Learning Integration
+-----------------------------
+
+Convert spectrograms to PyTorch or JAX tensors for deep learning:
+
+.. code-block:: python
+
+   import spectrograms as sg
+   import spectrograms.torch  # Adds .to_torch() method
+
+   # Compute spectrogram
+   mel_spec = sg.compute_mel_power_spectrogram(samples, params, mel_params)
+
+   # Convert to PyTorch tensor ( via DLPack)
+   tensor = mel_spec.to_torch(device='cuda')
+   print(f"Tensor shape: {tensor.shape}, device: {tensor.device}")
+
+   # With metadata preservation
+   result = mel_spec.to_torch(device='cuda', with_metadata=True)
+   print(f"Frequencies: {result.frequencies[:5]}...")
+   print(f"Times: {result.times[:5]}...")
+
+For JAX:
+
+.. code-block:: python
+
+   import spectrograms.jax  # Adds .to_jax() method
+
+   # Convert to JAX array
+   array = mel_spec.to_jax(device='gpu')
+
+You can also use the standard DLPack protocol directly:
+
+.. code-block:: python
+
+   import torch
+   import jax.dlpack
+
+   # Works with any DLPack-compatible framework
+   torch_tensor = torch.from_dlpack(mel_spec)
+   jax_array = jax.dlpack.from_dlpack(mel_spec)
+
+See :doc:`ml_integration` for complete ML integration guide.
+
 Image Processing
 ================
 
@@ -132,6 +176,7 @@ Next Steps
 - Learn about :doc:`choosing_parameters` for your application
 - Optimize batch processing with the :doc:`planner_guide`
 - Explore :doc:`audio_features` like MFCC and chromagrams
+- Use with ML frameworks: :doc:`ml_integration`
 
 **Image:**
 

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "spectrograms"
-version = "0.2.3"
+version = "1.0.0"
 description = "Fast spectrogram computation library powered by Rust"
 readme = "python/README.md"
 requires-python = ">=3.9"
@@ -26,7 +26,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "License :: OSI Approved :: MIT License",
 ]
-dependencies = ["numpy>=1.6"]
+dependencies = [
+    "numpy>=1.26",
+]
 
 [project.urls]
 Homepage = "https://github.com/jmg049/Spectrograms"
@@ -53,4 +55,10 @@ dev = [
     "sphinx-copybutton>=0.5.2",
     "sphinx-rtd-theme>=3.1.0",
     "pytest>=8.4.2",
+]
+torch = [
+    "torch>=2.0.0",
+]
+jax = [
+    "jax>=0.4.30",
 ]

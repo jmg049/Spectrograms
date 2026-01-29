@@ -184,7 +184,7 @@ For processing multiple images efficiently, use the planner API to reuse FFT pla
        spectrum = planner.fft2d(image)
        spectra.append(spectrum)
 
-The planner caches FFT plans for the given image dimensions, providing 1.5-3x speedup for batch processing.
+The planner caches FFT plans for the given image dimensions, providing a speedup for batch processing.
 
 Performance Considerations
 --------------------------

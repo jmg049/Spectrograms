@@ -32,7 +32,7 @@ def main():
     stft = sg.StftParams(
         n_fft=512,  # FFT size
         hop_size=256,  # Hop between frames
-        window="hanning",  # Window function
+        window=sg.WindowType.hanning,  # Window function
         centre=True,  # Center frames with padding
     )
 

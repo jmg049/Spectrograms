@@ -331,6 +331,42 @@ fn test_custom_window_rms_alias() {
 }
 
 #[test]
+fn test_kaiser_window_normalization() {
+    let beta = 14.0;
+    let window = spectrograms::kaiser_window(nzu!(129), beta);
+
+    let peak = window.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        (peak - 1.0).abs() < 1e-12,
+        "Kaiser window must be peak-normalized"
+    );
+
+    assert!(
+        window[0] < 1e-3,
+        "Kaiser window edge should taper towards zero"
+    );
+
+    assert!(
+        window[1] > window[0],
+        "Kaiser window should rise away from the edge"
+    );
+
+    let mid = window.len().get() / 2;
+    assert!(
+        window[mid] >= window[mid - 1],
+        "Kaiser window should peak at the center"
+    );
+
+    for i in 0..window.len().get() {
+        let symmetric = window.len().get() - 1 - i;
+        assert!(
+            (window[i] - window[symmetric]).abs() < 1e-6,
+            "Kaiser window must remain symmetric"
+        );
+    }
+}
+
+#[test]
 fn test_custom_window_no_normalization() {
     let coeffs = vec![1.0, 2.0, 3.0, 2.0, 1.0];
     let original_sum: f64 = coeffs.iter().sum();

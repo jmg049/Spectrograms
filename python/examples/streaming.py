@@ -48,14 +48,16 @@ def main():
     total_duration = 2.0
     chunk_duration = 0.1  # Process in 100ms chunks
 
-    print(f"\nStreaming configuration:")
+    print("\nStreaming configuration:")
     print(f"  Sample rate: {sample_rate} Hz")
     print(f"  Total duration: {total_duration} s")
     print(f"  Chunk duration: {chunk_duration} s")
     print(f"  Chunk size: {int(sample_rate * chunk_duration)} samples")
 
     # Set up spectrogram parameters
-    stft = sg.StftParams(n_fft=512, hop_size=256, window="hanning", centre=True)
+    stft = sg.StftParams(
+        n_fft=512, hop_size=256, window=sg.WindowType.hanning, centre=True
+    )
     params = sg.SpectrogramParams(stft, sample_rate=sample_rate)
     mel_params = sg.MelParams(n_mels=40, f_min=0.0, f_max=8000.0)
 
@@ -63,7 +65,7 @@ def main():
     planner = sg.SpectrogramPlanner()
     plan = planner.mel_power_plan(params, mel_params)
 
-    print(f"\nSTFT parameters:")
+    print("\nSTFT parameters:")
     print(f"  FFT size: {stft.n_fft}")
     print(f"  Hop size: {stft.hop_size}")
     print(f"  Mel bands: {mel_params.n_mels}")
@@ -81,12 +83,12 @@ def main():
     )
     full_signal = np.concatenate(all_chunks)
 
-    print(f"\nProcessing full signal at once...")
+    print("\nProcessing full signal at once...")
     print(f"  Total samples: {len(full_signal)}")
 
     batch_spec = plan.compute(full_signal)
 
-    print(f"\nBatch spectrogram computed:")
+    print("\nBatch spectrogram computed:")
     print(f"  Shape: {batch_spec.shape}")
     print(f"  Duration: {batch_spec.duration():.3f} s")
 
@@ -104,7 +106,7 @@ def main():
     frame_results = []
     chunks_processed = 0
 
-    print(f"\nStreaming audio chunks...")
+    print("\nStreaming audio chunks...")
 
     for chunk in simulate_streaming_audio(sample_rate, total_duration, chunk_duration):
         chunks_processed += 1
@@ -129,7 +131,7 @@ def main():
             samples_to_keep = stft.n_fft + (frames_in_buffer - 1) * stft.hop_size
             frame_buffer = frame_buffer[len(frame_buffer) - samples_to_keep :]
 
-    print(f"\nStreaming complete:")
+    print("\nStreaming complete:")
     print(f"  Chunks processed: {chunks_processed}")
     print(f"  Frames computed: {len(frame_results)}")
     print(f"  Buffer remaining: {len(frame_buffer)} samples")
@@ -230,8 +232,6 @@ def main():
     print("\nPerformance tip:")
     print("  • Always use a plan (SpectrogramPlanner) for repeated computations")
     print("  • Reuse the plan for all frames in your streaming application")
-
-    print("\nStreaming example completed!")
 
 
 if __name__ == "__main__":
