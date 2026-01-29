@@ -815,6 +815,7 @@ pub mod plan_cache {
     /// # Returns
     ///
     /// An Arc-wrapped plan that can be cloned cheaply for use across threads.
+    #[inline]
     pub fn get_or_create_c2r_plan(n_fft: usize) -> SpectrogramResult<Arc<RealFftInversePlan>> {
         let mut cache = C2R_PLAN_CACHE.lock().map_err(|e| {
             SpectrogramError::fft_backend("plan_cache", format!("mutex poisoned: {e}"))
@@ -850,6 +851,8 @@ pub mod plan_cache {
     /// - Forcing plan recreation with different settings
     ///
     /// Plans will be automatically recreated on next use.
+    #[allow(unused)]
+    #[inline]
     pub fn clear_plan_cache() {
         if let Ok(mut cache) = R2C_PLAN_CACHE.lock() {
             cache.clear();
@@ -862,6 +865,8 @@ pub mod plan_cache {
     /// Get cache statistics (for monitoring/debugging).
     ///
     /// Returns (forward_plans_cached, inverse_plans_cached).
+    #[allow(unused)]
+    #[inline]
     pub fn cache_stats() -> (usize, usize) {
         let r2c_count = R2C_PLAN_CACHE.lock().map(|c| c.len()).unwrap_or(0);
         let c2r_count = C2R_PLAN_CACHE.lock().map(|c| c.len()).unwrap_or(0);
@@ -870,9 +875,10 @@ pub mod plan_cache {
 }
 
 #[cfg(feature = "realfft")]
-pub use plan_cache::{
-    cache_stats, clear_plan_cache, get_or_create_c2r_plan, get_or_create_r2c_plan,
-};
+pub use plan_cache::{get_or_create_c2r_plan, get_or_create_r2c_plan};
+
+#[cfg(all(feature = "realfft", feature = "python"))]
+pub use plan_cache::{cache_stats, clear_plan_cache};
 
 #[cfg(feature = "fftw")]
 pub mod fftw_backend {

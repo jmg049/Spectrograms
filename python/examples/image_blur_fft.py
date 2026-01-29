@@ -12,6 +12,7 @@ Demonstrates:
 import numpy as np
 import spectrograms as sg
 
+
 def main():
     print("=== Image Blur via FFT Convolution ===\n")
 
@@ -30,7 +31,7 @@ def main():
     for i in range(0, size, 32):
         for j in range(0, size, 32):
             if (i + j) % 64 == 0:
-                image[i:i+16, j:j+16] = 0.5
+                image[i : i + 16, j : j + 16] = 0.5
 
     print(f"Original image range: [{image.min():.2f}, {image.max():.2f}]")
     print(f"Original image mean: {image.mean():.3f}\n")
@@ -87,7 +88,9 @@ def main():
         # Compare power in different frequency bands
         # Low frequencies (DC + nearby)
         low_freq_power = blurred_power[:5, :3].sum()
-        high_freq_power = blurred_power[20:, 20:].sum() if blurred_power.shape[0] > 20 else 0
+        high_freq_power = (
+            blurred_power[20:, 20:].sum() if blurred_power.shape[0] > 20 else 0
+        )
 
         print(f"\n   {name} blur:")
         print(f"     Total power: {blurred_total_power:.2e}")
@@ -100,17 +103,23 @@ def main():
     # === 4. Compare Statistics ===
     print("4. Comparing blur statistics...")
 
-    print(f"\n   {'Blur Level':<15} {'Min':<10} {'Max':<10} {'Mean':<10} {'Std Dev':<10}")
-    print(f"   {'-'*60}")
+    print(
+        f"\n   {'Blur Level':<15} {'Min':<10} {'Max':<10} {'Mean':<10} {'Std Dev':<10}"
+    )
+    print(f"   {'-' * 60}")
 
     # Original
-    print(f"   {'Original':<15} {image.min():<10.3f} {image.max():<10.3f} "
-          f"{image.mean():<10.3f} {image.std():<10.3f}")
+    print(
+        f"   {'Original':<15} {image.min():<10.3f} {image.max():<10.3f} "
+        f"{image.mean():<10.3f} {image.std():<10.3f}"
+    )
 
     # Blurred versions
     for blurred, name in blurred_images:
-        print(f"   {name + ' blur':<15} {blurred.min():<10.3f} {blurred.max():<10.3f} "
-              f"{blurred.mean():<10.3f} {blurred.std():<10.3f}")
+        print(
+            f"   {name + ' blur':<15} {blurred.min():<10.3f} {blurred.max():<10.3f} "
+            f"{blurred.mean():<10.3f} {blurred.std():<10.3f}"
+        )
 
     print()
 

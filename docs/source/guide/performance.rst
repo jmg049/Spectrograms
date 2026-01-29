@@ -6,7 +6,7 @@ The spectrograms library is designed for high performance, with a Rust core and 
 Benchmark Results
 -----------------
 
-Comprehensive benchmarks comparing ``spectrograms`` against NumPy and SciPy implementations are available in the `PYTHON_BENCHMARK.md <https://github.com/jmg049/Spectrograms/blob/main/PYTHON_BENCHMARK.md>`_ file.
+Benchmarks comparing ``spectrograms`` against NumPy and SciPy implementations are available in the `PYTHON_BENCHMARK.md <https://github.com/jmg049/Spectrograms/blob/main/PYTHON_BENCHMARK.md>`_ file.
 
 Summary
 ~~~~~~~

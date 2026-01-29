@@ -277,7 +277,7 @@ impl PySpectrogram {
     ///     The `SpectrogramParams` used to compute this spectrogram
     #[getter]
     fn params(&self) -> PySpectrogramParams {
-        (*self.spectrogram_type.params()).into()
+        self.spectrogram_type.params().clone().into()
     }
 
     fn __repr__(&self) -> String {
@@ -297,14 +297,17 @@ impl PySpectrogram {
         &self,
         py: Python<'py>,
         dtype: Option<&Bound<'py, PyAny>>,
-    ) -> PyResult<Py<PyAny>> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let data = self.spectrogram_type.data();
         let arr = PyArray2::from_array(py, data);
-        if let Some(dtype) = dtype {
-            let casted: Bound<'py, PyAny> = arr.call_method1("astype", (dtype,))?;
-            Ok(casted.unbind())
+
+        if let Some(dt) = dtype {
+            // Convert to requested dtype
+            let casted = arr.call_method1("astype", (dt,))?;
+            Ok(casted)
         } else {
-            Ok(arr.into_any().unbind())
+            // Return as-is (f64)
+            Ok(arr.into_any())
         }
     }
 

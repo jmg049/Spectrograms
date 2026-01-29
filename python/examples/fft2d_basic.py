@@ -64,7 +64,7 @@ def main():
     print(f"   Mean error: {mean_error:.2e}")
 
     if max_error < 1e-10:
-        print("   ✓ Roundtrip successful (error < 1e-10)\n")
+        print("   Roundtrip successful (error < 1e-10)\n")
     else:
         print("   ✗ Roundtrip failed (error too large)\n")
 
@@ -97,7 +97,7 @@ def main():
         spectra.append(spec)
         print(f"   Image {i + 1}: shape {img.shape} -> spectrum {spec.shape}")
 
-    print("\n   ✓ Batch processing complete")
+    print("\n   Batch processing complete")
 
     # Verify power spectra
     print("\n7. Computing power spectra with planner...")

@@ -490,7 +490,7 @@ pub fn chromagram(
 ) -> SpectrogramResult<Chromagram> {
     use crate::{SpectrogramParams, SpectrogramPlanner};
 
-    let params = SpectrogramParams::new(*stft_params, sample_rate)?;
+    let params = SpectrogramParams::new(stft_params.clone(), sample_rate)?;
 
     // Compute STFT
     let planner = SpectrogramPlanner::new();

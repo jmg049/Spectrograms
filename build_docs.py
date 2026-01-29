@@ -40,10 +40,7 @@ def build_docs():
     print("Building documentation with Sphinx...")
     try:
         result = subprocess.run(
-            ["make", "html"],
-            cwd=docs_dir,
-            capture_output=True,
-            text=True
+            ["make", "html"], cwd=docs_dir, capture_output=True, text=True
         )
 
         if result.returncode == 0:
@@ -77,7 +74,7 @@ def serve_docs(port=8000):
             # Suppress server logs
             pass
 
-    server = HTTPServer(('localhost', port), CustomHandler)
+    server = HTTPServer(("localhost", port), CustomHandler)
 
     def start_server():
         print(f"Serving documentation at http://localhost:{port}")
@@ -109,10 +106,18 @@ def serve_docs(port=8000):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build AudioSamples Python documentation")
-    parser.add_argument("--clean", action="store_true", help="Clean build directory first")
-    parser.add_argument("--serve", action="store_true", help="Serve docs locally after building")
-    parser.add_argument("--port", type=int, default=8000, help="Port for local server (default: 8000)")
+    parser = argparse.ArgumentParser(
+        description="Build AudioSamples Python documentation"
+    )
+    parser.add_argument(
+        "--clean", action="store_true", help="Clean build directory first"
+    )
+    parser.add_argument(
+        "--serve", action="store_true", help="Serve docs locally after building"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port for local server (default: 8000)"
+    )
 
     args = parser.parse_args()
 

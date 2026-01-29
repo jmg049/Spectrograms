@@ -67,7 +67,7 @@ fn main() -> SpectrogramResult<()> {
     println!("  Maximum reconstruction error: {:.2e}", max_error);
 
     if max_error < 1e-10 {
-        println!("  ✓ Excellent accuracy!");
+        println!("  Excellent accuracy!");
     }
 
     // Demonstrate batch processing with planner

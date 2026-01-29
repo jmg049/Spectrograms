@@ -279,7 +279,7 @@ where
         let times = build_time_axis_seconds(&self.params, n_frames);
         let axes = Axes::new(self.freq_axis.clone(), times);
 
-        Ok(Spectrogram::new(data, axes, self.params))
+        Ok(Spectrogram::new(data, axes, self.params.clone()))
     }
 
     /// Compute a single frame of the spectrogram.
@@ -878,7 +878,7 @@ impl SpectrogramPlanner {
         let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
-            params: *params,
+            params: params.clone(),
             stft,
             mapping,
             scaling,
@@ -938,7 +938,7 @@ impl SpectrogramPlanner {
         let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
-            params: *params,
+            params: params.clone(),
             stft,
             mapping,
             scaling,
@@ -1001,7 +1001,7 @@ impl SpectrogramPlanner {
         let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
-            params: *params,
+            params: params.clone(),
             stft,
             mapping,
             scaling,
@@ -1063,7 +1063,7 @@ impl SpectrogramPlanner {
         let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
-            params: *params,
+            params: params.clone(),
             stft,
             mapping,
             scaling,
@@ -1113,7 +1113,7 @@ impl SpectrogramPlanner {
         let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
-            params: *params,
+            params: params.clone(),
             stft,
             mapping,
             scaling,
@@ -1391,7 +1391,7 @@ impl StftPlan {
             data,
             frequencies,
             sample_rate: params.sample_rate_hz(),
-            params: *params.stft(),
+            params: params.stft().clone(),
         })
     }
 
@@ -2071,6 +2071,10 @@ fn build_time_axis_seconds(params: &SpectrogramParams, n_frames: NonZeroUsize) -
 /// # Returns
 ///
 /// A `NonEmptyVec<f64>` containing the window function samples.
+///
+/// # Panics
+///
+/// Panics if a custom window is provided with a size that does not match `n_fft`.
 #[inline]
 #[must_use]
 pub fn make_window(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<f64> {
@@ -2123,6 +2127,16 @@ pub fn make_window(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<f64> 
             let exponent: f64 = -0.5 * ((n - center) / std).powi(2);
             w[i] = exponent.exp();
         }),
+        WindowType::Custom { coefficients, size } => {
+            assert!(
+                size.get() == n_fft,
+                "Custom window size mismatch: expected {}, got {}. \
+                 Custom windows must be pre-computed with the exact FFT size.",
+                n_fft,
+                size.get()
+            );
+            w.copy_from_slice(&coefficients);
+        }
     }
 
     // safety: window is guaranteed non-empty since n_fft > 0
@@ -2141,8 +2155,7 @@ fn hz_to_mel(hz: f64) -> f64 {
     const F_SP: f64 = 200.0 / 3.0; // ~66.667
     const MIN_LOG_HZ: f64 = 1000.0;
     const MIN_LOG_MEL: f64 = (MIN_LOG_HZ - F_MIN) / F_SP; // = 15.0
-    const LOGSTEP: f64 = 0.06853891945200942; // ln(6.4) / 27
-
+    const LOGSTEP: f64 = 0.068_751_777_420_949_23; // ln(6.4) / 27
     if hz >= MIN_LOG_HZ {
         // Logarithmic region
         MIN_LOG_MEL + (hz / MIN_LOG_HZ).ln() / LOGSTEP
@@ -2160,14 +2173,14 @@ fn mel_to_hz(mel: f64) -> f64 {
     const F_SP: f64 = 200.0 / 3.0; // ~66.667
     const MIN_LOG_HZ: f64 = 1000.0;
     const MIN_LOG_MEL: f64 = (MIN_LOG_HZ - F_MIN) / F_SP; // = 15.0
-    const LOGSTEP: f64 = 0.06853891945200942; // ln(6.4) / 27
+    const LOGSTEP: f64 = 0.068_751_777_420_949_23; // ln(6.4) / 27
 
     if mel >= MIN_LOG_MEL {
         // Logarithmic region
         MIN_LOG_HZ * (LOGSTEP * (mel - MIN_LOG_MEL)).exp()
     } else {
         // Linear region
-        F_MIN + F_SP * mel
+        F_SP.mul_add(mel, F_MIN)
     }
 }
 
@@ -2217,37 +2230,39 @@ fn build_mel_filterbank_matrix(
         hz_points.push(mel_to_hz(*m));
     }
 
-    // Convert Hz points into FFT bin indices
-    let mut bin_points = Vec::with_capacity(n_points);
-    for hz in hz_points {
-        let b = (hz / df).floor() as isize;
-        let b = b.clamp(0, (out_len - 1) as isize);
-        bin_points.push(b as usize);
-    }
-
-    // Build filterbank as sparse matrix
+    // Build filterbank as sparse matrix (librosa-style, in frequency space)
+    // This builds triangular filters based on actual frequencies, not bin indices
     let mut fb = SparseMatrix::new(n_mels, out_len);
 
     for m in 0..n_mels {
-        let left = bin_points[m];
-        let centre = bin_points[m + 1];
-        let right = bin_points[m + 2];
+        let freq_left = hz_points[m];
+        let freq_center = hz_points[m + 1];
+        let freq_right = hz_points[m + 2];
 
-        if left == centre || centre == right {
-            // Degenerate triangle, skip (should be rare if params are sensible)
+        let fdiff_left = freq_center - freq_left;
+        let fdiff_right = freq_right - freq_center;
+
+        if fdiff_left == 0.0 || fdiff_right == 0.0 {
+            // Degenerate triangle, skip
             continue;
         }
 
-        // Rising slope: left -> centre
-        for k in left..centre {
-            let v = (k - left) as f64 / (centre - left) as f64;
-            fb.set(m, k, v);
-        }
+        // For each FFT bin, compute the triangular weight based on its frequency
+        for k in 0..out_len {
+            let bin_freq = k as f64 * df;
 
-        // Falling slope: centre -> right
-        for k in centre..right {
-            let v = (right - k) as f64 / (right - centre) as f64;
-            fb.set(m, k, v);
+            // Lower slope: rises from freq_left to freq_center
+            let lower = (bin_freq - freq_left) / fdiff_left;
+
+            // Upper slope: falls from freq_center to freq_right
+            let upper = (freq_right - bin_freq) / fdiff_right;
+
+            // Triangle is the minimum of the two slopes, clipped to [0, 1]
+            let weight = lower.min(upper).clamp(0.0, 1.0);
+
+            if weight > 0.0 {
+                fb.set(m, k, weight);
+            }
         }
     }
 
@@ -2637,14 +2652,22 @@ where
     }
 }
 
-impl AsRef<Array2<f64>> for Spectrogram<LinearHz, Power> {
+impl<FreqScale, AmpScale> AsRef<Array2<f64>> for Spectrogram<FreqScale, AmpScale>
+where
+    FreqScale: Copy + Clone + 'static,
+    AmpScale: AmpScaleSpec + 'static,
+{
     #[inline]
     fn as_ref(&self) -> &Array2<f64> {
         &self.data
     }
 }
 
-impl Deref for Spectrogram<LinearHz, Power> {
+impl<FreqScale, AmpScale> Deref for Spectrogram<FreqScale, AmpScale>
+where
+    FreqScale: Copy + Clone + 'static,
+    AmpScale: AmpScaleSpec + 'static,
+{
     type Target = Array2<f64>;
 
     #[inline]
@@ -2973,6 +2996,7 @@ where
     AmpScale: AmpScaleSpec + 'static,
     FreqScale: Copy + Clone + 'static,
 {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (freq_min, freq_max) = self.frequency_range();
         let duration = self.duration();
@@ -2983,13 +3007,9 @@ where
             writeln!(f, "Spectrogram {{")?;
             writeln!(f, "  Frequency Scale: {}", freq_scale_name::<FreqScale>())?;
             writeln!(f, "  Amplitude Scale: {}", amp_scale_name::<AmpScale>())?;
-            writeln!(f, "  Shape: {} frequency bins × {} time frames", rows, cols)?;
-            writeln!(
-                f,
-                "  Frequency Range: {:.2} Hz - {:.2} Hz",
-                freq_min, freq_max
-            )?;
-            writeln!(f, "  Duration: {:.3} s", duration)?;
+            writeln!(f, "  Shape: {rows} frequency bins × {cols} time frames")?;
+            writeln!(f, "  Frequency Range: {freq_min:.2} Hz - {freq_max:.2} Hz")?;
+            writeln!(f, "  Duration: {duration:.3} s")?;
             writeln!(f)?;
 
             // Display parameters
@@ -3007,16 +3027,16 @@ where
                 let (min_val, max_val) = min_max_single_pass(data_slice);
                 let mean = data_slice.iter().sum::<f64>() / data_slice.len() as f64;
                 writeln!(f, "  Data Statistics:")?;
-                writeln!(f, "    Min: {:.6}", min_val)?;
-                writeln!(f, "    Max: {:.6}", max_val)?;
-                writeln!(f, "    Mean: {:.6}", mean)?;
+                writeln!(f, "    Min: {min_val:.6}")?;
+                writeln!(f, "    Max: {max_val:.6}")?;
+                writeln!(f, "    Mean: {mean:.6}")?;
                 writeln!(f)?;
             }
 
             // Display actual data (truncated if too large)
             writeln!(f, "  Data Matrix:")?;
-            let max_rows_to_display = 8;
-            let max_cols_to_display = 8;
+            let max_rows_to_display = 5;
+            let max_cols_to_display = 5;
 
             for i in 0..rows.min(max_rows_to_display) {
                 write!(f, "    [")?;
@@ -3041,7 +3061,7 @@ where
             // Default formatting: compact summary
             write!(
                 f,
-                "Spectrogram<{}, {}>[{}×{}] ({:.2}-{:.2} Hz, {:.3}s)",
+                "Spectrogram<{}, {}>[{}x{}] ({:.2}-{:.2} Hz, {:.3}s)",
                 freq_scale_name::<FreqScale>(),
                 amp_scale_name::<AmpScale>(),
                 rows,
@@ -3265,7 +3285,7 @@ pub enum Magnitude {
 /// * `hop_size`: Number of samples between successive frames.
 /// * window: Window function to apply to each frame.
 /// * centre: Whether to pad the input signal so that frames are centered.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StftParams {
     n_fft: NonZeroUsize,
@@ -3286,7 +3306,9 @@ impl StftParams {
     ///
     /// # Errors
     ///
-    /// Returns an error if `hop_size` > `n_fft`.
+    /// Returns an error if:
+    /// - `hop_size` > `n_fft`
+    /// - Custom window size doesn't match `n_fft`
     ///
     /// # Returns
     ///
@@ -3300,6 +3322,17 @@ impl StftParams {
     ) -> SpectrogramResult<Self> {
         if hop_size.get() > n_fft.get() {
             return Err(SpectrogramError::invalid_input("hop_size must be <= n_fft"));
+        }
+
+        // Validate custom window size matches n_fft
+        if let WindowType::Custom { size, .. } = &window {
+            if size.get() != n_fft.get() {
+                return Err(SpectrogramError::invalid_input(format!(
+                    "Custom window size ({}) must match n_fft ({})",
+                    size.get(),
+                    n_fft.get()
+                )));
+            }
         }
 
         Ok(Self {
@@ -3353,8 +3386,8 @@ impl StftParams {
     /// The window function.
     #[inline]
     #[must_use]
-    pub const fn window(&self) -> WindowType {
-        self.window
+    pub fn window(&self) -> WindowType {
+        self.window.clone()
     }
 
     /// Get whether frames are centered (input signal is padded).
@@ -3464,7 +3497,7 @@ impl StftParamsBuilder {
     /// The builder with the updated window function.
     #[inline]
     #[must_use]
-    pub const fn window(mut self, window: WindowType) -> Self {
+    pub fn window(mut self, window: WindowType) -> Self {
         self.window = window;
         self
     }
@@ -3508,10 +3541,13 @@ impl StftParamsBuilder {
 /// Determines how the triangular mel filters are normalized after construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+#[derive(Default)]
 pub enum MelNorm {
     /// No normalization (triangular filters with peak = 1.0).
     ///
     /// This is the default and fastest option.
+    #[default]
     None,
 
     /// Slaney-style area normalization (librosa default).
@@ -3533,12 +3569,6 @@ pub enum MelNorm {
     /// Each mel filter's weights are divided by their L2 norm.
     /// Provides unit-norm filters in the L2 sense.
     L2,
-}
-
-impl Default for MelNorm {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Mel filter bank parameters
@@ -3880,7 +3910,7 @@ impl LogParams {
 ///
 /// * `stft`: STFT parameters
 /// * `sample_rate_hz`: Sample rate in Hz
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpectrogramParams {
     stft: StftParams,
@@ -4118,7 +4148,7 @@ impl SpectrogramParamsBuilder {
     /// The updated builder instance.
     #[inline]
     #[must_use]
-    pub const fn window(mut self, window: WindowType) -> Self {
+    pub fn window(mut self, window: WindowType) -> Self {
         self.window = window;
         self
     }

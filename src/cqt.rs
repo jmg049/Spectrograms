@@ -11,7 +11,7 @@ use num_complex::Complex;
 use crate::{SpectrogramError, SpectrogramResult, WindowType, nzu};
 
 /// CQT parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CqtParams {
     /// Number of bins per octave
@@ -104,7 +104,7 @@ impl CqtParams {
     /// `CqtParams` - Updated CQT parameters
     #[inline]
     #[must_use]
-    pub const fn with_window(mut self, window: WindowType) -> Self {
+    pub fn with_window(mut self, window: WindowType) -> Self {
         self.window = window;
         self
     }
@@ -235,8 +235,12 @@ impl CqtKernel {
             let kernel_length = unsafe { NonZeroUsize::new_unchecked(kernel_length) };
 
             // Generate complex exponential kernel
-            let mut kernel =
-                Self::generate_kernel_bin(center_freq, kernel_length, sample_rate, params.window);
+            let mut kernel = Self::generate_kernel_bin(
+                center_freq,
+                kernel_length,
+                sample_rate,
+                params.window.clone(),
+            );
 
             // Apply sparsity threshold
             Self::apply_sparsity_threshold(&mut kernel, params.sparsity_threshold);

@@ -103,7 +103,7 @@ def main():
     print("\nComputing chromagram for C major chord...")
     chroma_c_major = sg.compute_chromagram(c_major, stft, sample_rate, chroma_params)
 
-    print("✓ C major chromagram computed")
+    print("C major chromagram computed")
     print(
         f"  Shape: {chroma_c_major.shape} (12 pitch classes x {chroma_c_major.shape[1]} frames)"
     )
@@ -111,7 +111,7 @@ def main():
     print("\nComputing chromagram for A minor chord...")
     chroma_a_minor = sg.compute_chromagram(a_minor, stft, sample_rate, chroma_params)
 
-    print("✓ A minor chromagram computed")
+    print("A minor chromagram computed")
     print(
         f"  Shape: {chroma_a_minor.shape} (12 pitch classes x {chroma_a_minor.shape[1]} frames)"
     )
@@ -257,7 +257,7 @@ def main():
     print("  • L1 norm: Alternative for some applications")
     print("  • Max norm: Emphasizes strongest pitch class")
 
-    print("\n✓ Chromagram example completed!")
+    print("\nChromagram example completed!")
 
 
 if __name__ == "__main__":

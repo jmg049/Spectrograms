@@ -76,7 +76,9 @@ def main():
     print("=" * 60)
 
     # Collect all audio first
-    all_chunks = list(simulate_streaming_audio(sample_rate, total_duration, chunk_duration))
+    all_chunks = list(
+        simulate_streaming_audio(sample_rate, total_duration, chunk_duration)
+    )
     full_signal = np.concatenate(all_chunks)
 
     print(f"\nProcessing full signal at once...")
@@ -84,7 +86,7 @@ def main():
 
     batch_spec = plan.compute(full_signal)
 
-    print(f"\n✓ Batch spectrogram computed:")
+    print(f"\nBatch spectrogram computed:")
     print(f"  Shape: {batch_spec.shape}")
     print(f"  Duration: {batch_spec.duration():.3f} s")
 
@@ -114,7 +116,9 @@ def main():
         frames_in_buffer = (len(frame_buffer) - stft.n_fft) // stft.hop_size + 1
 
         if frames_in_buffer > 0:
-            print(f"  Chunk {chunks_processed}: {len(chunk)} samples → {frames_in_buffer} frames")
+            print(
+                f"  Chunk {chunks_processed}: {len(chunk)} samples → {frames_in_buffer} frames"
+            )
 
             for frame_idx in range(frames_in_buffer):
                 # Compute single frame
@@ -123,9 +127,9 @@ def main():
 
             # Remove processed samples from buffer (keep overlap for next frames)
             samples_to_keep = stft.n_fft + (frames_in_buffer - 1) * stft.hop_size
-            frame_buffer = frame_buffer[len(frame_buffer) - samples_to_keep:]
+            frame_buffer = frame_buffer[len(frame_buffer) - samples_to_keep :]
 
-    print(f"\n✓ Streaming complete:")
+    print(f"\nStreaming complete:")
     print(f"  Chunks processed: {chunks_processed}")
     print(f"  Frames computed: {len(frame_results)}")
     print(f"  Buffer remaining: {len(frame_buffer)} samples")
@@ -156,7 +160,7 @@ def main():
     print(f"  Results match: {matches}")
 
     if matches:
-        print("  ✓ Streaming and batch processing produce identical results!")
+        print("  Streaming and batch processing produce identical results!")
     else:
         max_diff = np.max(np.abs(batch_frames - streaming_frames))
         print(f"  ✗ Maximum difference: {max_diff:.2e}")
@@ -185,19 +189,23 @@ def main():
             latest_frame = plan.compute_frame(frame_buffer, frames_in_buffer - 1)
 
             # Example feature: spectral centroid (weighted mean frequency)
-            frequencies = np.array(batch_spec.frequencies)[:len(latest_frame)]
-            spectral_centroid = np.sum(frequencies * latest_frame) / (np.sum(latest_frame) + 1e-10)
+            frequencies = np.array(batch_spec.frequencies)[: len(latest_frame)]
+            spectral_centroid = np.sum(frequencies * latest_frame) / (
+                np.sum(latest_frame) + 1e-10
+            )
 
             # Example feature: spectral rolloff (95% of energy)
             cumsum = np.cumsum(latest_frame)
             rolloff_idx = np.where(cumsum >= 0.95 * cumsum[-1])[0][0]
             spectral_rolloff = frequencies[rolloff_idx]
 
-            print(f"  Chunk {chunk_num}: centroid={spectral_centroid:.1f} Hz, rolloff={spectral_rolloff:.1f} Hz")
+            print(
+                f"  Chunk {chunk_num}: centroid={spectral_centroid:.1f} Hz, rolloff={spectral_rolloff:.1f} Hz"
+            )
 
             # Keep necessary samples for next frames
             samples_to_keep = stft.n_fft + (frames_in_buffer - 1) * stft.hop_size
-            frame_buffer = frame_buffer[len(frame_buffer) - samples_to_keep:]
+            frame_buffer = frame_buffer[len(frame_buffer) - samples_to_keep :]
 
     # ========================================================================
     # Summary
@@ -223,7 +231,7 @@ def main():
     print("  • Always use a plan (SpectrogramPlanner) for repeated computations")
     print("  • Reuse the plan for all frames in your streaming application")
 
-    print("\n✓ Streaming example completed!")
+    print("\nStreaming example completed!")
 
 
 if __name__ == "__main__":

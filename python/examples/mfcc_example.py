@@ -86,7 +86,7 @@ def main():
     print("\nComputing MFCCs...")
     mfccs = sg.compute_mfcc(signal, stft, sample_rate, n_mels, mfcc_params)
 
-    print(f"\n✓ MFCCs computed:")
+    print(f"\nMFCCs computed:")
     print(f"  Shape: {mfccs.shape} (n_mfcc x n_frames)")
     print(f"  Number of frames: {mfccs.shape[1]}")
     print(f"  Frame rate: {mfccs.shape[1] / duration:.1f} frames/second")
@@ -119,7 +119,7 @@ def main():
     mfccs_standard = sg.compute_mfcc(
         signal, stft, sample_rate, n_mels, standard_mfcc_params
     )
-    print(f"\n✓ Standard MFCCs computed: {mfccs_standard.shape}")
+    print(f"\nStandard MFCCs computed: {mfccs_standard.shape}")
 
     # Verify they're the same (both use 13 coefficients)
     print(f"\nVerifying results match:")
@@ -234,7 +234,7 @@ def main():
     print("   • Fast similarity matching")
     print("   • Robust to noise and compression")
 
-    print("\n✓ MFCC example completed!")
+    print("\nMFCC example completed!")
 
 
 if __name__ == "__main__":

@@ -384,6 +384,134 @@ pub fn ifftshift<T: Clone>(arr: Array2<T>) -> Array2<T> {
     result
 }
 
+/// Shift zero-frequency component to center for 1D array.
+///
+/// # Arguments
+///
+/// * `arr` - Input 1D array to shift
+///
+/// # Returns
+///
+/// 1D array with zero-frequency component at center.
+#[inline]
+#[must_use]
+pub fn fftshift_1d<T: Clone>(arr: Vec<T>) -> Vec<T> {
+    let n = arr.len();
+    let half = n / 2;
+
+    let mut result = Vec::with_capacity(n);
+    result.extend_from_slice(&arr[half..]);
+    result.extend_from_slice(&arr[..half]);
+    result
+}
+
+/// Inverse of fftshift for 1D arrays.
+///
+/// # Arguments
+///
+/// * `arr` - Input 1D array to inverse shift
+///
+/// # Returns
+///
+/// 1D array with quadrants swapped back to original positions.
+#[inline]
+#[must_use]
+pub fn ifftshift_1d<T: Clone>(arr: Vec<T>) -> Vec<T> {
+    let n = arr.len();
+    let half = n.div_ceil(2);
+
+    let mut result = Vec::with_capacity(n);
+    result.extend_from_slice(&arr[n - half..]);
+    result.extend_from_slice(&arr[..n - half]);
+    result
+}
+
+/// Compute FFT sample frequencies (like `numpy.fft.fftfreq`).
+///
+/// Returns the sample frequencies (in cycles per unit of the sample spacing) for FFT output.
+/// For an FFT of length `n` with sample spacing `d`:
+/// - Frequencies go from 0 to (n-1)//(2*n*d) for positive frequencies
+/// - Then wrap to negative frequencies
+///
+/// # Arguments
+///
+/// * `n` - Window length (number of samples)
+/// * `d` - Sample spacing (inverse of sampling rate). Default is 1.0.
+///
+/// # Returns
+///
+/// Vector of length `n` containing the frequency bin centers in cycles per unit.
+///
+/// # Examples
+///
+/// ```rust
+/// use spectrograms::fft2d::fftfreq;
+///
+/// // For 8 samples with spacing 1.0
+/// let freqs = fftfreq(8, 1.0);
+/// // Returns: [0.0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]
+///
+/// // For temporal modulation at 16kHz sample rate with 100 frames
+/// let freqs_hz = fftfreq(100, 1.0 / 16000.0);
+/// // Returns frequencies in Hz
+/// ```
+#[inline]
+#[must_use]
+pub fn fftfreq(n: usize, d: f64) -> Vec<f64> {
+    let mut freqs = Vec::with_capacity(n);
+    let n_f64 = n as f64;
+    let n_half = n.div_ceil(2);
+
+    // Positive frequencies: 0, 1, 2, ..., (n-1)/2
+    for i in 0..n_half {
+        freqs.push(i as f64 / (n_f64 * d));
+    }
+
+    // Negative frequencies: -n/2, ..., -2, -1
+    for i in n_half..n {
+        freqs.push((i as f64 - n_f64) / (n_f64 * d));
+    }
+
+    freqs
+}
+
+/// Compute FFT sample frequencies for real FFT (like `numpy.fft.rfftfreq`).
+///
+/// Returns only the positive frequencies for a real-to-complex FFT.
+/// For an FFT of length `n` with sample spacing `d`, returns `n/2 + 1` frequencies.
+///
+/// # Arguments
+///
+/// * `n` - Window length (number of samples in original real signal)
+/// * `d` - Sample spacing (inverse of sampling rate). Default is 1.0.
+///
+/// # Returns
+///
+/// Vector of length `n/2 + 1` containing the positive frequency bin centers.
+///
+/// # Examples
+///
+/// ```rust
+/// use spectrograms::fft2d::rfftfreq;
+///
+/// // For 8 samples
+/// let freqs = rfftfreq(8, 1.0);
+/// // Returns: [0.0, 0.125, 0.25, 0.375, 0.5]
+/// ```
+#[inline]
+#[must_use]
+pub fn rfftfreq(n: usize, d: f64) -> Vec<f64> {
+    let n_out = n / 2 + 1;
+    let mut freqs = Vec::with_capacity(n_out);
+    let n_f64 = n as f64;
+
+    for i in 0..n_out {
+        freqs.push(i as f64 / (n_f64 * d));
+    }
+
+    freqs
+}
+
 /// 2D FFT planner for efficient batch processing.
 ///
 /// Caches FFT plans internally, avoiding repeated setup overhead when

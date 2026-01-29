@@ -27,11 +27,19 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
     - name: Install documentation dependencies
       run: |
         python -m pip install --upgrade pip
         pip install sphinx sphinx-autodoc-typehints sphinx-rtd-theme myst-parser sphinx-copybutton
         pip install numpy>=1.24.4
+        pip install maturin
+
+    - name: Build and install spectrograms package
+      run: |
+        maturin develop --release
 
     - name: Build documentation
       run: |

@@ -35,7 +35,7 @@ def main():
     # Generate test signals
     print(f"\nGenerating {n_signals} random signals...")
     signals = [generate_random_signal(sample_rate, duration) for _ in range(n_signals)]
-    print(f"✓ Generated {len(signals)} signals")
+    print(f"Generated {len(signals)} signals")
 
     # Set up parameters
     stft = sg.StftParams(n_fft=512, hop_size=256, window="hanning", centre=True)
@@ -62,7 +62,7 @@ def main():
 
     time_no_reuse = time.time() - start_time
 
-    print(f"\n✓ Completed in {time_no_reuse:.3f} seconds")
+    print(f"\nCompleted in {time_no_reuse:.3f} seconds")
     print(f"  Average: {time_no_reuse / n_signals * 1000:.2f} ms per signal")
 
     # ========================================================================
@@ -75,7 +75,7 @@ def main():
     print("\nCreating plan...")
     planner = sg.SpectrogramPlanner()
     plan = planner.mel_db_plan(params, mel_params, db_params)
-    print("✓ Plan created")
+    print("Plan created")
 
     print("\nProcessing signals...")
     start_time = time.time()
@@ -89,7 +89,7 @@ def main():
 
     time_with_reuse = time.time() - start_time
 
-    print(f"\n✓ Completed in {time_with_reuse:.3f} seconds")
+    print(f"\nCompleted in {time_with_reuse:.3f} seconds")
     print(f"  Average: {time_with_reuse / n_signals * 1000:.2f} ms per signal")
 
     # ========================================================================
@@ -128,7 +128,7 @@ def main():
             continue
 
     if all_match:
-        print("✓ All results match perfectly!")
+        print("All results match perfectly!")
     else:
         print("✗ Some results don't match")
 
@@ -150,7 +150,7 @@ def main():
     print("  • Simpler API, no plan management")
     print("  • Minimal overhead for one-off computations")
 
-    print("\n✓ Batch processing example completed!")
+    print("\nBatch processing example completed!")
 
 
 if __name__ == "__main__":

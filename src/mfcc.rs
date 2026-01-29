@@ -364,7 +364,7 @@ pub fn mfcc(
     use crate::{LogParams, MelDbSpectrogram, MelParams, SpectrogramParams};
 
     // Create parameters
-    let params = SpectrogramParams::new(*stft_params, sample_rate)?;
+    let params = SpectrogramParams::new(stft_params.clone(), sample_rate)?;
     let mel = MelParams::new(n_mels, 0.0, sample_rate / 2.0)?;
     let db = LogParams::new(-80.0)?;
 

@@ -30,10 +30,10 @@ def main():
 
     # Configure STFT parameters
     stft = sg.StftParams(
-        n_fft=512,        # FFT size
-        hop_size=256,     # Hop between frames
-        window="hanning", # Window function
-        centre=True       # Center frames with padding
+        n_fft=512,  # FFT size
+        hop_size=256,  # Hop between frames
+        window="hanning",  # Window function
+        centre=True,  # Center frames with padding
     )
 
     params = sg.SpectrogramParams(stft, sample_rate=sample_rate)
@@ -52,7 +52,9 @@ def main():
     print(f"  Shape: {spec.shape}")
     print(f"  Frequency bins: {spec.n_bins}")
     print(f"  Time frames: {spec.n_frames}")
-    print(f"  Frequency range: {spec.frequency_range()[0]:.1f} - {spec.frequency_range()[1]:.1f} Hz")
+    print(
+        f"  Frequency range: {spec.frequency_range()[0]:.1f} - {spec.frequency_range()[1]:.1f} Hz"
+    )
     print(f"  Duration: {spec.duration():.3f} s")
     print(f"  Data type: {spec.data.dtype}")
     print(f"  Data shape: {spec.data.shape}")
@@ -78,7 +80,7 @@ def main():
     print(f"  Expected: {frequency:.2f} Hz")
     print(f"  Error: {abs(peak_freq - frequency):.2f} Hz")
 
-    print("\n✓ Basic linear spectrogram example completed!")
+    print("\nBasic linear spectrogram example completed!")
 
 
 if __name__ == "__main__":

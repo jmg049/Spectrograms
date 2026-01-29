@@ -2,6 +2,7 @@
 
 use std::num::NonZeroUsize;
 
+use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 
@@ -15,7 +16,7 @@ use crate::{
 /// Represents window functions used for spectral analysis. Different windows provide
 /// different trade-offs between frequency resolution and spectral leakage.
 #[pyclass(name = "WindowType")]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PyWindowType {
     pub(crate) inner: WindowType,
 }
@@ -64,8 +65,17 @@ impl PyWindowType {
 
     /// Create a Kaiser window with the given beta parameter.
     ///
-    /// # Arguments
-    /// * `beta` - Beta parameter controlling the trade-off between main lobe width and side lobe level
+    /// Parameters
+    /// ----------
+    ///
+    /// `beta` : float
+    ///    Beta parameter controlling the trade-off between main lobe width and side lobe level
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// WindowType
+    ///    Kaiser window type
     #[classmethod]
     #[pyo3(signature = (beta: "float"), text_signature = "(beta: float) -> WindowType")]
     const fn kaiser(_cls: &Bound<'_, PyType>, beta: f64) -> Self {
@@ -76,14 +86,182 @@ impl PyWindowType {
 
     /// Create a Gaussian window with the given standard deviation.
     ///
-    /// # Arguments
-    /// * `std` - Standard deviation parameter controlling the window width
+    /// Parameters
+    /// ----------
+    ///
+    /// `std` : float
+    ///     Standard deviation parameter controlling the window width
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// WindowType
+    ///    Gaussian window type
     #[classmethod]
     #[pyo3(signature = (std: "float"), text_signature = "(std: float) -> WindowType")]
     const fn gaussian(_cls: &Bound<'_, PyType>, std: f64) -> Self {
         Self {
             inner: WindowType::Gaussian { std },
         }
+    }
+
+    /// Create a custom window from pre-computed coefficients.
+    ///
+    /// The coefficients will be validated (must be finite) and stored for use
+    /// in spectrogram computation. The length of the coefficients must exactly
+    /// match the FFT size (`n_fft`) that will be used in your STFT parameters.
+    ///
+    /// Parameters
+    /// ----------
+    /// coefficients : array_like
+    ///     1D array of window coefficients. Will be converted to float64.
+    ///     All values must be finite (not NaN or infinity).
+    /// normalize : str, optional
+    ///     Optional normalization mode:
+    ///     - None: No normalization (use coefficients as-is)
+    ///     - "sum": Normalize so sum equals 1.0
+    ///     - "peak" or "max": Normalize so maximum value equals 1.0
+    ///     - "energy" or "rms": Normalize so sum of squares equals 1.0
+    ///
+    /// Returns
+    /// -------
+    /// WindowType
+    ///     Custom window type
+    ///
+    /// Raises
+    /// ------
+    /// ValueError
+    ///     If coefficients array is empty, contains non-finite values,
+    ///     unknown normalization mode, or normalization would divide by zero
+    ///
+    /// Examples
+    /// --------
+    /// Create a custom window from NumPy array:
+    ///
+    /// >>> import numpy as np
+    /// >>> import spectrograms as sg
+    /// >>> # Use a pre-made window from NumPy
+    /// >>> window = sg.WindowType.custom(np.blackman(512))
+    /// >>> # Or use SciPy windows
+    /// >>> from scipy.signal.windows import tukey
+    /// >>> window = sg.WindowType.custom(tukey(512, alpha=0.5))
+    /// >>> # Use in STFT parameters
+    /// >>> stft = sg.StftParams(n_fft=512, hop_size=256, window=window)
+    /// >>> # Create with normalization
+    /// >>> window_norm = sg.WindowType.custom(np.hamming(512), normalize="sum")
+    ///
+    /// Notes
+    /// -----
+    /// The length of the custom window coefficients must exactly match the
+    /// `n_fft` parameter used in your STFT configuration. A mismatch will
+    /// cause an error at STFT parameter creation time.
+    #[classmethod]
+    #[pyo3(signature = (coefficients, normalize=None), text_signature = "(coefficients, normalize=None) -> WindowType")]
+    fn custom(
+        _cls: &Bound<'_, PyType>,
+        coefficients: PyReadonlyArray1<f64>,
+        normalize: Option<&str>,
+    ) -> PyResult<Self> {
+        let vec = coefficients.as_slice()?.to_vec();
+        let inner = WindowType::custom_with_normalization(vec, normalize)?;
+        Ok(Self { inner })
+    }
+
+    /// Create a Hanning window of length `n`.
+    ///
+    /// Parameters
+    /// ----------
+    ///
+    /// `n` : int
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// numpy.ndarray
+    ///     Hanning window of length `n`
+    #[staticmethod]
+    #[pyo3(signature = (n: "int"), text_signature = "(n: int) -> numpy.ndarray")]
+    fn make_hanning(py: Python<'_>, n: NonZeroUsize) -> Bound<'_, PyArray1<f64>> {
+        let window_vec = crate::window::hanning_window(n);
+        PyArray1::from_vec(py, window_vec.into_vec())
+    }
+
+    /// Create a Hamming window of length `n`.
+    ///
+    /// Parameters
+    /// ----------
+    ///
+    /// `n` : int
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// numpy.ndarray
+    ///    Hamming window of length `n`
+    #[staticmethod]
+    #[pyo3(signature = (n: "int"), text_signature = "(n: int) -> numpy.ndarray")]
+    fn make_hamming(py: Python<'_>, n: NonZeroUsize) -> Bound<'_, PyArray1<f64>> {
+        let window_vec = crate::window::hamming_window(n);
+        PyArray1::from_vec(py, window_vec.into_vec())
+    }
+
+    /// Create a Blackman window of length `n`.
+    ///
+    /// Parameters
+    /// ----------
+    ///
+    /// `n` : int
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// numpy.ndarray
+    ///     Blackman window of length `n`
+    #[staticmethod]
+    #[pyo3(signature = (n: "int"), text_signature = "(n: int) -> numpy.ndarray")]
+    fn make_blackman(py: Python<'_>, n: NonZeroUsize) -> Bound<'_, PyArray1<f64>> {
+        let window_vec = crate::window::blackman_window(n);
+        PyArray1::from_vec(py, window_vec.into_vec())
+    }
+
+    /// Create a Kaiser window of length `n` with parameter `beta`.
+    ///
+    /// Parameters
+    /// ----------
+    ///
+    /// `n` : int
+    /// `beta` : float
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// numpy.ndarray
+    ///     Kaiser window of length `n`
+    #[staticmethod]
+    #[pyo3(signature = (n: "int", beta: "float"), text_signature = "(n: int, beta: float) -> numpy.ndarray")]
+    fn make_kaiser(py: Python<'_>, n: NonZeroUsize, beta: f64) -> Bound<'_, PyArray1<f64>> {
+        let window_vec = crate::window::kaiser_window(n, beta);
+        PyArray1::from_vec(py, window_vec.into_vec())
+    }
+
+    /// Create a Gaussian window of length `n` with standard deviation `std`.
+    ///
+    /// Parameters
+    /// ----------
+    ///
+    /// `n` : int
+    /// `std` : float
+    ///
+    /// Returns
+    /// -------
+    ///
+    /// numpy.ndarray
+    ///     Gaussian window of length `n`
+    #[staticmethod]
+    #[pyo3(signature = (n: "int", std: "float"), text_signature = "(n: int, std: float) -> numpy.ndarray")]
+    fn make_gaussian(py: Python<'_>, n: NonZeroUsize, std: f64) -> Bound<'_, PyArray1<f64>> {
+        let window_vec = crate::window::gaussian_window(n, std);
+        PyArray1::from_vec(py, window_vec.into_vec())
     }
 
     fn __repr__(&self) -> String {
@@ -99,7 +277,7 @@ impl From<WindowType> for PyWindowType {
 
 /// STFT parameters for spectrogram computation.
 #[pyclass(name = "StftParams")]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PyStftParams {
     pub(crate) inner: StftParams,
 }
@@ -154,7 +332,7 @@ impl PyStftParams {
 
     /// Window function.
     #[getter]
-    const fn window(&self) -> PyWindowType {
+    fn window(&self) -> PyWindowType {
         PyWindowType {
             inner: self.inner.window(),
         }
@@ -211,7 +389,7 @@ impl PyLogParams {
 
 /// Spectrogram computation parameters.
 #[pyclass(name = "SpectrogramParams")]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PySpectrogramParams {
     pub(crate) inner: SpectrogramParams,
 }
@@ -230,15 +408,15 @@ impl PySpectrogramParams {
         sample_rate: "float"
     ), text_signature = "(stft: StftParams, sample_rate: float)")]
     fn new(stft: &PyStftParams, sample_rate: f64) -> PyResult<Self> {
-        let inner = SpectrogramParams::new(stft.inner, sample_rate)?;
+        let inner = SpectrogramParams::new(stft.inner.clone(), sample_rate)?;
         Ok(Self { inner })
     }
 
     /// STFT parameters.
     #[getter]
-    const fn stft(&self) -> PyStftParams {
+    fn stft(&self) -> PyStftParams {
         PyStftParams {
-            inner: *self.inner.stft(),
+            inner: self.inner.stft().clone(),
         }
     }
 
@@ -311,8 +489,6 @@ impl From<PySpectrogramParams> for SpectrogramParams {
     }
 }
 
-/// Mel-scale filterbank parameters.
-
 /// Mel filterbank normalization strategy.
 #[pyclass(name = "MelNorm")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -325,6 +501,38 @@ pub enum PyMelNorm {
     L1,
     /// L2 normalization (Euclidean norm = 1.0).
     L2,
+}
+
+#[pymethods]
+impl PyMelNorm {
+    #[classattr]
+    const fn none() -> Self {
+        PyMelNorm::None
+    }
+
+    #[classattr]
+    const fn slaney() -> Self {
+        PyMelNorm::Slaney
+    }
+
+    #[classattr]
+    const fn l1() -> Self {
+        PyMelNorm::L1
+    }
+
+    #[classattr]
+    const fn l2() -> Self {
+        PyMelNorm::L2
+    }
+
+    fn __repr__(&self) -> String {
+        match self {
+            PyMelNorm::None => "MelNorm.None".to_string(),
+            PyMelNorm::Slaney => "MelNorm.Slaney".to_string(),
+            PyMelNorm::L1 => "MelNorm.L1".to_string(),
+            PyMelNorm::L2 => "MelNorm.L2".to_string(),
+        }
+    }
 }
 
 impl From<PyMelNorm> for MelNorm {
@@ -376,10 +584,10 @@ impl PyMelParams {
     ///     - "l2": L2 normalization (Euclidean norm = 1.0)
     #[new]
     #[pyo3(signature = (
-        n_mels,
-        f_min,
-        f_max,
-        norm = None
+        n_mels: "int",
+        f_min: "float",
+        f_max: "float",
+        norm: "MelNorm" = None
     ), text_signature = "(n_mels: int, f_min: float, f_max: float, norm: MelNorm | str | None = None)")]
     fn new(
         n_mels: NonZeroUsize,
@@ -577,7 +785,7 @@ impl PyLogHzParams {
 
 /// Constant-Q Transform parameters.
 #[pyclass(name = "CqtParams")]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PyCqtParams {
     pub(crate) inner: CqtParams,
 }

@@ -116,7 +116,7 @@ def main():
     print(f"  magnitude   = {mag_val:.6e}")
     print(f"  Match: {np.allclose(np.sqrt(power_val), mag_val)}")
 
-    print("\n✓ Mel spectrogram example completed!")
+    print("\nMel spectrogram example completed!")
 
 
 if __name__ == "__main__":

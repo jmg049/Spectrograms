@@ -172,7 +172,7 @@ fn test_different_windows() {
     ];
 
     for window in windows {
-        let stft = StftParams::new(nzu!(512), nzu!(256), window, true).unwrap();
+        let stft = StftParams::new(nzu!(512), nzu!(256), window.clone(), true).unwrap();
         let params = SpectrogramParams::new(stft, sample_rate).unwrap();
 
         let spec = LinearPowerSpectrogram::compute(&samples, &params, None);

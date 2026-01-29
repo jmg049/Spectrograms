@@ -9,6 +9,39 @@ license = "MIT"
 keywords = ["fft", "spectrogram", "audio", "image", "signal-processing"]
 categories = ["multimedia::audio", "multimedia::images", "science"]
 readme = "README.md"
+exclude = [
+    # Python package (top-level only, NOT src/python/)
+    "/python/",
+    "pyproject.toml",
+    "uv.lock",
+
+    # Documentation
+    "/docs/",
+    "/manual/",
+    "/imgs/",
+    "PYTHON_BENCHMARK.md",
+
+    # Build scripts
+    "build_docs.py",
+    "deploy_docs.sh",
+
+    # Examples, tests, benchmarks
+    "/examples/",
+    "/tests/",
+    "/benches/",
+
+    # Images and media
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.pdf",
+    "*.zip",
+
+    # CI/CD and workspace
+    ".github/",
+    "*.code-workspace",
+]
 
 [package.metadata.docs.rs]
 # Build docs with default features (realfft) on docs.rs to avoid system dependencies

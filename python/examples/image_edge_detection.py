@@ -13,6 +13,7 @@ Demonstrates:
 import numpy as np
 import spectrograms as sg
 
+
 def create_test_image(size=256):
     """Create a test image with various features."""
     image = np.zeros((size, size))
@@ -21,10 +22,10 @@ def create_test_image(size=256):
     image[50:150, 50:150] = 0.8
 
     # Small circles (approximate)
-    y, x = np.meshgrid(np.arange(size), np.arange(size), indexing='ij')
+    y, x = np.meshgrid(np.arange(size), np.arange(size), indexing="ij")
 
-    circle1 = ((x - 180)**2 + (y - 80)**2) < 20**2
-    circle2 = ((x - 180)**2 + (y - 180)**2) < 15**2
+    circle1 = ((x - 180) ** 2 + (y - 80) ** 2) < 20**2
+    circle2 = ((x - 180) ** 2 + (y - 180) ** 2) < 15**2
 
     image[circle1] = 1.0
     image[circle2] = 0.6
@@ -62,10 +63,12 @@ def main():
     high_freq = original_power[30:, 16:].sum() if nrows > 30 else 0
 
     print(f"   Total power: {total_power:.2e}")
-    print(f"   DC component: {dc_power:.2e} ({100*dc_power/total_power:.1f}%)")
-    print(f"   Low frequencies: {low_freq:.2e} ({100*low_freq/total_power:.1f}%)")
-    print(f"   Mid frequencies: {mid_freq:.2e} ({100*mid_freq/total_power:.1f}%)")
-    print(f"   High frequencies: {high_freq:.2e} ({100*high_freq/total_power:.1f}%)\n")
+    print(f"   DC component: {dc_power:.2e} ({100 * dc_power / total_power:.1f}%)")
+    print(f"   Low frequencies: {low_freq:.2e} ({100 * low_freq / total_power:.1f}%)")
+    print(f"   Mid frequencies: {mid_freq:.2e} ({100 * mid_freq / total_power:.1f}%)")
+    print(
+        f"   High frequencies: {high_freq:.2e} ({100 * high_freq / total_power:.1f}%)\n"
+    )
 
     # === 3. Low-Pass Filter (Smoothing) ===
     print("3. Applying low-pass filters (suppress high frequencies)...")
@@ -109,8 +112,10 @@ def main():
     # Count strong edges (threshold at 0.1)
     strong_edges = np.abs(edges) > 0.1
     edge_pixels = strong_edges.sum()
-    print(f"   Strong edge pixels (|edge| > 0.1): {edge_pixels} "
-          f"({100*edge_pixels/edges.size:.1f}% of image)\n")
+    print(
+        f"   Strong edge pixels (|edge| > 0.1): {edge_pixels} "
+        f"({100 * edge_pixels / edges.size:.1f}% of image)\n"
+    )
 
     # === 6. Image Sharpening ===
     print("6. Sharpening image with different amounts...")
