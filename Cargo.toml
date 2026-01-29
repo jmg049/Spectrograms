@@ -1,6 +1,6 @@
 [package]
 name = "spectrograms"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2024"
 authors = ["Jack Geraghty (jmg049) <jgeraghty049@gmail.com>"]
 description = "High-performance FFT-based computations for audio and image processing"
