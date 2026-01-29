@@ -49,6 +49,7 @@ jobs:
 
     - name: Build documentation
       run: |
+        source .venv/bin/activate
         cd docs
         make html
 
