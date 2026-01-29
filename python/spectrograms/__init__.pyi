@@ -531,6 +531,17 @@ class Spectrogram:
         ...
 
     @property
+    def T(self) -> npt.NDArray[np.float64]:
+        """Get the transpose of the spectrogram data.
+
+        Returns a transposed 2D NumPy array with shape (n_frames, n_bins).
+        This matches NumPy's .T property behavior for array transposition.
+
+        :return: Transposed spectrogram data as a NumPy array
+        """
+        ...
+
+    @property
     def params(self) -> SpectrogramParams:
         """Get the computation parameters."""
         ...

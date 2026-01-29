@@ -3068,7 +3068,7 @@ wheels = [
 
 [[package]]
 name = "spectrograms"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -3101,7 +3101,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = "==2.0" }]
+requires-dist = [{ name = "numpy", specifier = ">=1.6" }]
 
 [package.metadata.requires-dev]
 dev = [

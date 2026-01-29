@@ -1,13 +1,9 @@
 """
-Spectro-Temporal Modulation Transfer Function (STMTF) Example
+Spectro-Temporal Modulation Transfer Function (STMTF) — Verifiable Test
 
-This example demonstrates computing a 2D FFT on a spectrogram to obtain
-the spectro-temporal modulation transfer function - a key analysis technique
-in auditory neuroscience.
-
-The STMTF reveals energy distribution across:
-- Spectral modulation (vertical): how rapidly the spectrum changes
-- Temporal modulation (horizontal): how rapidly amplitude changes over time
+Expected peaks:
+    Temporal modulation  ≈ ±6 Hz
+    Spectral modulation  ≈ ±0.125 cycles / bin
 """
 
 import numpy as np
@@ -16,107 +12,143 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    print("=== Spectro-Temporal Modulation Transfer Function (STMTF) ===\n")
-
+    # -----------------------------
     # Signal parameters
-    sample_rate = 16000.0
-    duration = 2.0
+    # -----------------------------
+    sample_rate = 16_000.0
+    duration = 3.0
     n_samples = int(sample_rate * duration)
-
-    # Create amplitude-modulated tone
-    carrier_freq = 1000.0  # 1 kHz carrier
-    mod_freq = 10.0  # 10 Hz amplitude modulation
-
-    print("Signal parameters:")
-    print(f"  Sample rate: {sample_rate} Hz")
-    print(f"  Duration: {duration} s")
-    print(f"  Carrier frequency: {carrier_freq} Hz")
-    print(f"  Modulation frequency: {mod_freq} Hz")
-    print()
-
-    # Generate signal
     t = np.arange(n_samples) / sample_rate
-    am = 1.0 + 0.5 * np.cos(2 * np.pi * mod_freq * t)
-    signal = am * np.sin(2 * np.pi * carrier_freq * t)
 
-    # Compute mel spectrogram
-    print("Computing mel spectrogram...")
+    # -----------------------------
+    # Travelling ripple parameters
+    # -----------------------------
+    fm = 6.0  # temporal modulation (Hz)
+    cycles_across_band = 8.0  # spectral cycles across tone bank
+    alpha = 0.9  # modulation depth
+
+    n_tones = 64
+    f_min, f_max = 300.0, 5_000.0
+    freqs = np.geomspace(f_min, f_max, n_tones)
+
+    print("Injected modulation:")
+    print(f"  Temporal:  ±{fm:.2f} Hz")
+    print(f"  Spectral:  ±{cycles_across_band / n_tones:.3f} cycles/bin\n")
+
+    # -----------------------------
+    # Generate signal
+    # -----------------------------
+    signal = np.zeros_like(t)
+
+    for k, fk in enumerate(freqs):
+        phase_ramp = 2 * np.pi * cycles_across_band * (k / n_tones)
+        env = 1.0 + alpha * np.cos(2 * np.pi * fm * t + phase_ramp)
+        signal += env * np.sin(2 * np.pi * fk * t)
+
+    signal /= np.max(np.abs(signal)) + 1e-12
+
+    # -----------------------------
+    # Linear spectrogram (NOT mel)
+    # -----------------------------
     stft = sp.StftParams(
-        n_fft=512, hop_size=128, window=sp.WindowType.hanning, centre=True
+        n_fft=512,
+        hop_size=128,
+        window=sp.WindowType.hanning,
+        centre=True,
     )
     params = sp.SpectrogramParams(stft=stft, sample_rate=sample_rate)
-    mel = sp.MelParams(n_mels=64, f_min=0.0, f_max=8000.0)
 
-    spectrogram = sp.compute_mel_power_spectrogram(signal, params, mel)
+    print("Computing linear spectrogram...")
+    spectrogram = sp.compute_linear_power_spectrogram(signal, params)
 
-    print(f"Spectrogram shape: {spectrogram.shape}")
-    print(f"Frequency range: {spectrogram.frequency_range()}")
-    print(f"Duration: {spectrogram.duration():.2f} s\n")
+    print("Spectrogram shape:", spectrogram.shape)
+    print("Duration:", spectrogram.duration(), "s\n")
 
-    # Compute STMTF using spectrograms' built-in 2D FFT
-    print("Computing STMTF via 2D FFT...")
+    # -----------------------------
+    # Remove DC + normalise
+    # -----------------------------
+    spec = np.ascontiguousarray(spectrogram.T)
+    spec -= spec.mean()
+    spec /= spec.std() + 1e-12
+    spec -= spec.mean(axis=1, keepdims=True)  # remove per-frequency DC
+    spec -= spec.mean(axis=0, keepdims=True)  # remove per-time DC
+    # -----------------------------
+    # STMTF
+    # -----------------------------
+    print("Computing STMTF...")
+    stmtf_mag = sp.magnitude_spectrum_2d(spec)
+    stmtf = sp.fftshift(stmtf_mag)
 
-    # Use the library's fft2d functions - spectrogram is passed directly
-    stmtf_magnitude = sp.magnitude_spectrum_2d(spectrogram)
+    # -----------------------------
+    # Modulation axes
+    # -----------------------------
+    n_freq_bins, n_time_frames = spec.shape
 
-    # Shift zero-frequency to center using the library's fftshift
-    stmtf_centered = sp.fftshift(stmtf_magnitude)
+    hop = params.stft.hop_size
+    frame_period = hop / sample_rate
 
-    print(f"STMTF shape: {stmtf_centered.shape}\n")
-
-    # Calculate modulation frequencies
-    freq_bins, time_frames = spectrogram.shape
-    hop_size = params.stft.hop_size
-    frame_period = hop_size / sample_rate
-
-    spectral_mod_freqs = sp.fftshift_1d(sp.fftfreq(freq_bins, 1.0))
-    temporal_mod_freqs = sp.fftshift_1d(sp.fftfreq(time_frames, frame_period))
-
-    print("Modulation frequency ranges:")
-    print(
-        f"  Spectral: {spectral_mod_freqs[0]:.2f} to {spectral_mod_freqs[-1]:.2f} cycles/bin"
+    spectral_mod = sp.fftshift_1d(
+        sp.fftfreq(n_freq_bins, d=1.0)  # cycles per bin
     )
-    print(f"  Temporal: {temporal_mod_freqs[0]:.2f} to {temporal_mod_freqs[-1]:.2f} Hz")
-    print()
+    temporal_mod = sp.fftshift_1d(
+        sp.fftfreq(n_time_frames, d=frame_period)  # Hz
+    )
 
-    # Visualization
+    # -----------------------------
+    # Locate strongest non-DC peak
+    # -----------------------------
+    h, w = stmtf.shape
+    mask = np.ones_like(stmtf, dtype=bool)
+    mask[h // 2 - 2 : h // 2 + 3, w // 2 - 2 : w // 2 + 3] = False
+
+    flat_idx = np.argmax(stmtf[mask])
+    coords = np.argwhere(mask)[flat_idx]
+    i, j = coords
+
+    print("Measured peak:")
+    print(f"  Spectral modulation: {spectral_mod[i]:.4f} cycles/bin")
+    print(f"  Temporal modulation: {temporal_mod[j]:.4f} Hz\n")
+
+    # -----------------------------
+    # Visualisation
+    # -----------------------------
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    # Plot 1: Original spectrogram
+    # Spectrogram
     im1 = axes[0].imshow(
-        spectrogram,
+        spec,
         aspect="auto",
         origin="lower",
         cmap="viridis",
-        extent=[0, duration, 0, 8000],
     )
-    axes[0].set_xlabel("Time (s)")
-    axes[0].set_ylabel("Frequency (Hz)")
-    axes[0].set_title("Mel Spectrogram (Power)")
-    plt.colorbar(im1, ax=axes[0], label="Power")
+    axes[0].set_title("Linear Spectrogram (normalised)")
+    axes[0].set_xlabel("Frame")
+    axes[0].set_ylabel("Frequency bin")
+    plt.colorbar(im1, ax=axes[0])
 
-    # Plot 2: STMTF
+    # STMTF (log + clipped dynamic range)
+    img = np.log10(stmtf + 1e-12)
+    vmax = np.percentile(img, 99.5)
+    vmin = vmax - 6.0
+
+    tmin, tmax = temporal_mod.min(), temporal_mod.max()
+    smin, smax = spectral_mod.min(), spectral_mod.max()
+
     im2 = axes[1].imshow(
-        np.log10(stmtf_centered + 1e-10),  # Log scale for visualization
+        img,
         aspect="auto",
         origin="lower",
         cmap="hot",
-        extent=[
-            temporal_mod_freqs[0],
-            temporal_mod_freqs[-1],
-            spectral_mod_freqs[0],
-            spectral_mod_freqs[-1],
-        ],
+        vmin=vmin,
+        vmax=vmax,
+        extent=[tmin, tmax, smin, smax],
     )
-    axes[1].set_xlabel("Temporal Modulation (Hz)")
-    axes[1].set_ylabel("Spectral Modulation (cycles/bin)")
-    axes[1].set_title("Spectro-Temporal Modulation Transfer Function")
-    axes[1].axvline(
-        mod_freq, color="cyan", linestyle="--", alpha=0.7, label=f"{mod_freq} Hz AM"
-    )
-    axes[1].axvline(-mod_freq, color="cyan", linestyle="--", alpha=0.7)
-    axes[1].legend()
-    plt.colorbar(im2, ax=axes[1], label="Log Magnitude")
+
+    axes[1].set_title("STMTF (log magnitude)")
+    axes[1].set_xlabel("Temporal modulation (Hz)")
+    axes[1].set_ylabel("Spectral modulation (cycles/bin)")
+    plt.colorbar(im2, ax=axes[1])
+
     plt.tight_layout()
     plt.show()
 

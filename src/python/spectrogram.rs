@@ -292,6 +292,19 @@ impl PySpectrogram {
         self.n_frames()
     }
 
+    /// Get the transpose of the spectrogram data.
+    ///
+    /// Returns
+    /// -------
+    /// numpy.typing.NDArray[numpy.float64]
+    ///     Transposed 2D `NumPy` array with shape (`n_frames`, `n_bins`)
+    #[getter]
+    fn T<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
+        let data = self.spectrogram_type.data();
+        let data_t = data.t();
+        PyArray2::from_array(py, &data_t.to_owned())
+    }
+
     #[pyo3(signature = (dtype=None), text_signature = "($self, dtype=None)")]
     fn __array__<'py>(
         &self,

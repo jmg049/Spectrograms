@@ -251,8 +251,17 @@ where
         // Main loop: fill each frame (column)
         // TODO: Parallelize with rayon once thread-safety issues are resolved
         for frame_idx in 0..n_frames.get() {
-            self.stft
-                .compute_frame_spectrum(samples, frame_idx, &mut self.workspace)?;
+            // CQT needs unwindowed frames because its kernels already contain windowing.
+            // Other mappings use the FFT spectrum, so they need the windowed frame.
+            if self.mapping.kind.needs_unwindowed_frame() {
+                // Fill frame without windowing (for CQT)
+                self.stft
+                    .fill_frame_unwindowed(samples, frame_idx, &mut self.workspace)?;
+            } else {
+                // Compute windowed frame spectrum (for FFT-based mappings)
+                self.stft
+                    .compute_frame_spectrum(samples, frame_idx, &mut self.workspace)?;
+            }
 
             // mapping: spectrum(out_len) -> mapped(n_bins)
             // For CQT, this uses workspace.frame; for others, workspace.spectrum
@@ -332,9 +341,17 @@ where
         self.workspace
             .ensure_sizes(self.stft.n_fft, self.stft.out_len, n_bins);
 
-        // Compute frame spectrum
-        self.stft
-            .compute_frame_spectrum(samples, frame_idx, &mut self.workspace)?;
+        // CQT needs unwindowed frames because its kernels already contain windowing.
+        // Other mappings use the FFT spectrum, so they need the windowed frame.
+        if self.mapping.kind.needs_unwindowed_frame() {
+            // Fill frame without windowing (for CQT)
+            self.stft
+                .fill_frame_unwindowed(samples, frame_idx, &mut self.workspace)?;
+        } else {
+            // Compute windowed frame spectrum (for FFT-based mappings)
+            self.stft
+                .compute_frame_spectrum(samples, frame_idx, &mut self.workspace)?;
+        }
 
         // Apply mapping (using split borrows to avoid borrow conflicts)
         let Workspace {
@@ -420,8 +437,17 @@ where
 
         // Main loop: fill each frame (column)
         for frame_idx in 0..n_frames.get() {
-            self.stft
-                .compute_frame_spectrum(samples, frame_idx, &mut self.workspace)?;
+            // CQT needs unwindowed frames because its kernels already contain windowing.
+            // Other mappings use the FFT spectrum, so they need the windowed frame.
+            if self.mapping.kind.needs_unwindowed_frame() {
+                // Fill frame without windowing (for CQT)
+                self.stft
+                    .fill_frame_unwindowed(samples, frame_idx, &mut self.workspace)?;
+            } else {
+                // Compute windowed frame spectrum (for FFT-based mappings)
+                self.stft
+                    .compute_frame_spectrum(samples, frame_idx, &mut self.workspace)?;
+            }
 
             // mapping: spectrum(out_len) -> mapped(n_bins)
             // For CQT, this uses workspace.frame; for others, workspace.spectrum
@@ -1321,6 +1347,53 @@ impl StftPlan {
         Ok(())
     }
 
+    /// Fill a time-domain frame WITHOUT applying the window.
+    ///
+    /// This is used for CQT mapping, where the CQT kernels already contain
+    /// windowing applied during kernel generation. Applying the STFT window
+    /// would result in double-windowing.
+    ///
+    /// # Arguments
+    ///
+    /// * `samples` - Input audio samples
+    /// * `frame_idx` - Frame index
+    /// * `workspace` - Workspace containing the frame buffer to fill
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if frame index is out of bounds.
+    fn fill_frame_unwindowed(
+        &self,
+        samples: &NonEmptySlice<f64>,
+        frame_idx: usize,
+        workspace: &mut Workspace,
+    ) -> SpectrogramResult<()> {
+        let out = workspace.frame.as_mut_slice();
+        debug_assert_eq!(out.len(), self.n_fft.get());
+
+        let pad = if self.centre { self.n_fft.get() / 2 } else { 0 };
+        let start = frame_idx
+            .checked_mul(self.hop_size().get())
+            .ok_or_else(|| SpectrogramError::invalid_input("frame index overflow"))?;
+
+        // Fill frame WITHOUT windowing
+        for (i, sample) in out.iter_mut().enumerate().take(self.n_fft.get()) {
+            let v_idx = start + i;
+            let s_idx = v_idx as isize - pad as isize;
+
+            let sample_val = if s_idx < 0 || (s_idx as usize) >= samples.len().get() {
+                0.0
+            } else {
+                samples[s_idx as usize]
+            };
+
+            // No window multiplication - just copy the sample
+            *sample = sample_val;
+        }
+
+        Ok(())
+    }
+
     /// Compute the full STFT for a signal, returning an `StftResult`.
     ///
     /// This is a convenience method that handles frame iteration and
@@ -1593,6 +1666,17 @@ enum MappingKind {
     },
 }
 
+impl MappingKind {
+    /// Check if this mapping requires unwindowed time-domain frames.
+    ///
+    /// CQT kernels already contain windowing applied during kernel generation,
+    /// so they should receive unwindowed frames to avoid double-windowing.
+    /// All other mappings work on FFT spectra and don't use the time-domain frame.
+    const fn needs_unwindowed_frame(&self) -> bool {
+        matches!(self, Self::Cqt { .. })
+    }
+}
+
 /// Typed mapping wrapper.
 #[derive(Debug, Clone)]
 struct FrequencyMapping<FreqScale> {
@@ -1807,8 +1891,9 @@ impl<FreqScale> FrequencyMapping<FreqScale> {
                 Ok(())
             }
             MappingKind::Cqt { kernel } => {
-                // CQT works on time-domain windowed frame, not FFT spectrum
-                // Apply CQT kernel to get complex coefficients
+                // CQT works on time-domain unwindowed frame (not FFT spectrum).
+                // The CQT kernels contain windowing applied during kernel generation,
+                // so the input frame should be unwindowed to avoid double-windowing.
                 let cqt_complex = kernel.apply(frame)?;
 
                 if out.len().get() != cqt_complex.len().get() {
