@@ -1,6 +1,6 @@
 [package]
 name = "spectrograms"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 authors = ["Jack Geraghty (jmg049) <jgeraghty049@gmail.com>"]
 description = "High-performance FFT-based computations for audio and image processing"
@@ -71,7 +71,7 @@ once_cell = "1.19"
 
 
 [features]
-default = ["realfft", "python"]
+default = ["realfft"]
 fftw = ["dep:fftw-sys"]
 realfft = ["dep:realfft", "dep:rustfft"]
 serde = ["dep:serde"]
