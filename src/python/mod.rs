@@ -17,8 +17,9 @@ mod planner;
 mod spectrogram;
 
 pub use error::*;
+pub use params::*;
 
-use crate::{Chromagram, python::params::PyChromaParams};
+use crate::Chromagram;
 
 /// Chromagram representation with 12 pitch classes.
 ///

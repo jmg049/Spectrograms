@@ -2,13 +2,14 @@
 
 use std::num::NonZeroUsize;
 
-use numpy::{PyArray1, PyReadonlyArray1};
+use num_complex::Complex;
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, IntoPyArray};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 
 use crate::{
     ChromaNorm, ChromaParams, CqtParams, ErbParams, LogHzParams, LogParams, MelNorm, MelParams,
-    MfccParams, SpectrogramParams, StftParams, WindowType,
+    MfccParams, SpectrogramParams, StftParams, WindowType, StftResult
 };
 
 /// Python wrapper for `WindowType`.
@@ -275,11 +276,85 @@ impl From<WindowType> for PyWindowType {
     }
 }
 
+#[pyclass(name = "StftResult", from_py_object)]
+#[derive(Clone, Debug)]
+pub struct PyStftResult {
+    pub(crate) inner: StftResult,
+}
+
+impl From<StftResult> for PyStftResult {
+    fn from(inner: StftResult) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<PyStftResult> for StftResult {
+    #[inline]
+    fn from(val: PyStftResult) -> Self {
+        val.inner
+    }
+}
+
+impl PyStftResult {
+    pub fn from_inner(inner: StftResult) -> Self {
+        Self { inner }
+    }
+
+    pub fn into_inner(self) -> StftResult {
+            self.inner
+    }
+}
+
+#[pymethods]
+impl PyStftResult {
+    #[getter]
+    fn n_bins(&self) -> usize {
+        self.inner.n_bins().get()
+    }
+
+    #[getter]
+    fn n_frames(&self) -> usize {
+        self.inner.n_frames().get()
+    }
+
+    #[getter]
+    fn frequency_resolution(&self) -> f64 {
+        self.inner.frequency_resolution()
+    }
+
+    #[getter]
+    fn time_resolution(&self) -> f64 {
+        self.inner.time_resolution()
+    }
+
+    #[getter]
+    fn params(&self) -> PyStftParams {
+        PyStftParams {
+            inner: self.inner.params.clone(),
+        }
+    }
+
+    #[getter]
+    fn sample_rate(&self) -> f64 {
+        self.inner.sample_rate
+    }
+    
+    fn norm<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>>{
+        self.inner.norm().into_pyarray(py)
+    }
+
+    fn data<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<Complex<f64>>> {
+        PyArray2::from_owned_array(py, self.inner.data.clone())
+    }
+
+
+}
+
 /// STFT parameters for spectrogram computation.
 #[pyclass(name = "StftParams", from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PyStftParams {
-    pub(crate) inner: StftParams,
+    pub inner: StftParams,
 }
 
 #[pymethods]
@@ -822,6 +897,20 @@ impl PyCqtParams {
 
     fn __repr__(&self) -> String {
         format!("CqtParams(num_bins={})", self.num_bins())
+    }
+}
+
+impl From<CqtParams> for PyCqtParams {
+    #[inline]
+    fn from(inner: CqtParams) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<PyCqtParams> for CqtParams {
+    #[inline]
+    fn from(val: PyCqtParams) -> Self {
+        val.inner
     }
 }
 

@@ -33,7 +33,7 @@ Audio Example:
     >>> # Compute spectrogram
     >>> spec = sg.compute_linear_power_spectrogram(samples, params)
     >>> print(f"Shape: {spec.shape}")
-
+>
 Image Example:
     >>> import numpy as np
     >>> import spectrograms as sg

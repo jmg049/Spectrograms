@@ -208,7 +208,7 @@ mod spectrogram;
 mod window;
 
 #[cfg(feature = "python")]
-mod python;
+pub mod python;
 
 // ============================================================================
 // Domain-Specific Module Organization
