@@ -3,13 +3,13 @@
 use std::num::NonZeroUsize;
 
 use num_complex::Complex;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, IntoPyArray};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 
 use crate::{
     ChromaNorm, ChromaParams, CqtParams, ErbParams, LogHzParams, LogParams, MelNorm, MelParams,
-    MfccParams, SpectrogramParams, StftParams, WindowType, StftResult
+    MfccParams, SpectrogramParams, StftParams, StftResult, WindowType,
 };
 
 /// Python wrapper for `WindowType`.
@@ -21,6 +21,9 @@ use crate::{
 pub struct PyWindowType {
     pub(crate) inner: WindowType,
 }
+
+impl PyWindowType { pub fn into_inner(self) -> WindowType { self.inner } pub fn as_inner(&self) -> &WindowType { &self.inner}   }
+
 
 #[pymethods]
 impl PyWindowType {
@@ -301,7 +304,7 @@ impl PyStftResult {
     }
 
     pub fn into_inner(self) -> StftResult {
-            self.inner
+        self.inner
     }
 }
 
@@ -338,16 +341,14 @@ impl PyStftResult {
     fn sample_rate(&self) -> f64 {
         self.inner.sample_rate
     }
-    
-    fn norm<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>>{
-        self.inner.norm().into_pyarray(py)
+
+    fn norm<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
+        PyArray2::from_owned_array(py, self.inner.norm())
     }
 
     fn data<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<Complex<f64>>> {
         PyArray2::from_owned_array(py, self.inner.data.clone())
     }
-
-
 }
 
 /// STFT parameters for spectrogram computation.
@@ -430,12 +431,40 @@ impl PyStftParams {
     }
 }
 
+impl From<PyStftParams> for StftParams {
+    #[inline]
+    fn from(val: PyStftParams) -> Self {
+        val.inner
+    }
+}
+
+impl From<StftParams> for PyStftParams {
+    #[inline]
+    fn from(inner: StftParams) -> Self {
+        Self { inner }
+    }
+}
+
 /// Decibel conversion parameters.
 
 #[pyclass(name = "LogParams", from_py_object)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PyLogParams {
     pub(crate) inner: LogParams,
+}
+
+impl PyLogParams {
+    #[inline]
+    #[must_use]
+    pub fn into_inner(self) -> LogParams {
+        self.inner
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_inner(&self) -> &LogParams {
+        &self.inner
+    }
 }
 
 #[pymethods]
@@ -459,6 +488,20 @@ impl PyLogParams {
 
     fn __repr__(&self) -> String {
         format!("LogParams(floor_db={})", self.floor_db())
+    }
+}
+
+impl From<PyLogParams> for LogParams {
+    #[inline]
+    fn from(val: PyLogParams) -> Self {
+        val.inner
+    }
+}
+
+impl From<LogParams> for PyLogParams {
+    #[inline]
+    fn from(inner: LogParams) -> Self {
+        Self { inner }
     }
 }
 
@@ -743,11 +786,31 @@ impl PyMelParams {
     }
 }
 
+impl From<PyMelParams> for MelParams {
+    #[inline]
+    fn from(val: PyMelParams) -> Self {
+        val.inner
+    }
+}
+
+impl From<MelParams> for PyMelParams {
+    #[inline]
+    fn from(inner: MelParams) -> Self {
+        Self { inner }
+    }
+}
+
 /// ERB-scale (Equivalent Rectangular Bandwidth) filterbank parameters.
 #[pyclass(name = "ErbParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyErbParams {
     pub(crate) inner: ErbParams,
+}
+
+impl PyErbParams {
+    #[inline]
+    pub fn into_inner(self) -> ErbParams { self.inner } 
+    #[inline] pub fn as_inner(&self) -> &ErbParams { &self.inner } 
 }
 
 #[pymethods]
@@ -800,6 +863,8 @@ impl PyErbParams {
         )
     }
 }
+
+impl From<ErbParams> for PyErbParams { #[inline] fn from(inner: ErbParams) -> Self { Self { inner } } }
 
 /// Logarithmic frequency scale parameters.
 #[pyclass(name = "LogHzParams", from_py_object)]
@@ -1097,6 +1162,20 @@ impl PyMfccParams {
 
     fn __repr__(&self) -> String {
         format!("MfccParams(n_mfcc={})", self.n_mfcc())
+    }
+}
+
+impl From<PyMfccParams> for MfccParams {
+    #[inline]
+    fn from(val: PyMfccParams) -> Self {
+        val.inner
+    }
+}
+
+impl From<MfccParams> for PyMfccParams {
+    #[inline]
+    fn from(inner: MfccParams) -> Self {
+        Self { inner }
     }
 }
 

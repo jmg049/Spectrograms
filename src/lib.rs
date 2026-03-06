@@ -196,6 +196,7 @@
 //! # }
 //! ```
 
+pub mod binaural;
 mod chroma;
 mod cqt;
 mod erb;
@@ -209,6 +210,7 @@ mod window;
 
 #[cfg(feature = "python")]
 pub mod python;
+
 
 // ============================================================================
 // Domain-Specific Module Organization

@@ -651,6 +651,103 @@ print(f"Chroma: {chroma.shape}")
 
 ---
 
+## Binaural Spectrograms
+
+Binaural spectrograms capture spatial audio cues by comparing the left and right channels of stereo audio. These are based on the [Binaspect](https://github.com/QxLabIreland/Binaspect/) implementation.
+
+| Spectrogram | Cue | Frequency Range | Output Units |
+|-------------|-----|-----------------|--------------|
+| **ITD** (Interaural Time Difference) | Time delay between ears | 50–620 Hz | Seconds |
+| **IPD** (Interaural Phase Difference) | Phase difference between ears | 50–620 Hz | Radians |
+| **ILD** (Interaural Level Difference) | Intensity difference | 1700–4600 Hz | Decibels |
+| **ILR** (Interaural Level Ratio) | Normalised level ratio | 1700–4600 Hz | [-1, 1] |
+
+<table>
+<tr>
+<th>Rust</th>
+<th>Python</th>
+</tr>
+<tr>
+<td>
+
+```rust
+use spectrograms::binaural::*;
+
+let stft = StftParams::new(nzu!(4096), nzu!(1024), WindowType::Hanning, true)?;
+let params = SpectrogramParams::new(stft, 44100.0)?;
+let mut plan = StftPlan::new(&params)?;
+
+// ITD spectrogram (50–620 Hz)
+let itd_params = ITDSpectrogramParams::new(params.clone(), 50.0, 620.0, None)?;
+let itd = compute_itd_spectrogram([left, right], &itd_params, &mut plan)?;
+println!("ITD: {} bins x {} frames", itd.n_bins(), itd.n_frames());
+// ITD: 53 bins x N frames
+
+// IPD spectrogram (wrapped phase)
+let ipd_params = IPDSpectrogramParams::new(params.clone(), 50.0, 620.0, true)?;
+let ipd = compute_ipd_spectrogram([left, right], &ipd_params, &mut plan)?;
+
+// ILD spectrogram (1700–4600 Hz)
+let ild_params = ILDSpectrogramParams::new(params.clone(), 1700.0, 4600.0)?;
+let ild = compute_ild_spectrogram([left, right], &ild_params, &mut plan)?;
+
+// ILR spectrogram
+let ilr_params = ILRSpectrogramParams::new(params.clone(), 1700.0, 4600.0)?;
+let ilr = compute_ilr_spectrogram([left, right], &ilr_params, &mut plan)?;
+
+// All spectrograms carry frequency and time axes
+let (f_min, f_max) = itd.frequency_range();
+let duration = itd.duration();
+
+// Built-in histograms
+let itd_hist = itd.histogram(None, None, false, true);
+let ild_hist = ild.histogram(None, None, None, false, true);
+```
+
+</td>
+<td>
+
+```python
+import spectrograms as sg
+
+stft = sg.StftParams(n_fft=4096, hop_size=1024, window=sg.WindowType.hanning)
+params = sg.SpectrogramParams(stft, sample_rate=44100)
+
+# ITD spectrogram (time delay, 50–620 Hz)
+itd_params = sg.ITDSpectrogramParams(params, start_freq=50.0, end_freq=620.0)
+itd = sg.compute_itd_spectrogram(stereo_audio, itd_params)
+# Shape: (53, n_frames)
+
+# IPD spectrogram (phase difference, wrapped)
+ipd_params = sg.IPDSpectrogramParams(params, start_freq=50.0, end_freq=620.0, wrapped=True)
+ipd = sg.compute_ipd_spectrogram(stereo_audio, ipd_params)
+
+# ILD spectrogram (level difference in dB, 1700–4600 Hz)
+ild_params = sg.ILDSpectrogramParams(params, start_freq=1700.0, end_freq=4600.0)
+ild = sg.compute_ild_spectrogram(stereo_audio, ild_params)
+# Shape: (269, n_frames)
+
+# ILR spectrogram (level ratio [-1, 1])
+ilr_params = sg.ILRSpectrogramParams(params, start_freq=1700.0, end_freq=4600.0)
+ilr = sg.compute_ilr_spectrogram(stereo_audio, ilr_params)
+
+# Comparison / diff functions
+itd_diff, mean_deg, mean_itd = sg.compute_itd_spectrogram_diff(
+    ref_audio, test_audio, itd_params
+)
+print(f"Mean ITD difference: {mean_deg:.2f}°")
+
+ilr_diff, mean_ilr = sg.compute_ilr_spectrogram_diff(
+    ref_audio, test_audio, ilr_params
+)
+```
+
+</td>
+</tr>
+</table>
+
+---
+
 ## Supported Spectrogram Types
 
 ### Frequency Scales

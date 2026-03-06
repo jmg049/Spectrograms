@@ -458,6 +458,88 @@ class MfccParams:
         """Number of MFCC coefficients."""
         ...
 
+class ITDSpectrogramParams:
+    """ITD (Interaural Time Difference) spectrogram parameters."""
+
+    def __init__(
+        self,
+        spectrogram_params: SpectrogramParams,
+        start_freq: Optional[float] = 50.0,
+        end_freq: Optional[float] = 620.0,
+        magphase_power: int = 1,
+    ) -> None:
+        """Create ITD spectrogram parameters.
+
+        :param spectrogram_params: Base spectrogram parameters for STFT configuration
+        :param start_freq: Minimum frequency in Hz for ITD analysis
+        :param end_freq: Maximum frequency in Hz for ITD analysis
+        :param magphase_power: Power to raise magnitude values when combining with phase
+        """
+        ...
+        
+    @property
+    def spectrogram_params(self) -> SpectrogramParams:
+        """Base spectrogram parameters for STFT configuration."""
+        ...
+        
+    @property
+    def start_freq(self) -> float:
+        """Minimum frequency in Hz for ITD analysis."""
+        ...
+        
+    @property
+    def end_freq(self) -> float:
+        """Maximum frequency in Hz for ITD analysis."""
+        ...
+        
+    @property
+    def magphase_power(self) -> int:
+        """Power to raise magnitude values when combining with phase."""
+        ...
+
+class StftResult:
+    
+    @property
+    def data(self) -> npt.NDArray[np.complexfloating]:
+        """STFT result data as a 2D NumPy array of complex values with shape (n_bins, n_frames).""" 
+        ... 
+    
+    @property
+    def frequencies(self) -> list[float]:
+        """Frequency axis in Hz"""
+        ...
+
+    @property
+    def sample_rate(self) -> float:
+        """Sample rate in Hz.""" 
+        ...
+    
+    @property
+    def params(self) -> StftParams:
+        """Get the STFT parameters used for this result.""" 
+        ...
+
+    def n_bins(self) -> int:
+        """Get the number of frequency bins."""
+        ...
+        
+    def n_frames(self) -> int:
+        """Get the number of time frames.""" 
+        ...
+
+    def frequency_resolution(self) -> float:
+        """Get the frequency resolution in Hz.""" 
+        ...
+        
+    def time_resolution(self) -> float: 
+        """Get the time resolution in seconds.""" 
+        ...
+
+    def norm(self) -> npt.NDArray[np.float64]:
+        """Normalizes self.data to remove the complex aspect of it"""
+        ...
+        
+
 class Spectrogram:
     """Spectrogram computation result.
 
@@ -1196,6 +1278,202 @@ def compute_cqt_db_spectrogram(
     :return: CQT spectrogram with decibel amplitude scale
     """
     ...
+
+def compute_itd_spectrogram(
+    audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    params: ITDSpectrogramParams
+) -> npt.NDArray[np.float64]:
+    """Compute an interaural time difference (ITD) spectrogram.
+
+    :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
+    :param params: ITD spectrogram parameters
+    :return: ITD spectrogram as a 2D NumPy array (n_bins x n_frames)
+    """
+    ...
+
+def compute_itd_spectrogram_diff(
+    reference: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    test: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    params: ITDSpectrogramParams,
+) -> tuple[npt.NDArray[np.float64], float, float]:
+    """Compute the difference between two ITD spectrograms.
+
+    :param reference: List of two 1D NumPy arrays containing the left and right channel audio samples for the reference signal
+    :param test: List of two 1D NumPy arrays containing the left and right channel audio samples for the test signal
+    :param params: ITD spectrogram parameters
+    :return: Tuple containing the ITD difference spectrogram, mean difference in degrees, and mean difference in ITD
+    """
+    ...
+
+# ============================================================================
+# IPD (Interaural Phase Difference) Spectrogram
+# ============================================================================
+
+class IPDSpectrogramParams:
+    """IPD (Interaural Phase Difference) spectrogram parameters."""
+
+    def __init__(
+        self,
+        spectrogram_params: SpectrogramParams,
+        start_freq: float = 50.0,
+        end_freq: float = 620.0,
+        wrapped: bool = False,
+    ) -> None:
+        """Create IPD spectrogram parameters.
+
+        :param spectrogram_params: Base spectrogram parameters for STFT configuration
+        :param start_freq: Minimum frequency in Hz for IPD analysis
+        :param end_freq: Maximum frequency in Hz for IPD analysis
+        :param wrapped: Whether to wrap phase differences to [-π, π]
+        """
+        ...
+
+    @property
+    def spectrogram_params(self) -> SpectrogramParams:
+        """Base spectrogram parameters."""
+        ...
+
+    @property
+    def start_freq(self) -> float:
+        """Minimum frequency in Hz for IPD analysis."""
+        ...
+
+    @property
+    def end_freq(self) -> float:
+        """Maximum frequency in Hz for IPD analysis."""
+        ...
+
+    @property
+    def wrapped(self) -> bool:
+        """Whether phase differences are wrapped to [-π, π]."""
+        ...
+
+def compute_ipd_spectrogram(
+    audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    params: IPDSpectrogramParams
+) -> npt.NDArray[np.float64]:
+    """Compute an interaural phase difference (IPD) spectrogram.
+
+    :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
+    :param params: IPD spectrogram parameters
+    :return: IPD spectrogram as a 2D NumPy array (n_bins x n_frames) in radians
+    """
+    ...
+
+# ============================================================================
+# ILD (Interaural Level Difference) Spectrogram
+# ============================================================================
+
+class ILDSpectrogramParams:
+    """ILD (Interaural Level Difference) spectrogram parameters."""
+
+    def __init__(
+        self,
+        spectrogram_params: SpectrogramParams,
+        start_freq: float = 1700.0,
+        end_freq: float = 4600.0,
+    ) -> None:
+        """Create ILD spectrogram parameters.
+
+        :param spectrogram_params: Base spectrogram parameters for STFT configuration
+        :param start_freq: Minimum frequency in Hz for ILD analysis
+        :param end_freq: Maximum frequency in Hz for ILD analysis
+        """
+        ...
+
+    @property
+    def spectrogram_params(self) -> SpectrogramParams:
+        """Base spectrogram parameters."""
+        ...
+
+    @property
+    def start_freq(self) -> float:
+        """Minimum frequency in Hz for ILD analysis."""
+        ...
+
+    @property
+    def end_freq(self) -> float:
+        """Maximum frequency in Hz for ILD analysis."""
+        ...
+
+def compute_ild_spectrogram(
+    audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    params: ILDSpectrogramParams
+) -> npt.NDArray[np.float64]:
+    """Compute an interaural level difference (ILD) spectrogram in dB.
+
+    :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
+    :param params: ILD spectrogram parameters
+    :return: ILD spectrogram as a 2D NumPy array (n_bins x n_frames) in dB
+    """
+    ...
+
+# ============================================================================
+# ILR (Interaural Level Ratio) Spectrogram
+# ============================================================================
+
+class ILRSpectrogramParams:
+    """ILR (Interaural Level Ratio) spectrogram parameters."""
+
+    def __init__(
+        self,
+        spectrogram_params: SpectrogramParams,
+        start_freq: float = 1700.0,
+        end_freq: float = 4600.0,
+    ) -> None:
+        """Create ILR spectrogram parameters.
+
+        :param spectrogram_params: Base spectrogram parameters for STFT configuration
+        :param start_freq: Minimum frequency in Hz for ILR analysis
+        :param end_freq: Maximum frequency in Hz for ILR analysis
+        """
+        ...
+
+    @property
+    def spectrogram_params(self) -> SpectrogramParams:
+        """Base spectrogram parameters."""
+        ...
+
+    @property
+    def start_freq(self) -> float:
+        """Minimum frequency in Hz for ILR analysis."""
+        ...
+
+    @property
+    def end_freq(self) -> float:
+        """Maximum frequency in Hz for ILR analysis."""
+        ...
+
+def compute_ilr_spectrogram(
+    audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    params: ILRSpectrogramParams
+) -> npt.NDArray[np.float64]:
+    """Compute an interaural level ratio (ILR) spectrogram.
+
+    Returns values in range [-1, 1] where:
+    - Negative values indicate right channel is louder
+    - Positive values indicate left channel is louder
+
+    :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
+    :param params: ILR spectrogram parameters
+    :return: ILR spectrogram as a 2D NumPy array (n_bins x n_frames)
+    """
+    ...
+
+def compute_ilr_spectrogram_diff(
+    reference: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    test: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
+    params: ILRSpectrogramParams,
+) -> tuple[npt.NDArray[np.float64], float]:
+    """Compute the difference between two ILR spectrograms.
+
+    :param reference: List of two 1D NumPy arrays containing the left and right channel audio samples for the reference signal
+    :param test: List of two 1D NumPy arrays containing the left and right channel audio samples for the test signal
+    :param params: ILR spectrogram parameters
+    :return: Tuple containing the ILR difference array and mean absolute difference
+    """
+    ...
+
 
 # ============================================================================
 # Additional Compute Functions

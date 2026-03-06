@@ -3782,7 +3782,18 @@ impl MelParams {
         })
     }
 
-    const unsafe fn new_unchecked(n_mels: NonZeroUsize, f_min: f64, f_max: f64) -> Self {
+    /// Create new mel filter bank parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `n_mels` - Number of mel bands
+    /// * `f_min` - Minimum frequency (Hz)
+    /// * `f_max` - Maximum frequency (Hz)
+    ///
+    /// # Returns
+    ///
+    /// A `MelParams` instance with no normalization (default).
+    pub const unsafe fn new_unchecked(n_mels: NonZeroUsize, f_min: f64, f_max: f64) -> Self {
         Self {
             n_mels,
             f_min,
@@ -4030,6 +4041,22 @@ impl LogParams {
         Ok(Self { floor_db })
     }
 
+    /// Create new logarithmic scaling parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `floor_db` - Minimum dB value (floor) for logarithmic scaling
+    ///
+
+    ///
+    /// # Returns
+    ///
+    /// A `LogParams` instance.
+    #[inline]
+    pub fn new_unchecked(floor_db: f64) -> Self {
+        Self { floor_db }
+    }
+
     /// Get the floor dB value.
     #[inline]
     #[must_use]
@@ -4045,8 +4072,8 @@ impl LogParams {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpectrogramParams {
-    stft: StftParams,
-    sample_rate_hz: f64,
+    pub(crate) stft: StftParams,
+    pub(crate) sample_rate_hz: f64,
 }
 
 impl SpectrogramParams {
@@ -4076,6 +4103,24 @@ impl SpectrogramParams {
             stft,
             sample_rate_hz,
         })
+    }
+
+        /// Create new spectrogram parameters without checking the arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `stft` - STFT parameters
+    /// * `sample_rate_hz` - Sample rate in Hz
+    ///
+    /// # Returns
+    ///
+    /// A `SpectrogramParams` instance.
+    #[inline]
+    pub fn new_unchecked(stft: StftParams, sample_rate_hz: f64) -> Self {
+        Self {
+            stft,
+            sample_rate_hz,
+        }
     }
 
     /// Create a builder for spectrogram parameters.
@@ -4325,6 +4370,29 @@ impl SpectrogramParamsBuilder {
         let stft = StftParams::new(n_fft, hop_size, self.window, self.centre)?;
         SpectrogramParams::new(stft, sample_rate)
     }
+
+    /// Build the [`SpectrogramParams`].
+    ///
+    /// # Safety
+    /// 
+    /// The caller is responsible for ensuring the 'n_fft', 'hop_size' are set.
+    ///
+    /// # Returns
+    ///
+    /// A `SpectrogramParams` instance.
+    #[inline]
+    pub unsafe fn build_unchecked(self) -> SpectrogramParams {
+        // safety: is the repsonsibility of the caller
+        unsafe {
+            let n_fft = self.n_fft.unwrap_unchecked();
+            let hop_size = self.hop_size.unwrap_unchecked();
+            let stft = StftParams::new_unchecked(n_fft, hop_size, self.window, self.centre);
+            let sample_rate = self.sample_rate.unwrap_unchecked();
+            SpectrogramParams::new_unchecked(stft, sample_rate)
+        }
+        
+    }
+
 }
 
 //

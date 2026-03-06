@@ -34,3 +34,5 @@ manual/build/
 **/*.code-workspace
 **/*ipynb_checkpoints
 python/examples/benchmark_results/
+python/examples/audio/
+python/examples/example_audio.zip

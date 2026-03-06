@@ -574,6 +574,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+ "rayon",
  "serde",
 ]
 
@@ -1106,7 +1107,7 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "spectrograms"
-version = "1.0.2"
+version = "1.1.0"
 dependencies = [
  "bincode2",
  "criterion",
@@ -1119,6 +1120,7 @@ dependencies = [
  "once_cell",
  "pkg-config",
  "pyo3",
+ "rayon",
  "realfft",
  "regex 1.12.2",
  "rmp-serde",

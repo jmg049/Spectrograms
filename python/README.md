@@ -23,14 +23,6 @@
 pip install spectrograms
 ```
 
-For the FFTW-accelerated version (requires system FFTW library) you currently must build from source:
-
-```bash
-git clone https://github.com/jmg049/Spectrograms.git
-cd Spectrograms/
-# In pyproject.toml under [tool.maturin], change "realfft" to `"fftw"
-maturin develop --release
-```
 
 ## Benchmark Results
 
@@ -210,6 +202,46 @@ spectrogram = sg.compute_linear_power_spectrogram(sine_wave, spectrogram_params)
 np.abs(spectrogram).shape  # works just fine
 ```
 
+## Binaural Spectrograms
+
+Binaural spectrograms capture spatial audio cues from stereo or binaural recordings. Based on [Binaspect](https://github.com/QxLabIreland/Binaspect/).
+
+```python
+import spectrograms as sg
+
+# stereo_audio: numpy array of shape (2, n_samples) — [left, right]
+stft = sg.StftParams(n_fft=4096, hop_size=1024, window=sg.WindowType.hanning)
+params = sg.SpectrogramParams(stft, sample_rate=44100)
+
+# ITD — Interaural Time Difference (seconds), low-frequency localisation cue
+itd_params = sg.ITDSpectrogramParams(params, start_freq=50.0, end_freq=620.0)
+itd = sg.compute_itd_spectrogram(stereo_audio, itd_params)
+# shape: (53, n_frames)  [with n_fft=4096 at 44100 Hz]
+
+# IPD — Interaural Phase Difference (radians), optionally phase-wrapped
+ipd_params = sg.IPDSpectrogramParams(params, start_freq=50.0, end_freq=620.0, wrapped=True)
+ipd = sg.compute_ipd_spectrogram(stereo_audio, ipd_params)
+
+# ILD — Interaural Level Difference (dB), high-frequency localisation cue
+ild_params = sg.ILDSpectrogramParams(params, start_freq=1700.0, end_freq=4600.0)
+ild = sg.compute_ild_spectrogram(stereo_audio, ild_params)
+# shape: (269, n_frames)
+
+# ILR — Interaural Level Ratio (normalised, range [-1, 1])
+ilr_params = sg.ILRSpectrogramParams(params, start_freq=1700.0, end_freq=4600.0)
+ilr = sg.compute_ilr_spectrogram(stereo_audio, ilr_params)
+
+# Comparison / diff functions
+itd_diff, mean_degrees, mean_itd = sg.compute_itd_spectrogram_diff(
+    ref_audio, test_audio, itd_params
+)
+print(f"Mean ITD difference: {mean_degrees:.2f}°  ({mean_itd*1e6:.1f} µs)")
+
+ilr_diff, mean_ilr = sg.compute_ilr_spectrogram_diff(
+    ref_audio, test_audio, ilr_params
+)
+```
+
 ### Convenience Functions
 
 All compute functions release the Python GIL during computation.
@@ -238,6 +270,15 @@ All compute functions release the Python GIL during computation.
 - `compute_cqt(samples, sample_rate, cqt_params, hop_size)` - Constant-Q Transform
 - `compute_chromagram(samples, stft_params, sample_rate, chroma_params)`
 - `compute_mfcc(samples, stft_params, sample_rate, n_mels, mfcc_params)`
+
+**Binaural spectrograms:**
+
+- `compute_itd_spectrogram(audio, params)` - Interaural Time Difference
+- `compute_itd_spectrogram_diff(reference, test, params)` - ITD comparison
+- `compute_ipd_spectrogram(audio, params)` - Interaural Phase Difference
+- `compute_ild_spectrogram(audio, params)` - Interaural Level Difference
+- `compute_ilr_spectrogram(audio, params)` - Interaural Level Ratio
+- `compute_ilr_spectrogram_diff(reference, test, params)` - ILR comparison
 
 ### Planner API
 

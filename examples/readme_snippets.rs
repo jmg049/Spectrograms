@@ -21,6 +21,11 @@ pub fn main() -> Result<(), SpectrogramError> {
     basic_spectrogram_example()?;
 
     println!("---");
+    println!("Binaural spectrogram examples:");
+    println!("---");
+    binaural_examples()?;
+
+    println!("---");
     println!("Mel spectrogram example:");
     println!("---");
 
@@ -211,6 +216,65 @@ fn _chromagram() -> SpectrogramResult<()> {
 
     // Shape: (12, n_frames) - one row per pitch class
     println!("Chroma: {} x {}", chroma.nrows(), chroma.ncols());
+
+    Ok(())
+}
+
+fn binaural_examples() -> SpectrogramResult<()> {
+    use spectrograms::binaural::*;
+
+    let sample_rate = 44100.0;
+    let duration_secs = 2.0;
+    let n_samples = (sample_rate * duration_secs) as usize;
+
+    // Simulate stereo audio: left channel slightly delayed (ITD)
+    let left: Vec<f64> = (0..n_samples)
+        .map(|i| (2.0 * PI * 440.0 * i as f64 / sample_rate).sin())
+        .collect();
+    let right: Vec<f64> = (0..n_samples)
+        .map(|i| (2.0 * PI * 440.0 * (i as f64 + 2.0) / sample_rate).sin())
+        .collect();
+
+    let left = non_empty_slice::NonEmptyVec::new(left).unwrap();
+    let right = non_empty_slice::NonEmptyVec::new(right).unwrap();
+    let audio = [left.as_non_empty_slice(), right.as_non_empty_slice()];
+
+    let stft = StftParams::new(nzu!(4096), nzu!(1024), WindowType::Hanning, true)?;
+    let params = SpectrogramParams::new(stft, sample_rate)?;
+
+    // ITD spectrogram
+    let itd_params = ITDSpectrogramParams::new(params.clone(), 50.0, 620.0, None)?;
+    let mut plan = StftPlan::new(&params)?;
+    let itd = compute_itd_spectrogram(audio, &itd_params, &mut plan)?;
+    println!(
+        "ITD: {} bins x {} frames, freq range: {:.0}-{:.0} Hz",
+        itd.n_bins(),
+        itd.n_frames(),
+        itd.frequency_range().0,
+        itd.frequency_range().1
+    );
+
+    // IPD spectrogram (wrapped phase)
+    let ipd_params = IPDSpectrogramParams::new(params.clone(), 50.0, 620.0, true)?;
+    let ipd = compute_ipd_spectrogram(audio, &ipd_params, &mut plan)?;
+    println!("IPD: {} bins x {} frames (radians)", ipd.n_bins(), ipd.n_frames());
+
+    // ILD spectrogram
+    let ild_params = ILDSpectrogramParams::new(params.clone(), 1700.0, 4600.0)?;
+    let ild = compute_ild_spectrogram(audio, &ild_params, &mut plan)?;
+    println!("ILD: {} bins x {} frames (dB)", ild.n_bins(), ild.n_frames());
+
+    // ILR spectrogram
+    let ilr_params = ILRSpectrogramParams::new(params.clone(), 1700.0, 4600.0)?;
+    let ilr = compute_ilr_spectrogram(audio, &ilr_params, &mut plan)?;
+    println!("ILR: {} bins x {} frames (range [-1, 1])", ilr.n_bins(), ilr.n_frames());
+
+    // Histograms
+    let itd_hist = itd.histogram(None, None, false, true);
+    println!("ITD histogram: {} bins x {} frames", itd_hist.nrows(), itd_hist.ncols());
+
+    let ild_hist = ild.histogram(None, None, None, false, true);
+    println!("ILD histogram: {} bins x {} frames", ild_hist.nrows(), ild_hist.ncols());
 
     Ok(())
 }

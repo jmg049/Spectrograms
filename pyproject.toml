@@ -4,10 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "spectrograms"
-version = "1.0.2"
+version = "1.1.0"
 description = "Fast spectrogram computation library powered by Rust"
 readme = "python/README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
@@ -36,7 +36,7 @@ Repository = "https://github.com/jmg049/Spectrograms"
 Issues = "https://github.com/jmg049/Spectrograms/issues"
 
 [tool.maturin]
-features = ["python", "realfft", "serde"]
+features = ["python", "realfft", "serde", "rayon"]
 module-name = "spectrograms._spectrograms"
 python-source = "python"
 include = ["**/*.pyi", "**/py.typed"]
@@ -55,6 +55,8 @@ dev = [
     "sphinx-copybutton>=0.5.2",
     "sphinx-rtd-theme>=3.1.0",
     "pytest>=8.4.2",
+    "librosa >=0.10.1",
+    "numba>=0.63.1",
 ]
 torch = [
     "torch>=2.0.0",
