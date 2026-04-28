@@ -10,8 +10,7 @@ use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::binaural::{
-    ILDSpectrogramParams, ILRSpectrogramParams, IPDSpectrogramParams,
-    ITDSpectrogramParams,
+    ILDSpectrogramParams, ILRSpectrogramParams, IPDSpectrogramParams, ITDSpectrogramParams,
     compute_ild_spectrogram, compute_ilr_spectrogram, compute_ilr_spectrogram_diff,
     compute_ipd_spectrogram, compute_itd_spectrogram, compute_itd_spectrogram_diff,
 };
@@ -62,7 +61,7 @@ impl PyITDSpectrogramParams {
             start_freq: start_freq.unwrap_or(50.0),
             end_freq: end_freq.unwrap_or(620.0),
             magphase_power: magphase_power
-                .and_then(|p| NonZeroUsize::new(p))
+                .and_then(NonZeroUsize::new)
                 .unwrap_or_else(|| crate::nzu!(1)),
         };
         Self { inner }
@@ -86,7 +85,7 @@ impl PyITDSpectrogramParams {
     /// float
     ///     Lower frequency bound in Hz
     #[getter]
-    fn start_freq(&self) -> f64 {
+    const fn start_freq(&self) -> f64 {
         self.inner.start_freq
     }
 
@@ -97,7 +96,7 @@ impl PyITDSpectrogramParams {
     /// float
     ///     Upper frequency bound in Hz
     #[getter]
-    fn end_freq(&self) -> f64 {
+    const fn end_freq(&self) -> f64 {
         self.inner.end_freq
     }
 
@@ -108,7 +107,7 @@ impl PyITDSpectrogramParams {
     /// int
     ///     Power to raise magnitude-phase product to
     #[getter]
-    fn magphase_power(&self) -> NonZeroUsize {
+    const fn magphase_power(&self) -> NonZeroUsize {
         self.inner.magphase_power
     }
 }
@@ -156,8 +155,7 @@ fn py_compute_itd_spectrogram<'py>(
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let mut plan: StftPlan = StftPlan::new(&params.inner.spectrogram_params).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to create STFT plan: {}",
-            e
+            "Failed to create STFT plan: {e}"
         ))
     })?;
 
@@ -181,13 +179,12 @@ fn py_compute_itd_spectrogram<'py>(
     let itd_spectrogram =
         compute_itd_spectrogram(audio_slices, &params.inner, &mut plan).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to compute ITD spectrogram: {}",
-                e
+                "Failed to compute ITD spectrogram: {e}"
             ))
         })?;
 
     let py_array = PyArray2::from_owned_array(py, itd_spectrogram.data);
-    Ok(py_array.into())
+    Ok(py_array)
 }
 
 /// Parameters for computing the Interaural Phase Difference (IPD) spectrogram.
@@ -237,7 +234,8 @@ impl PyIPDSpectrogramParams {
             start_freq.unwrap_or(50.0),
             end_freq.unwrap_or(620.0),
             wrapped.unwrap_or(false),
-        ).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{e}")))?;
         Ok(Self { inner })
     }
 
@@ -259,7 +257,7 @@ impl PyIPDSpectrogramParams {
     /// float
     ///     Lower frequency bound in Hz
     #[getter]
-    fn start_freq(&self) -> f64 {
+    const fn start_freq(&self) -> f64 {
         self.inner.start_freq
     }
 
@@ -270,7 +268,7 @@ impl PyIPDSpectrogramParams {
     /// float
     ///     Upper frequency bound in Hz
     #[getter]
-    fn end_freq(&self) -> f64 {
+    const fn end_freq(&self) -> f64 {
         self.inner.end_freq
     }
 
@@ -281,7 +279,7 @@ impl PyIPDSpectrogramParams {
     /// bool
     ///     True if wrapped to [-π, π], False if unwrapped
     #[getter]
-    fn wrapped(&self) -> bool {
+    const fn wrapped(&self) -> bool {
         self.inner.wrapped
     }
 }
@@ -314,25 +312,37 @@ fn py_compute_ipd_spectrogram<'py>(
     params: &'py PyIPDSpectrogramParams,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let mut plan = StftPlan::new(&params.inner.spectrogram_params).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create STFT plan: {}", e))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to create STFT plan: {e}"
+        ))
     })?;
 
     let left_slice = unsafe {
         NonEmptySlice::new_unchecked(audio[0].as_slice().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Left audio array must be contiguous and of type float64.")
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left audio array must be contiguous and of type float64.",
+            )
         })?)
     };
 
     let right_slice = unsafe {
         NonEmptySlice::new_unchecked(audio[1].as_slice().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Right audio array must be contiguous and of type float64.")
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right audio array must be contiguous and of type float64.",
+            )
         })?)
     };
 
-    let ipd_spectrogram = compute_ipd_spectrogram([left_slice, right_slice], &params.inner, &mut plan)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to compute IPD spectrogram: {}", e)))?;
+    let ipd_spectrogram =
+        compute_ipd_spectrogram([left_slice, right_slice], &params.inner, &mut plan).map_err(
+            |e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to compute IPD spectrogram: {e}"
+                ))
+            },
+        )?;
 
-    Ok(PyArray2::from_owned_array(py, ipd_spectrogram.data).into())
+    Ok(PyArray2::from_owned_array(py, ipd_spectrogram.data))
 }
 
 /// Parameters for computing the Interaural Level Difference (ILD) spectrogram.
@@ -378,7 +388,8 @@ impl PyILDSpectrogramParams {
             spectrogram_params.into(),
             start_freq.unwrap_or(1700.0),
             end_freq.unwrap_or(4600.0),
-        ).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{e}")))?;
         Ok(Self { inner })
     }
 
@@ -400,7 +411,7 @@ impl PyILDSpectrogramParams {
     /// float
     ///     Lower frequency bound in Hz
     #[getter]
-    fn start_freq(&self) -> f64 {
+    const fn start_freq(&self) -> f64 {
         self.inner.start_freq
     }
 
@@ -411,7 +422,7 @@ impl PyILDSpectrogramParams {
     /// float
     ///     Upper frequency bound in Hz
     #[getter]
-    fn end_freq(&self) -> f64 {
+    const fn end_freq(&self) -> f64 {
         self.inner.end_freq
     }
 }
@@ -444,27 +455,38 @@ fn py_compute_ild_spectrogram<'py>(
     params: &'py PyILDSpectrogramParams,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let mut plan = StftPlan::new(&params.inner.spectrogram_params).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create STFT plan: {}", e))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to create STFT plan: {e}"
+        ))
     })?;
 
     let left_slice = unsafe {
         NonEmptySlice::new_unchecked(audio[0].as_slice().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Left audio array must be contiguous and of type float64.")
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left audio array must be contiguous and of type float64.",
+            )
         })?)
     };
 
     let right_slice = unsafe {
         NonEmptySlice::new_unchecked(audio[1].as_slice().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Right audio array must be contiguous and of type float64.")
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right audio array must be contiguous and of type float64.",
+            )
         })?)
     };
 
-    let ild_spectrogram = compute_ild_spectrogram([left_slice, right_slice], &params.inner, &mut plan)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to compute ILD spectrogram: {}", e)))?;
+    let ild_spectrogram =
+        compute_ild_spectrogram([left_slice, right_slice], &params.inner, &mut plan).map_err(
+            |e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to compute ILD spectrogram: {e}"
+                ))
+            },
+        )?;
 
-    Ok(PyArray2::from_owned_array(py, ild_spectrogram.data).into())
+    Ok(PyArray2::from_owned_array(py, ild_spectrogram.data))
 }
-
 
 /// Parameters for computing the Interaural Level Ratio (ILR) spectrogram.
 ///
@@ -509,7 +531,8 @@ impl PyILRSpectrogramParams {
             spectrogram_params.into(),
             start_freq.unwrap_or(1700.0),
             end_freq.unwrap_or(4600.0),
-        ).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{e}")))?;
         Ok(Self { inner })
     }
 
@@ -531,7 +554,7 @@ impl PyILRSpectrogramParams {
     /// float
     ///     Lower frequency bound in Hz
     #[getter]
-    fn start_freq(&self) -> f64 {
+    const fn start_freq(&self) -> f64 {
         self.inner.start_freq
     }
 
@@ -542,7 +565,7 @@ impl PyILRSpectrogramParams {
     /// float
     ///     Upper frequency bound in Hz
     #[getter]
-    fn end_freq(&self) -> f64 {
+    const fn end_freq(&self) -> f64 {
         self.inner.end_freq
     }
 }
@@ -575,25 +598,37 @@ fn py_compute_ilr_spectrogram<'py>(
     params: &'py PyILRSpectrogramParams,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let mut plan = StftPlan::new(&params.inner.spectrogram_params).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create STFT plan: {}", e))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to create STFT plan: {e}"
+        ))
     })?;
 
     let left_slice = unsafe {
         NonEmptySlice::new_unchecked(audio[0].as_slice().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Left audio array must be contiguous and of type float64.")
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left audio array must be contiguous and of type float64.",
+            )
         })?)
     };
 
     let right_slice = unsafe {
         NonEmptySlice::new_unchecked(audio[1].as_slice().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Right audio array must be contiguous and of type float64.")
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right audio array must be contiguous and of type float64.",
+            )
         })?)
     };
 
-    let ilr_spectrogram = compute_ilr_spectrogram([left_slice, right_slice], &params.inner, &mut plan)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to compute ILR spectrogram: {}", e)))?;
+    let ilr_spectrogram =
+        compute_ilr_spectrogram([left_slice, right_slice], &params.inner, &mut plan).map_err(
+            |e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to compute ILR spectrogram: {e}"
+                ))
+            },
+        )?;
 
-    Ok(PyArray2::from_owned_array(py, ilr_spectrogram.data).into())
+    Ok(PyArray2::from_owned_array(py, ilr_spectrogram.data))
 }
 
 /// Compute the difference between two ITD spectrograms.
@@ -620,19 +655,57 @@ fn py_compute_itd_spectrogram_diff<'py>(
     params: &'py PyITDSpectrogramParams,
 ) -> PyResult<(Bound<'py, PyArray1<f64>>, f64, f64)> {
     let mut plan = StftPlan::new(&params.inner.spectrogram_params).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create STFT plan: {}", e))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to create STFT plan: {e}"
+        ))
     })?;
 
-    let left_ref = unsafe { NonEmptySlice::new_unchecked(reference[0].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Left reference array must be contiguous float64."))?) };
-    let right_ref = unsafe { NonEmptySlice::new_unchecked(reference[1].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Right reference array must be contiguous float64."))?) };
-    let left_test = unsafe { NonEmptySlice::new_unchecked(test[0].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Left test array must be contiguous float64."))?) };
-    let right_test = unsafe { NonEmptySlice::new_unchecked(test[1].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Right test array must be contiguous float64."))?) };
+    let left_ref = unsafe {
+        NonEmptySlice::new_unchecked(reference[0].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left reference array must be contiguous float64.",
+            )
+        })?)
+    };
+    let right_ref = unsafe {
+        NonEmptySlice::new_unchecked(reference[1].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right reference array must be contiguous float64.",
+            )
+        })?)
+    };
+    let left_test = unsafe {
+        NonEmptySlice::new_unchecked(test[0].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left test array must be contiguous float64.",
+            )
+        })?)
+    };
+    let right_test = unsafe {
+        NonEmptySlice::new_unchecked(test[1].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right test array must be contiguous float64.",
+            )
+        })?)
+    };
 
     let (time_diff, mean_deg, mean_itd) = compute_itd_spectrogram_diff(
-        [left_ref, right_ref], [left_test, right_test], &params.inner, &mut plan
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to compute ITD diff: {}", e)))?;
+        [left_ref, right_ref],
+        [left_test, right_test],
+        &params.inner,
+        &mut plan,
+    )
+    .map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to compute ITD diff: {e}"
+        ))
+    })?;
 
-    Ok((PyArray1::from_owned_array(py, time_diff).into(), mean_deg, mean_itd))
+    Ok((
+        PyArray1::from_owned_array(py, time_diff),
+        mean_deg,
+        mean_itd,
+    ))
 }
 
 /// Compute the difference between two ILR spectrograms.
@@ -659,19 +732,54 @@ fn py_compute_ilr_spectrogram_diff<'py>(
     params: &'py PyILRSpectrogramParams,
 ) -> PyResult<(Bound<'py, PyArray1<f64>>, f64)> {
     let mut plan = StftPlan::new(&params.inner.spectrogram_params).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create STFT plan: {}", e))
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to create STFT plan: {e}"
+        ))
     })?;
 
-    let left_ref = unsafe { NonEmptySlice::new_unchecked(reference[0].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Left reference array must be contiguous float64."))?) };
-    let right_ref = unsafe { NonEmptySlice::new_unchecked(reference[1].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Right reference array must be contiguous float64."))?) };
-    let left_test = unsafe { NonEmptySlice::new_unchecked(test[0].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Left test array must be contiguous float64."))?) };
-    let right_test = unsafe { NonEmptySlice::new_unchecked(test[1].as_slice().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Right test array must be contiguous float64."))?) };
+    // todo - change to using PyReadonlyArrays
+    let left_ref = unsafe {
+        NonEmptySlice::new_unchecked(reference[0].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left reference array must be contiguous float64.",
+            )
+        })?)
+    };
+    let right_ref = unsafe {
+        NonEmptySlice::new_unchecked(reference[1].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right reference array must be contiguous float64.",
+            )
+        })?)
+    };
+    let left_test = unsafe {
+        NonEmptySlice::new_unchecked(test[0].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Left test array must be contiguous float64.",
+            )
+        })?)
+    };
+    let right_test = unsafe {
+        NonEmptySlice::new_unchecked(test[1].as_slice().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Right test array must be contiguous float64.",
+            )
+        })?)
+    };
 
     let (time_diff, mean_diff) = compute_ilr_spectrogram_diff(
-        [left_ref, right_ref], [left_test, right_test], &params.inner, &mut plan
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to compute ILR diff: {}", e)))?;
+        [left_ref, right_ref],
+        [left_test, right_test],
+        &params.inner,
+        &mut plan,
+    )
+    .map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to compute ILR diff: {e}"
+        ))
+    })?;
 
-    Ok((PyArray1::from_owned_array(py, time_diff).into(), mean_diff))
+    Ok((PyArray1::from_owned_array(py, time_diff), mean_diff))
 }
 
 pub fn register(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {

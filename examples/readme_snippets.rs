@@ -60,6 +60,13 @@ pub fn main() -> Result<(), SpectrogramError> {
     println!("---");
 
     _chromagram()?;
+
+    println!("---");
+    println!("MDCT example:");
+    println!("---");
+
+    mdct_example()?;
+
     Ok(())
 }
 
@@ -257,24 +264,86 @@ fn binaural_examples() -> SpectrogramResult<()> {
     // IPD spectrogram (wrapped phase)
     let ipd_params = IPDSpectrogramParams::new(params.clone(), 50.0, 620.0, true)?;
     let ipd = compute_ipd_spectrogram(audio, &ipd_params, &mut plan)?;
-    println!("IPD: {} bins x {} frames (radians)", ipd.n_bins(), ipd.n_frames());
+    println!(
+        "IPD: {} bins x {} frames (radians)",
+        ipd.n_bins(),
+        ipd.n_frames()
+    );
 
     // ILD spectrogram
     let ild_params = ILDSpectrogramParams::new(params.clone(), 1700.0, 4600.0)?;
     let ild = compute_ild_spectrogram(audio, &ild_params, &mut plan)?;
-    println!("ILD: {} bins x {} frames (dB)", ild.n_bins(), ild.n_frames());
+    println!(
+        "ILD: {} bins x {} frames (dB)",
+        ild.n_bins(),
+        ild.n_frames()
+    );
 
     // ILR spectrogram
     let ilr_params = ILRSpectrogramParams::new(params.clone(), 1700.0, 4600.0)?;
     let ilr = compute_ilr_spectrogram(audio, &ilr_params, &mut plan)?;
-    println!("ILR: {} bins x {} frames (range [-1, 1])", ilr.n_bins(), ilr.n_frames());
+    println!(
+        "ILR: {} bins x {} frames (range [-1, 1])",
+        ilr.n_bins(),
+        ilr.n_frames()
+    );
 
     // Histograms
     let itd_hist = itd.histogram(None, None, false, true);
-    println!("ITD histogram: {} bins x {} frames", itd_hist.nrows(), itd_hist.ncols());
+    println!(
+        "ITD histogram: {} bins x {} frames",
+        itd_hist.nrows(),
+        itd_hist.ncols()
+    );
 
     let ild_hist = ild.histogram(None, None, None, false, true);
-    println!("ILD histogram: {} bins x {} frames", ild_hist.nrows(), ild_hist.ncols());
+    println!(
+        "ILD histogram: {} bins x {} frames",
+        ild_hist.nrows(),
+        ild_hist.ncols()
+    );
+
+    Ok(())
+}
+
+fn mdct_example() -> SpectrogramResult<()> {
+    use spectrograms::{MdctParams, imdct, mdct};
+
+    let sample_rate = 44100.0;
+    let freq = 440.0;
+    let n_samples = 8192usize;
+    let signal: Vec<f64> = (0..n_samples)
+        .map(|i| (2.0 * PI * freq * i as f64 / sample_rate).sin())
+        .collect();
+    let signal = non_empty_slice::NonEmptyVec::new(signal).unwrap();
+
+    // Sine window gives perfect reconstruction with 50% hop
+    let params = MdctParams::sine_window(nzu!(512))?;
+    println!(
+        "Window: {} samples, {} coefficients per frame",
+        params.window_size.get(),
+        params.n_coefficients()
+    );
+
+    // Forward MDCT
+    let coefficients = mdct(signal.as_non_empty_slice(), &params)?;
+    println!(
+        "MDCT shape: {} bins x {} frames",
+        coefficients.nrows(),
+        coefficients.ncols()
+    );
+
+    // Inverse MDCT with perfect reconstruction
+    let reconstructed = imdct(&coefficients, &params, Some(n_samples))?;
+    let max_err = signal
+        .as_slice()
+        .iter()
+        .zip(reconstructed.iter())
+        .skip(512)
+        .take(n_samples - 1024)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0f64, f64::max);
+    println!("Max reconstruction error (interior): {max_err:.2e}");
 
     Ok(())
 }

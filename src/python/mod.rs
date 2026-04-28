@@ -13,13 +13,14 @@ mod dlpack;
 mod error;
 mod fft2d;
 mod functions;
+mod mdct;
 mod params;
 mod planner;
 mod spectrogram;
 
+use crate::Chromagram;
 pub use error::*;
 pub use params::*;
-use crate::Chromagram;
 /// Chromagram representation with 12 pitch classes.
 ///
 /// Can act as an numpy array via the `__array__` protocol.
@@ -196,6 +197,7 @@ impl PyChromagram {
 }
 
 /// Register the Python module
+#[inline]
 pub fn register_module(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register exception types
     m.add("SpectrogramError", py.get_type::<PySpectrogramError>())?;
@@ -225,6 +227,8 @@ pub fn register_module(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     dlpack::register(py, m)?;
 
     binaural::register(py, m)?;
+
+    mdct::register(py, m)?;
 
     // Register FFT plan cache management functions
     #[cfg(feature = "realfft")]

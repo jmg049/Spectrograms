@@ -27,7 +27,7 @@ If you want to learn more on the background of spectrograms and FFTs in audio/im
 
 - **Multiple Frequency Scales**: Linear, Mel, ERB, and CQT
 - **Multiple Amplitude Scales**: Power, Magnitude, and Decibels
-- **Advanced Audio Features**: MFCC, Chromagram, and raw STFT
+- **Advanced Audio Features**: MFCC, Chromagram, MDCT/IMDCT, and raw STFT
 - **Streaming Support**: Frame-by-frame processing for real-time applications
 
 ### Image Processing
@@ -748,6 +748,76 @@ ilr_diff, mean_ilr = sg.compute_ilr_spectrogram_diff(
 
 ---
 
+## MDCT (Modified Discrete Cosine Transform)
+
+MDCT is a lapped orthogonal transform used in audio codecs (MP3, AAC, Vorbis, Opus). It maps a 2N-sample overlapping window to N real-valued coefficients. With a **sine window** and **50% hop**, MDCT + IMDCT achieves perfect reconstruction.
+
+<table>
+<tr>
+<th>Rust</th>
+<th>Python</th>
+</tr>
+<tr>
+<td>
+
+```rust
+use spectrograms::{MdctParams, mdct, imdct, nzu};
+use non_empty_slice::NonEmptyVec;
+
+let samples: Vec<f64> = (0..8192)
+    .map(|i| (i as f64 * 0.01).sin())
+    .collect();
+let samples = NonEmptyVec::new(samples).unwrap();
+
+// Sine window + 50% hop = perfect reconstruction
+let params = MdctParams::sine_window(nzu!(1024))?;
+println!("Coefficients per frame: {}", params.n_coefficients());
+
+// Forward MDCT: shape (N, n_frames)
+let coefficients = mdct(samples.as_non_empty_slice(), &params)?;
+println!("MDCT: {} bins x {} frames", coefficients.nrows(), coefficients.ncols());
+
+// Inverse MDCT: reconstruct signal
+let reconstructed = imdct(&coefficients, &params, Some(samples.len()))?;
+```
+
+</td>
+<td>
+
+```python
+import numpy as np
+import spectrograms as sg
+
+sample_rate = 44100
+t = np.linspace(0, 1.0, sample_rate, endpoint=False)
+signal = np.sin(2 * np.pi * 440 * t)
+
+# Sine window + 50% hop = perfect reconstruction
+params = sg.MdctParams.sine_window(window_size=1024)
+print(f"Coefficients per frame: {params.n_coefficients}")
+
+# Forward MDCT: shape (N, n_frames)
+coefficients = sg.mdct(signal, params)
+print(f"MDCT: {coefficients.shape}")
+
+# Inverse MDCT: reconstruct signal
+reconstructed = sg.imdct(coefficients, params, original_length=len(signal))
+```
+
+</td>
+</tr>
+</table>
+
+| Function | Description |
+|----------|-------------|
+| `mdct(samples, params)` | Forward MDCT → shape `(N, n_frames)` |
+| `imdct(coefficients, params)` | Inverse MDCT via overlap-add |
+| `mdct_f32(samples, params)` | f32 variant (~2× faster) |
+| `imdct_f32(coefficients, params)` | f32 inverse variant |
+| `MdctParams::sine_window(n)` | Perfect-reconstruction parameters |
+
+---
+
 ## Supported Spectrogram Types
 
 ### Frequency Scales
@@ -961,6 +1031,7 @@ Comprehensive examples in both languages:
 - ['fft2d_basic.rs'](examples/fft2d_basic.rs) - 2D FFT basics
 - ['image_blur_fft.rs'](examples/image_blur_fft.rs) - FFT-based image blurring
 - ['image_edge_detection.rs'](examples/image_edge_detection.rs) - Frequency-domain edge detection
+- [`mdct_example`](examples/readme_snippets.rs) - MDCT/IMDCT with perfect reconstruction
 - [`mel_spectrogram.rs`](examples/mel_spectrogram.rs) - Mel spectrogram with dB scaling
 - ['readme_snippets.rs'](examples/readme_snippets.rs) - Code snippets from README
 - ['reuse_plan.rs'](examples/reuse_plan.rs) - Batch processing with plan reuse
@@ -981,6 +1052,7 @@ Comprehensive examples in both languages:
 - ['image_blur_fft.py'](python/examples/image_blur_fft.py) - FFT-based image blurring
 - ['image_edge_detection.py'](python/examples/image_edge_detection.py) - Frequency-domain edge detection
 - [`mel_spectrogram.py`](python/examples/mel_spectrogram.py) - Mel spectrograms
+- [`mdct_example.py`](python/examples/mdct_example.py) - MDCT/IMDCT with perfect reconstruction
 - [`mfcc_example.py`](python/examples/mfcc_example.py) - MFCC computation
 - ['readme_snippets.py'](python/examples/readme_snippets.py) - Code snippets from README
 - ['stmtf.py'](python/examples/stmtf.py) - Spectro-Temporal Modulation Transfer Function (STMTF)

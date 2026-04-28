@@ -22,8 +22,16 @@ pub struct PyWindowType {
     pub(crate) inner: WindowType,
 }
 
-impl PyWindowType { pub fn into_inner(self) -> WindowType { self.inner } pub fn as_inner(&self) -> &WindowType { &self.inner}   }
-
+impl PyWindowType {
+    #[must_use]
+    pub fn into_inner(self) -> WindowType {
+        self.inner
+    }
+    #[must_use]
+    pub const fn as_inner(&self) -> &WindowType {
+        &self.inner
+    }
+}
 
 #[pymethods]
 impl PyWindowType {
@@ -299,10 +307,12 @@ impl From<PyStftResult> for StftResult {
 }
 
 impl PyStftResult {
-    pub fn from_inner(inner: StftResult) -> Self {
+    #[must_use]
+    pub const fn from_inner(inner: StftResult) -> Self {
         Self { inner }
     }
 
+    #[must_use]
     pub fn into_inner(self) -> StftResult {
         self.inner
     }
@@ -338,7 +348,7 @@ impl PyStftResult {
     }
 
     #[getter]
-    fn sample_rate(&self) -> f64 {
+    const fn sample_rate(&self) -> f64 {
         self.inner.sample_rate
     }
 
@@ -456,13 +466,13 @@ pub struct PyLogParams {
 impl PyLogParams {
     #[inline]
     #[must_use]
-    pub fn into_inner(self) -> LogParams {
+    pub const fn into_inner(self) -> LogParams {
         self.inner
     }
 
     #[inline]
     #[must_use]
-    pub fn as_inner(&self) -> &LogParams {
+    pub const fn as_inner(&self) -> &LogParams {
         &self.inner
     }
 }
@@ -809,8 +819,15 @@ pub struct PyErbParams {
 
 impl PyErbParams {
     #[inline]
-    pub fn into_inner(self) -> ErbParams { self.inner } 
-    #[inline] pub fn as_inner(&self) -> &ErbParams { &self.inner } 
+    #[must_use]
+    pub const fn into_inner(self) -> ErbParams {
+        self.inner
+    }
+    #[inline]
+    #[must_use]
+    pub const fn as_inner(&self) -> &ErbParams {
+        &self.inner
+    }
 }
 
 #[pymethods]
@@ -864,7 +881,12 @@ impl PyErbParams {
     }
 }
 
-impl From<ErbParams> for PyErbParams { #[inline] fn from(inner: ErbParams) -> Self { Self { inner } } }
+impl From<ErbParams> for PyErbParams {
+    #[inline]
+    fn from(inner: ErbParams) -> Self {
+        Self { inner }
+    }
+}
 
 /// Logarithmic frequency scale parameters.
 #[pyclass(name = "LogHzParams", from_py_object)]
@@ -1122,7 +1144,6 @@ impl From<PyChromaParams> for ChromaParams {
     }
 }
 /// MFCC (Mel-Frequency Cepstral Coefficients) parameters.
-
 #[pyclass(name = "MfccParams", from_py_object)]
 #[derive(Clone, Copy, Debug)]
 pub struct PyMfccParams {
@@ -1180,8 +1201,10 @@ impl From<MfccParams> for PyMfccParams {
 }
 
 /// Register all parameter classes with the Python module.
+#[inline]
 pub fn register(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyWindowType>()?;
+    m.add_class::<PyStftResult>()?;
     m.add_class::<PyStftParams>()?;
     m.add_class::<PyLogParams>()?;
     m.add_class::<PySpectrogramParams>()?;

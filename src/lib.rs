@@ -19,9 +19,6 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 #![allow(clippy::multiple_unsafe_ops_per_block)]
 #![allow(clippy::doc_markdown)]
-#![warn(clippy::exhaustive_enums)]
-#![warn(clippy::exhaustive_structs)]
-#![warn(clippy::missing_inline_in_public_items)]
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::iter_cloned_collect)]
 #![warn(clippy::panic_in_result_fn)]
@@ -172,6 +169,25 @@
 //! # }
 //! ```
 //!
+//! ## MDCT (Modified Discrete Cosine Transform)
+//!
+//! ```
+//! use spectrograms::*;
+//! use non_empty_slice::NonEmptyVec;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let samples: Vec<f64> = (0..4096).map(|i| (i as f64 * 0.01).sin()).collect();
+//! let samples = NonEmptyVec::new(samples).unwrap();
+//!
+//! // Sine window gives perfect reconstruction at 50% hop
+//! let params = MdctParams::sine_window(nzu!(512))?;
+//!
+//! let coefficients = mdct(samples.as_non_empty_slice(), &params)?;
+//! let reconstructed = imdct(&coefficients, &params, Some(samples.len().get()))?;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! ## Efficient Batch Processing
 //!
 //! ```
@@ -204,13 +220,13 @@ mod error;
 pub mod fft2d;
 mod fft_backend;
 pub mod image_ops;
+mod mdct;
 mod mfcc;
 mod spectrogram;
 mod window;
 
 #[cfg(feature = "python")]
 pub mod python;
-
 
 // ============================================================================
 // Domain-Specific Module Organization
@@ -313,9 +329,12 @@ pub use chroma::{
 pub use cqt::{CqtParams, CqtResult, cqt};
 pub use erb::{ErbParams, GammatoneParams};
 pub use error::{SpectrogramError, SpectrogramResult};
-pub use fft_backend::{C2rPlan, C2rPlanner, R2cPlan, R2cPlanner, r2c_output_size};
+pub use fft_backend::{
+    C2cPlan, C2cPlanF32, C2rPlan, C2rPlanner, R2cPlan, R2cPlanF32, R2cPlanner, r2c_output_size,
+};
 pub use fft2d::*;
 pub use image_ops::*;
+pub use mdct::{MdctParams, imdct, imdct_f32, mdct, mdct_f32};
 pub use mfcc::{Mfcc, MfccParams, mfcc, mfcc_from_log_mel};
 pub use spectrogram::*;
 pub use window::{

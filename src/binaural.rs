@@ -57,6 +57,35 @@ pub struct ILD;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ILR;
 
+fn pow_mag(mag: f64, mag_sq: f64, power: usize) -> f64 {
+    match power {
+        1 => mag,
+        2 => mag_sq,
+        3 => mag_sq * mag,
+        4 => mag_sq * mag_sq,
+        _ => {
+            // Integer exponent: prefer exponentiation-by-squaring.
+            let mut base = mag;
+            let mut exp = power;
+            let mut acc = 1.0_f64;
+            while exp > 0 {
+                if (exp & 1) == 1 {
+                    acc *= base;
+                }
+                exp >>= 1;
+                if exp > 0 {
+                    base *= base;
+                }
+            }
+            acc
+        }
+    }
+}
+
+fn np_mod(x: f64, m: f64) -> f64 {
+    ((x % m) + m) % m
+}
+
 /// Compute magnitude and phase from a complex spectrogram.
 ///
 /// Extracts magnitude (raised to a given power) and normalized phase (unit complex numbers)
@@ -83,32 +112,6 @@ pub fn magphase(
     let mut mag = Array2::zeros(shape);
 
     let mut phase = Array2::zeros(shape);
-
-    #[inline(always)]
-    fn pow_mag(mag: f64, mag_sq: f64, power: usize) -> f64 {
-        match power {
-            1 => mag,
-            2 => mag_sq,
-            3 => mag_sq * mag,
-            4 => mag_sq * mag_sq,
-            _ => {
-                // Integer exponent: prefer exponentiation-by-squaring.
-                let mut base = mag;
-                let mut exp = power;
-                let mut acc = 1.0_f64;
-                while exp > 0 {
-                    if (exp & 1) == 1 {
-                        acc *= base;
-                    }
-                    exp >>= 1;
-                    if exp > 0 {
-                        base *= base;
-                    }
-                }
-                acc
-            }
-        }
-    }
 
     // Single-pass computation of magnitude and phase
     #[cfg(feature = "rayon")]
@@ -329,7 +332,7 @@ impl ItdSpectrogram {
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
                 let itd_value = self.data[(freq_bin, frame)];
-                
+
                 // Skip NaN or out-of-range values
                 if !itd_value.is_finite() || itd_value < min_delay || itd_value > max_delay {
                     continue;
@@ -338,12 +341,9 @@ impl ItdSpectrogram {
                 let bin_idx = ((itd_value - min_delay) / bin_width).floor() as usize;
                 let bin_idx = bin_idx.min(num_bins - 1);
 
-                let weight = if energy_weighted {
-                    // Energy weighting would require magnitude data, use 1.0 for now
-                    1.0
-                } else {
-                    1.0
-                };
+                // Energy weighting would require magnitude data; reserved for future use.
+                let _ = energy_weighted;
+                let weight = 1.0_f64;
 
                 histogram[(bin_idx, frame)] += weight;
             }
@@ -454,8 +454,15 @@ impl ITDSpectrogramParams {
 /// # Returns
 ///
 /// An `ItdSpectrogram` containing ITD values in seconds with associated frequency and time axes.
+///
+/// # Errors
+///
+/// Returns an error if the STFT computation fails.
+///
+/// # Panics
+///
+/// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-#[must_use]
 pub fn compute_itd_spectrogram(
     audio: [&NonEmptySlice<f64>; 2],
     params: &ITDSpectrogramParams,
@@ -490,16 +497,15 @@ pub fn compute_itd_spectrogram(
     let pi = std::f64::consts::PI;
     let two_pi = 2.0 * pi;
 
-    #[inline(always)]
-    fn np_mod(x: f64, m: f64) -> f64 {
-        ((x % m) + m) % m
-    }
-
     #[cfg(feature = "rayon")]
     Zip::indexed(itd_spectrogram.view_mut()).par_for_each(|(bin_idx, frame), o| {
         // Compute phase angles on-the-fly instead of allocating arrays
-        let left_angle = left_phase_slice[(bin_idx, frame)].im.atan2(left_phase_slice[(bin_idx, frame)].re);
-        let right_angle = right_phase_slice[(bin_idx, frame)].im.atan2(right_phase_slice[(bin_idx, frame)].re);
+        let left_angle = left_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(left_phase_slice[(bin_idx, frame)].re);
+        let right_angle = right_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(right_phase_slice[(bin_idx, frame)].re);
 
         // Check intensity (sum of magnitudes should always be >= 0, but check for numerical safety)
         let intensity_val = left_mag_slice[(bin_idx, frame)] + right_mag_slice[(bin_idx, frame)];
@@ -514,8 +520,12 @@ pub fn compute_itd_spectrogram(
     #[cfg(not(feature = "rayon"))]
     Zip::indexed(itd_spectrogram.view_mut()).for_each(|(bin_idx, frame), o| {
         // Compute phase angles on-the-fly instead of allocating arrays
-        let left_angle = left_phase_slice[(bin_idx, frame)].im.atan2(left_phase_slice[(bin_idx, frame)].re);
-        let right_angle = right_phase_slice[(bin_idx, frame)].im.atan2(right_phase_slice[(bin_idx, frame)].re);
+        let left_angle = left_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(left_phase_slice[(bin_idx, frame)].re);
+        let right_angle = right_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(right_phase_slice[(bin_idx, frame)].re);
 
         // Check intensity (sum of magnitudes should always be >= 0, but check for numerical safety)
         let intensity_val = left_mag_slice[(bin_idx, frame)] + right_mag_slice[(bin_idx, frame)];
@@ -531,8 +541,8 @@ pub fn compute_itd_spectrogram(
     let frequencies: Vec<f64> = (start_bin..stop_bin)
         .map(|bin| bin as f64 * bin_width)
         .collect();
-    let frequencies = NonEmptyVec::new(frequencies)
-        .expect("Frequency range should have at least one bin");
+    let frequencies =
+        NonEmptyVec::new(frequencies).expect("Frequency range should have at least one bin");
 
     // Build time axis
     let hop_size = params.spectrogram_params.stft().hop_size().get() as f64;
@@ -540,8 +550,7 @@ pub fn compute_itd_spectrogram(
     let times: Vec<f64> = (0..num_frames)
         .map(|frame| frame as f64 * hop_size / sample_rate)
         .collect();
-    let times = NonEmptyVec::new(times)
-        .expect("Time axis should have at least one frame");
+    let times = NonEmptyVec::new(times).expect("Time axis should have at least one frame");
 
     Ok(ItdSpectrogram {
         data: itd_spectrogram,
@@ -600,6 +609,7 @@ impl IpdSpectrogram {
     #[inline]
     #[must_use]
     pub fn n_bins(&self) -> NonZeroUsize {
+        // SAFETY: data has at least one row since frequencies is NonEmpty
         unsafe { NonZeroUsize::new_unchecked(self.data.nrows()) }
     }
 
@@ -607,6 +617,7 @@ impl IpdSpectrogram {
     #[inline]
     #[must_use]
     pub fn n_frames(&self) -> NonZeroUsize {
+        // SAFETY: data has at least one column since times is NonEmpty
         unsafe { NonZeroUsize::new_unchecked(self.data.ncols()) }
     }
 
@@ -689,7 +700,7 @@ impl IpdSpectrogram {
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
                 let ipd_value = self.data[(freq_bin, frame)];
-                
+
                 // Skip NaN or out-of-range values
                 if !ipd_value.is_finite() || ipd_value < min_phase || ipd_value > max_phase {
                     continue;
@@ -698,11 +709,9 @@ impl IpdSpectrogram {
                 let bin_idx = ((ipd_value - min_phase) / bin_width).floor() as usize;
                 let bin_idx = bin_idx.min(num_bins - 1);
 
-                let weight = if energy_weighted {
-                    1.0
-                } else {
-                    1.0
-                };
+                // Energy weighting reserved for future use.
+                let _ = energy_weighted;
+                let weight = 1.0_f64;
 
                 histogram[(bin_idx, frame)] += weight;
             }
@@ -802,8 +811,15 @@ impl IPDSpectrogramParams {
 /// # Returns
 ///
 /// An `IpdSpectrogram` containing IPD values in radians with associated frequency and time axes.
+///
+/// # Errors
+///
+/// Returns an error if the STFT computation fails.
+///
+/// # Panics
+///
+/// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-#[must_use]
 pub fn compute_ipd_spectrogram(
     audio: [&NonEmptySlice<f64>; 2],
     params: &IPDSpectrogramParams,
@@ -835,15 +851,14 @@ pub fn compute_ipd_spectrogram(
     let pi = std::f64::consts::PI;
     let two_pi = 2.0 * pi;
 
-    #[inline(always)]
-    fn np_mod(x: f64, m: f64) -> f64 {
-        ((x % m) + m) % m
-    }
-
     #[cfg(feature = "rayon")]
     Zip::indexed(ipd_spectrogram.view_mut()).par_for_each(|(bin_idx, frame), o| {
-        let left_angle = left_phase_slice[(bin_idx, frame)].im.atan2(left_phase_slice[(bin_idx, frame)].re);
-        let right_angle = right_phase_slice[(bin_idx, frame)].im.atan2(right_phase_slice[(bin_idx, frame)].re);
+        let left_angle = left_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(left_phase_slice[(bin_idx, frame)].re);
+        let right_angle = right_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(right_phase_slice[(bin_idx, frame)].re);
 
         let diff = left_angle - right_angle;
 
@@ -856,8 +871,12 @@ pub fn compute_ipd_spectrogram(
 
     #[cfg(not(feature = "rayon"))]
     Zip::indexed(ipd_spectrogram.view_mut()).for_each(|(bin_idx, frame), o| {
-        let left_angle = left_phase_slice[(bin_idx, frame)].im.atan2(left_phase_slice[(bin_idx, frame)].re);
-        let right_angle = right_phase_slice[(bin_idx, frame)].im.atan2(right_phase_slice[(bin_idx, frame)].re);
+        let left_angle = left_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(left_phase_slice[(bin_idx, frame)].re);
+        let right_angle = right_phase_slice[(bin_idx, frame)]
+            .im
+            .atan2(right_phase_slice[(bin_idx, frame)].re);
 
         let diff = left_angle - right_angle;
 
@@ -872,8 +891,8 @@ pub fn compute_ipd_spectrogram(
     let frequencies: Vec<f64> = (start_bin..stop_bin)
         .map(|bin| bin as f64 * bin_width)
         .collect();
-    let frequencies = NonEmptyVec::new(frequencies)
-        .expect("Frequency range should have at least one bin");
+    let frequencies =
+        NonEmptyVec::new(frequencies).expect("Frequency range should have at least one bin");
 
     // Build time axis
     let hop_size = params.spectrogram_params.stft().hop_size().get() as f64;
@@ -881,8 +900,7 @@ pub fn compute_ipd_spectrogram(
     let times: Vec<f64> = (0..num_frames)
         .map(|frame| frame as f64 * hop_size / sample_rate)
         .collect();
-    let times = NonEmptyVec::new(times)
-        .expect("Time axis should have at least one frame");
+    let times = NonEmptyVec::new(times).expect("Time axis should have at least one frame");
 
     Ok(IpdSpectrogram {
         data: ipd_spectrogram,
@@ -941,6 +959,7 @@ impl IldSpectrogram {
     #[inline]
     #[must_use]
     pub fn n_bins(&self) -> NonZeroUsize {
+        // SAFETY: data has at least one row since frequencies is NonEmpty
         unsafe { NonZeroUsize::new_unchecked(self.data.nrows()) }
     }
 
@@ -948,6 +967,7 @@ impl IldSpectrogram {
     #[inline]
     #[must_use]
     pub fn n_frames(&self) -> NonZeroUsize {
+        // SAFETY: data has at least one column since times is NonEmpty
         unsafe { NonZeroUsize::new_unchecked(self.data.ncols()) }
     }
 
@@ -1033,7 +1053,7 @@ impl IldSpectrogram {
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
                 let ild_value = self.data[(freq_bin, frame)];
-                
+
                 // Skip NaN or out-of-range values
                 if !ild_value.is_finite() || ild_value < min_db || ild_value > max_db {
                     continue;
@@ -1042,11 +1062,9 @@ impl IldSpectrogram {
                 let bin_idx = ((ild_value - min_db) / bin_width).floor() as usize;
                 let bin_idx = bin_idx.min(num_bins - 1);
 
-                let weight = if energy_weighted {
-                    1.0
-                } else {
-                    1.0
-                };
+                // Energy weighting reserved for future use.
+                let _ = energy_weighted;
+                let weight = 1.0_f64;
 
                 histogram[(bin_idx, frame)] += weight;
             }
@@ -1150,8 +1168,15 @@ impl ILDSpectrogramParams {
 /// # Returns
 ///
 /// An `IldSpectrogram` containing ILD values in dB with associated frequency and time axes.
+///
+/// # Errors
+///
+/// Returns an error if the STFT computation fails.
+///
+/// # Panics
+///
+/// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-#[must_use]
 pub fn compute_ild_spectrogram(
     audio: [&NonEmptySlice<f64>; 2],
     params: &ILDSpectrogramParams,
@@ -1208,8 +1233,8 @@ pub fn compute_ild_spectrogram(
     let frequencies: Vec<f64> = (start_bin..stop_bin)
         .map(|bin| bin as f64 * bin_width)
         .collect();
-    let frequencies = NonEmptyVec::new(frequencies)
-        .expect("Frequency range should have at least one bin");
+    let frequencies =
+        NonEmptyVec::new(frequencies).expect("Frequency range should have at least one bin");
 
     // Build time axis
     let hop_size = params.spectrogram_params.stft().hop_size().get() as f64;
@@ -1217,8 +1242,7 @@ pub fn compute_ild_spectrogram(
     let times: Vec<f64> = (0..num_frames)
         .map(|frame| frame as f64 * hop_size / sample_rate)
         .collect();
-    let times = NonEmptyVec::new(times)
-        .expect("Time axis should have at least one frame");
+    let times = NonEmptyVec::new(times).expect("Time axis should have at least one frame");
 
     Ok(IldSpectrogram {
         data: ild_spectrogram,
@@ -1277,6 +1301,7 @@ impl IlrSpectrogram {
     #[inline]
     #[must_use]
     pub fn n_bins(&self) -> NonZeroUsize {
+        // SAFETY: data has at least one row since frequencies is NonEmpty
         unsafe { NonZeroUsize::new_unchecked(self.data.nrows()) }
     }
 
@@ -1284,6 +1309,7 @@ impl IlrSpectrogram {
     #[inline]
     #[must_use]
     pub fn n_frames(&self) -> NonZeroUsize {
+        // SAFETY: data has at least one column since times is NonEmpty
         unsafe { NonZeroUsize::new_unchecked(self.data.ncols()) }
     }
 
@@ -1369,7 +1395,7 @@ impl IlrSpectrogram {
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
                 let ilr_value = self.data[(freq_bin, frame)];
-                
+
                 // Skip NaN or out-of-range values
                 if !ilr_value.is_finite() || ilr_value < min_ratio || ilr_value > max_ratio {
                     continue;
@@ -1378,11 +1404,9 @@ impl IlrSpectrogram {
                 let bin_idx = ((ilr_value - min_ratio) / bin_width).floor() as usize;
                 let bin_idx = bin_idx.min(num_bins - 1);
 
-                let weight = if energy_weighted {
-                    1.0
-                } else {
-                    1.0
-                };
+                // Energy weighting reserved for future use.
+                let _ = energy_weighted;
+                let weight = 1.0_f64;
 
                 histogram[(bin_idx, frame)] += weight;
             }
@@ -1487,8 +1511,15 @@ impl ILRSpectrogramParams {
 /// # Returns
 ///
 /// An `IlrSpectrogram` containing ILR values in [-1, 1] with associated frequency and time axes.
+///
+/// # Errors
+///
+/// Returns an error if the STFT computation fails.
+///
+/// # Panics
+///
+/// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-#[must_use]
 pub fn compute_ilr_spectrogram(
     audio: [&NonEmptySlice<f64>; 2],
     params: &ILRSpectrogramParams,
@@ -1556,8 +1587,8 @@ pub fn compute_ilr_spectrogram(
     let frequencies: Vec<f64> = (start_bin..stop_bin)
         .map(|bin| bin as f64 * bin_width)
         .collect();
-    let frequencies = NonEmptyVec::new(frequencies)
-        .expect("Frequency range should have at least one bin");
+    let frequencies =
+        NonEmptyVec::new(frequencies).expect("Frequency range should have at least one bin");
 
     // Build time axis
     let hop_size = params.spectrogram_params.stft().hop_size().get() as f64;
@@ -1565,8 +1596,7 @@ pub fn compute_ilr_spectrogram(
     let times: Vec<f64> = (0..num_frames)
         .map(|frame| frame as f64 * hop_size / sample_rate)
         .collect();
-    let times = NonEmptyVec::new(times)
-        .expect("Time axis should have at least one frame");
+    let times = NonEmptyVec::new(times).expect("Time axis should have at least one frame");
 
     Ok(IlrSpectrogram {
         data: ilr_spectrogram,
@@ -1589,8 +1619,8 @@ pub(crate) fn median(arr: &Array1<f64>) -> f64 {
     if len == 0 {
         return f64::NAN;
     }
-    if len % 2 == 0 {
-        (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
+    if len.is_multiple_of(2) {
+        f64::midpoint(sorted[len / 2 - 1], sorted[len / 2])
     } else {
         sorted[len / 2]
     }
@@ -1604,8 +1634,15 @@ pub(crate) fn median(arr: &Array1<f64>) -> f64 {
 /// - `itd_time_diff` is a 1D array of mean ITD differences per frame
 /// - `mean_diff_degrees` is the mean absolute difference converted to degrees
 /// - `mean_diff_itd` is the median ITD difference across frames
+///
+/// # Errors
+///
+/// Returns an error if either ITD spectrogram computation fails.
+///
+/// # Panics
+///
+/// Panics if the diff array has zero columns (cannot happen with valid non-empty audio).
 #[inline]
-#[must_use]
 pub fn compute_itd_spectrogram_diff(
     reference: [&NonEmptySlice<f64>; 2],
     test: [&NonEmptySlice<f64>; 2],
@@ -1638,8 +1675,11 @@ pub fn compute_itd_spectrogram_diff(
 /// A tuple of `(ilr_time_diff, mean_diff)` where:
 /// - `ilr_time_diff` is a 1D array of mean ILR differences per frame
 /// - `mean_diff` is the mean absolute difference across frames
+///
+/// # Errors
+///
+/// Returns an error if either ILR spectrogram computation fails.
 #[inline]
-#[must_use]
 pub fn compute_ilr_spectrogram_diff(
     reference: [&NonEmptySlice<f64>; 2],
     test: [&NonEmptySlice<f64>; 2],
@@ -1681,4 +1721,3 @@ pub fn compute_ilr_spectrogram_diff(
 
     Ok((col_means, mean_diff))
 }
-

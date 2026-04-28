@@ -1,0 +1,7 @@
+[alias]
+# Use this instead of `cargo doc --open` to get KaTeX math rendering.
+# `--no-deps` is required because katex-header.html is only at the crate root.
+docs = "doc --no-deps --open"
+
+[build]
+rustdocflags = ["--html-in-header", "katex-header.html"]

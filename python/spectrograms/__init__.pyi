@@ -281,16 +281,16 @@ class SpectrogramParams:
 class MelNorm:
     """Mel filterbank normalization strategy."""
 
-    Norm: MelNorm
+    none: MelNorm
     """No normalization (triangular filters with peak = 1.0)."""
 
-    Slaney: MelNorm
+    slaney: MelNorm
     """Slaney-style normalization (area under each filter = 1.0)."""
 
-    L1: MelNorm
+    l1: MelNorm
     """L1 normalization (sum of absolute values = 1.0)."""
 
-    L2: MelNorm
+    l2: MelNorm
     """L2 normalization (Euclidean norm = 1.0)."""
 
 class MelParams:
@@ -498,45 +498,44 @@ class ITDSpectrogramParams:
         ...
 
 class StftResult:
-    
-    @property
-    def data(self) -> npt.NDArray[np.complexfloating]:
-        """STFT result data as a 2D NumPy array of complex values with shape (n_bins, n_frames).""" 
-        ... 
-    
-    @property
-    def frequencies(self) -> list[float]:
-        """Frequency axis in Hz"""
+    """Result of a Short-Time Fourier Transform computation."""
+
+    def data(self) -> npt.NDArray[np.complex128]:
+        """STFT data as a 2D array of shape (n_bins, n_frames)."""
         ...
 
     @property
     def sample_rate(self) -> float:
-        """Sample rate in Hz.""" 
+        """Sample rate in Hz."""
         ...
-    
+
     @property
     def params(self) -> StftParams:
-        """Get the STFT parameters used for this result.""" 
+        """STFT parameters used for this computation."""
         ...
 
+    @property
     def n_bins(self) -> int:
-        """Get the number of frequency bins."""
-        ...
-        
-    def n_frames(self) -> int:
-        """Get the number of time frames.""" 
+        """Number of frequency bins (= n_fft / 2 + 1)."""
         ...
 
-    def frequency_resolution(self) -> float:
-        """Get the frequency resolution in Hz.""" 
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames."""
         ...
-        
-    def time_resolution(self) -> float: 
-        """Get the time resolution in seconds.""" 
+
+    @property
+    def frequency_resolution(self) -> float:
+        """Frequency resolution in Hz (= sample_rate / n_fft)."""
+        ...
+
+    @property
+    def time_resolution(self) -> float:
+        """Time resolution in seconds (= hop_size / sample_rate)."""
         ...
 
     def norm(self) -> npt.NDArray[np.float64]:
-        """Normalizes self.data to remove the complex aspect of it"""
+        """Compute the magnitude (|data|) as a real 2D array."""
         ...
         
 
@@ -1476,6 +1475,79 @@ def compute_ilr_spectrogram_diff(
 
 
 # ============================================================================
+# MDCT (Modified Discrete Cosine Transform)
+# ============================================================================
+
+class MdctParams:
+    """Parameters for MDCT/IMDCT computation.
+
+    The MDCT maps a 2N-sample overlapping window to N real-valued coefficients.
+    With a sine window and 50% hop, MDCT + IMDCT achieves perfect reconstruction.
+    """
+
+    def __init__(self, window_size: int, hop_size: int, window: WindowType) -> None:
+        """Create MDCT parameters.
+
+        :param window_size: Total window size (2N). Must be even and >= 4.
+        :param hop_size: Hop size between frames.
+        :param window: Window function.
+        :raises ValueError: If window_size is odd, < 4, or hop_size is 0.
+        """
+        ...
+
+    @classmethod
+    def sine_window(cls, window_size: int) -> "MdctParams":
+        """Create parameters with a sine window and 50% hop for perfect reconstruction.
+
+        :param window_size: Total window size (2N). Must be even and >= 4.
+        :raises ValueError: If window_size is odd or < 4.
+        """
+        ...
+
+    @property
+    def window_size(self) -> int:
+        """Total window size (= 2N)."""
+        ...
+
+    @property
+    def hop_size(self) -> int:
+        """Hop size between consecutive frames."""
+        ...
+
+    @property
+    def n_coefficients(self) -> int:
+        """Number of MDCT coefficients per frame (= window_size // 2)."""
+        ...
+
+def mdct(
+    samples: ArrayLike,
+    params: MdctParams,
+) -> npt.NDArray[np.float64]:
+    """Compute the MDCT of an audio signal.
+
+    :param samples: 1D array of real audio samples. Length must be >= window_size.
+    :param params: MDCT parameters.
+    :return: 2D array of shape (N, n_frames) where N = window_size // 2.
+    :raises ValueError: If samples is too short or parameters are invalid.
+    """
+    ...
+
+def imdct(
+    coefficients: npt.NDArray[np.float64],
+    params: MdctParams,
+    original_length: Optional[int] = None,
+) -> npt.NDArray[np.float64]:
+    """Compute the IMDCT (inverse MDCT) from MDCT coefficients.
+
+    :param coefficients: 2D array of shape (N, n_frames) as from mdct.
+    :param params: MDCT parameters (must match those used for analysis).
+    :param original_length: If provided, output is truncated to this length.
+    :return: 1D array of reconstructed audio samples.
+    :raises ValueError: If coefficients shape doesn't match params.
+    """
+    ...
+
+# ============================================================================
 # Additional Compute Functions
 # ============================================================================
 
@@ -1540,6 +1612,18 @@ def compute_fft(samples: ArrayLike, n_fft: int) -> npt.NDArray[np.complex128]:
     :param n_fft: FFT size
     :return: Complex FFT as a 1D NumPy array of complex128 with length n_fft/2+1
     :raises DimensionMismatchError: If samples length doesn't equal n_fft
+    """
+    ...
+
+def compute_rfft(samples: ArrayLike, n_fft: int) -> npt.NDArray[np.float64]:
+    """Compute the magnitude spectrum of a signal, zero-padding or truncating to n_fft samples.
+
+    Computes the FFT magnitude (|X[k]|) for positive frequencies only.
+
+    :param samples: Audio samples as a 1D NumPy array
+    :param n_fft: FFT size (input is zero-padded or truncated to this length)
+    :return: Magnitude spectrum as a 1D NumPy array of float64 with length n_fft/2+1
+    :raises ValueError: If n_fft is zero
     """
     ...
 
@@ -1688,10 +1772,18 @@ def rfftfreq(n: int, d: float) -> npt.NDArray[np.float64]:
     ...
 
 def fftshift_1d(arr: ArrayLike) -> npt.NDArray[np.float64]:
-    """
-    Shift zero-frequency component to center for 1D arrays.
-    :param arr : list[float] or numpy.typing.NDArray[numpy.float64]
+    """Shift zero-frequency component to center for 1D arrays.
+
+    :param arr: Input 1D array
     :return: Shifted array with DC component at center
+    """
+    ...
+
+def ifftshift_1d(arr: ArrayLike) -> npt.NDArray[np.float64]:
+    """Inverse of fftshift_1d — shift center back to index 0 for 1D arrays.
+
+    :param arr: Input 1D array
+    :return: Shifted array with DC component at index 0
     """
     ...
 
@@ -1813,3 +1905,23 @@ class Fft2dPlanner:
         :return: Magnitude spectrum
         """
         ...
+
+# ============================================================================
+# FFT Plan Cache Management
+# ============================================================================
+
+def clear_fft_plan_cache() -> None:
+    """Clear all cached FFT plans to free memory.
+
+    FFT plans are cached globally for performance. This function clears the cache,
+    which can be useful for memory management or benchmarking.
+    Plans are automatically recreated on next use.
+    """
+    ...
+
+def fft_plan_cache_info() -> tuple[int, int]:
+    """Get information about the FFT plan cache.
+
+    :return: Tuple of (n_forward_plans, n_inverse_plans) currently cached.
+    """
+    ...

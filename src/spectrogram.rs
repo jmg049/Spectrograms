@@ -3793,6 +3793,11 @@ impl MelParams {
     /// # Returns
     ///
     /// A `MelParams` instance with no normalization (default).
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `f_min < f_max` (not validated at runtime).
+    #[must_use]
     pub const unsafe fn new_unchecked(n_mels: NonZeroUsize, f_min: f64, f_max: f64) -> Self {
         Self {
             n_mels,
@@ -4047,13 +4052,12 @@ impl LogParams {
     ///
     /// * `floor_db` - Minimum dB value (floor) for logarithmic scaling
     ///
-
-    ///
     /// # Returns
     ///
     /// A `LogParams` instance.
     #[inline]
-    pub fn new_unchecked(floor_db: f64) -> Self {
+    #[must_use]
+    pub const fn new_unchecked(floor_db: f64) -> Self {
         Self { floor_db }
     }
 
@@ -4105,7 +4109,7 @@ impl SpectrogramParams {
         })
     }
 
-        /// Create new spectrogram parameters without checking the arguments.
+    /// Create new spectrogram parameters without checking the arguments.
     ///
     /// # Arguments
     ///
@@ -4116,7 +4120,8 @@ impl SpectrogramParams {
     ///
     /// A `SpectrogramParams` instance.
     #[inline]
-    pub fn new_unchecked(stft: StftParams, sample_rate_hz: f64) -> Self {
+    #[must_use]
+    pub const fn new_unchecked(stft: StftParams, sample_rate_hz: f64) -> Self {
         Self {
             stft,
             sample_rate_hz,
@@ -4374,13 +4379,14 @@ impl SpectrogramParamsBuilder {
     /// Build the [`SpectrogramParams`].
     ///
     /// # Safety
-    /// 
+    ///
     /// The caller is responsible for ensuring the 'n_fft', 'hop_size' are set.
     ///
     /// # Returns
     ///
     /// A `SpectrogramParams` instance.
     #[inline]
+    #[must_use]
     pub unsafe fn build_unchecked(self) -> SpectrogramParams {
         // safety: is the repsonsibility of the caller
         unsafe {
@@ -4390,9 +4396,7 @@ impl SpectrogramParamsBuilder {
             let sample_rate = self.sample_rate.unwrap_unchecked();
             SpectrogramParams::new_unchecked(stft, sample_rate)
         }
-        
     }
-
 }
 
 //

@@ -43,6 +43,20 @@ pub trait R2cPlan {
     fn process(&mut self, input: &[f64], output: &mut [Complex<f64>]) -> SpectrogramResult<()>;
 }
 
+/// A planned real-to-complex FFT using f32 arithmetic.
+///
+/// Same contract as [`R2cPlan`] but operates on single-precision floats.
+pub trait R2cPlanF32: Send {
+    fn n_fft(&self) -> usize;
+    fn output_len(&self) -> usize;
+    /// Perform the FFT.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the input/output lengths don't match the plan size.
+    fn process(&mut self, input: &[f32], output: &mut [Complex<f32>]) -> SpectrogramResult<()>;
+}
+
 /// Planner that can construct FFT plans.
 pub trait R2cPlanner {
     type Plan: R2cPlan;
@@ -114,6 +128,48 @@ pub trait C2rPlanner {
     ///
     /// Returns SpectrogramError if planning fails.
     fn plan_c2r(&mut self, n_fft: usize) -> SpectrogramResult<Self::Plan>;
+}
+
+/// A planned complex-to-complex FFT for a fixed transform length.
+///
+/// The transform is **in-place**: input is overwritten with output.
+/// Plans must own internal scratch buffers and perform no heap allocation during `forward`/`inverse`.
+///
+/// Normalization: neither `forward` nor `inverse` normalizes. The caller is responsible
+/// for dividing by N after an inverse transform if a round-trip is desired.
+pub trait C2cPlan: Send {
+    fn n_fft(&self) -> usize;
+    /// Forward DFT: `X[k] = Σ x[n] exp(−2πi·k·n/N)`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the buffer length doesn't match the plan size.
+    fn forward(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()>;
+    /// Inverse DFT (unnormalized): `x[n] = Σ X[k] exp(+2πi·k·n/N)`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the buffer length doesn't match the plan size.
+    fn inverse(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()>;
+}
+
+/// A planned complex-to-complex FFT using f32 (single-precision) arithmetic.
+///
+/// Same contract as [`C2cPlan`] but operates on single-precision floats.
+pub trait C2cPlanF32: Send {
+    fn n_fft(&self) -> usize;
+    /// Forward DFT (f32).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the buffer length doesn't match the plan size.
+    fn forward(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()>;
+    /// Inverse DFT, unnormalized (f32).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the buffer length doesn't match the plan size.
+    fn inverse(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()>;
 }
 
 // ============================================================================
@@ -410,6 +466,168 @@ pub mod realfft_backend {
             Ok(RealFftPlan::new(n_fft, plan))
         }
     }
+
+    /// Real-to-Complex FFT plan using f32 (single-precision) arithmetic.
+    pub struct RealFftPlanF32 {
+        n_fft: usize,
+        plan: Arc<dyn RealToComplex<f32>>,
+        scratch: Vec<f32>,
+    }
+
+    impl RealFftPlanF32 {
+        /// Create an f32 R2c plan for transform size `n_fft`.
+        #[must_use] 
+        pub fn new(n_fft: usize) -> Self {
+            let mut planner: InnerPlanner<f32> = InnerPlanner::new();
+            let plan = planner.plan_fft_forward(n_fft);
+            Self {
+                n_fft,
+                plan,
+                scratch: vec![0.0f32; n_fft],
+            }
+        }
+    }
+
+    impl crate::fft_backend::R2cPlanF32 for RealFftPlanF32 {
+        #[inline]
+        fn n_fft(&self) -> usize {
+            self.n_fft
+        }
+
+        #[inline]
+        fn output_len(&self) -> usize {
+            r2c_output_size(self.n_fft)
+        }
+
+        #[inline]
+        fn process(&mut self, input: &[f32], output: &mut [Complex<f32>]) -> SpectrogramResult<()> {
+            if input.len() != self.n_fft {
+                return Err(SpectrogramError::dimension_mismatch(
+                    self.n_fft,
+                    input.len(),
+                ));
+            }
+            self.scratch.copy_from_slice(input);
+            self.plan
+                .process(&mut self.scratch, output)
+                .map_err(|e| SpectrogramError::fft_backend("realfft_f32", format!("{e:?}")))
+        }
+    }
+
+    // ── Complex-to-Complex plans (f64 and f32) ────────────────────────────────
+
+    /// Complex-to-complex FFT plan (f64) backed by rustfft.
+    ///
+    /// Both forward and inverse directions share a single scratch buffer sized to
+    /// the larger of the two inplace scratch requirements.
+    pub struct RealFftC2cPlan {
+        n_fft: usize,
+        fwd: Arc<dyn rustfft::Fft<f64>>,
+        inv: Arc<dyn rustfft::Fft<f64>>,
+        scratch: Vec<Complex<f64>>,
+    }
+
+    impl RealFftC2cPlan {
+        /// Create a C2c plan for transform size `n_fft`.
+        #[must_use] 
+        pub fn new(n_fft: usize) -> Self {
+            let mut p = RustFftPlanner::<f64>::new();
+            let fwd = p.plan_fft_forward(n_fft);
+            let inv = p.plan_fft_inverse(n_fft);
+            let scratch_len = fwd
+                .get_inplace_scratch_len()
+                .max(inv.get_inplace_scratch_len());
+            Self {
+                n_fft,
+                fwd,
+                inv,
+                scratch: vec![Complex::new(0.0, 0.0); scratch_len],
+            }
+        }
+    }
+
+    impl crate::fft_backend::C2cPlan for RealFftC2cPlan {
+        #[inline]
+        fn n_fft(&self) -> usize {
+            self.n_fft
+        }
+
+        #[inline]
+        fn forward(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+            if buf.len() != self.n_fft {
+                return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
+            }
+            self.fwd.process_with_scratch(buf, &mut self.scratch);
+            Ok(())
+        }
+
+        #[inline]
+        fn inverse(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+            if buf.len() != self.n_fft {
+                return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
+            }
+            self.inv.process_with_scratch(buf, &mut self.scratch);
+            Ok(())
+        }
+    }
+
+    // SAFETY: rustfft::Fft<T> is Send; scratch is owned by the plan.
+    unsafe impl Send for RealFftC2cPlan {}
+
+    /// Complex-to-complex FFT plan (f32) backed by rustfft.
+    pub struct RealFftC2cPlanF32 {
+        n_fft: usize,
+        fwd: Arc<dyn rustfft::Fft<f32>>,
+        inv: Arc<dyn rustfft::Fft<f32>>,
+        scratch: Vec<Complex<f32>>,
+    }
+
+    impl RealFftC2cPlanF32 {
+        /// Create an f32 C2c plan for transform size `n_fft`.
+        #[must_use] 
+        pub fn new(n_fft: usize) -> Self {
+            let mut p = RustFftPlanner::<f32>::new();
+            let fwd = p.plan_fft_forward(n_fft);
+            let inv = p.plan_fft_inverse(n_fft);
+            let scratch_len = fwd
+                .get_inplace_scratch_len()
+                .max(inv.get_inplace_scratch_len());
+            Self {
+                n_fft,
+                fwd,
+                inv,
+                scratch: vec![Complex::new(0.0f32, 0.0f32); scratch_len],
+            }
+        }
+    }
+
+    impl crate::fft_backend::C2cPlanF32 for RealFftC2cPlanF32 {
+        #[inline]
+        fn n_fft(&self) -> usize {
+            self.n_fft
+        }
+
+        #[inline]
+        fn forward(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()> {
+            if buf.len() != self.n_fft {
+                return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
+            }
+            self.fwd.process_with_scratch(buf, &mut self.scratch);
+            Ok(())
+        }
+
+        #[inline]
+        fn inverse(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()> {
+            if buf.len() != self.n_fft {
+                return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
+            }
+            self.inv.process_with_scratch(buf, &mut self.scratch);
+            Ok(())
+        }
+    }
+
+    // SAFETY: rustfft::Fft<T> is Send; scratch is owned by the plan.
+    unsafe impl Send for RealFftC2cPlanF32 {}
 
     /// Complex-to-Real Inverse FFT Plan
     ///
@@ -1205,6 +1423,149 @@ pub mod fftw_backend {
     }
 
     // ========================================================================
+    // Complex-to-Complex FFT Implementation
+    // ========================================================================
+
+    /// Inner state for an FFTW complex-to-complex plan pair (forward + inverse).
+    struct FftwC2cInner {
+        n_fft: usize,
+        fwd: fftw_sys::fftw_plan,
+        inv: fftw_sys::fftw_plan,
+        buf: Arc<FftwBuffer<fftw_sys::fftw_complex>>,
+    }
+
+    impl Drop for FftwC2cInner {
+        fn drop(&mut self) {
+            unsafe {
+                fftw_sys::fftw_destroy_plan(self.fwd);
+                fftw_sys::fftw_destroy_plan(self.inv);
+            }
+        }
+    }
+
+    /// Complex-to-complex FFT plan (f64) backed by FFTW3.
+    ///
+    /// Both directions reuse the same FFTW-aligned buffer; data is copied in/out
+    /// around each execute call (same pattern as `FftwPlan`).
+    pub struct FftwC2cPlan {
+        inner: Arc<FftwC2cInner>,
+    }
+
+    // SAFETY: FFTW plans are safe to use from one thread at a time; FftwC2cPlan is not Clone.
+    unsafe impl Send for FftwC2cPlan {}
+
+    impl FftwPlanner {
+        /// Build a C2c plan pair for size `n_fft`.
+        pub(crate) fn build_c2c_plan(n_fft: usize) -> SpectrogramResult<FftwC2cInner> {
+            let buf = Arc::new(FftwBuffer::<fftw_sys::fftw_complex>::allocate(n_fft)?);
+            let ptr = buf.as_ptr();
+
+            let n_i32: i32 = n_fft
+                .try_into()
+                .map_err(|_| SpectrogramError::invalid_input("n_fft too large for FFTW"))?;
+
+            let _lock = FFTW_PLANNER_LOCK.lock().map_err(|e| {
+                SpectrogramError::fft_backend("fftw", format!("FFT planner mutex poisoned: {}", e))
+            })?;
+
+            let fwd = unsafe {
+                fftw_sys::fftw_plan_dft_1d(
+                    n_i32,
+                    ptr,
+                    ptr,
+                    fftw_sys::FFTW_FORWARD as i32,
+                    fftw_sys::FFTW_ESTIMATE,
+                )
+            };
+            if fwd.is_null() {
+                return Err(SpectrogramError::fft_backend(
+                    "fftw",
+                    "failed to create FFTW C2c forward plan",
+                ));
+            }
+
+            let inv = unsafe {
+                fftw_sys::fftw_plan_dft_1d(
+                    n_i32,
+                    ptr,
+                    ptr,
+                    fftw_sys::FFTW_BACKWARD as i32,
+                    fftw_sys::FFTW_ESTIMATE,
+                )
+            };
+            if inv.is_null() {
+                unsafe { fftw_sys::fftw_destroy_plan(fwd) };
+                return Err(SpectrogramError::fft_backend(
+                    "fftw",
+                    "failed to create FFTW C2c inverse plan",
+                ));
+            }
+
+            Ok(FftwC2cInner {
+                n_fft,
+                fwd,
+                inv,
+                buf,
+            })
+        }
+
+        /// Get or build a `FftwC2cPlan` (not cached — C2c plans are uncommon enough).
+        pub fn plan_c2c(&mut self, n_fft: usize) -> SpectrogramResult<FftwC2cPlan> {
+            Ok(FftwC2cPlan {
+                inner: Arc::new(Self::build_c2c_plan(n_fft)?),
+            })
+        }
+    }
+
+    impl crate::fft_backend::C2cPlan for FftwC2cPlan {
+        fn n_fft(&self) -> usize {
+            self.inner.n_fft
+        }
+
+        fn forward(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+            let n = self.inner.n_fft;
+            if buf.len() != n {
+                return Err(SpectrogramError::dimension_mismatch(n, buf.len()));
+            }
+            unsafe {
+                let ptr = self.inner.buf.as_ptr();
+                for i in 0..n {
+                    let dst = ptr.add(i).cast::<f64>();
+                    *dst = buf[i].re;
+                    *dst.add(1) = buf[i].im;
+                }
+                fftw_sys::fftw_execute_dft(self.inner.fwd, ptr, ptr);
+                for i in 0..n {
+                    let src = ptr.add(i).cast::<f64>();
+                    buf[i] = Complex::new(*src, *src.add(1));
+                }
+            }
+            Ok(())
+        }
+
+        fn inverse(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+            let n = self.inner.n_fft;
+            if buf.len() != n {
+                return Err(SpectrogramError::dimension_mismatch(n, buf.len()));
+            }
+            unsafe {
+                let ptr = self.inner.buf.as_ptr();
+                for i in 0..n {
+                    let dst = ptr.add(i).cast::<f64>();
+                    *dst = buf[i].re;
+                    *dst.add(1) = buf[i].im;
+                }
+                fftw_sys::fftw_execute_dft(self.inner.inv, ptr, ptr);
+                for i in 0..n {
+                    let src = ptr.add(i).cast::<f64>();
+                    buf[i] = Complex::new(*src, *src.add(1));
+                }
+            }
+            Ok(())
+        }
+    }
+
+    // ========================================================================
     // 2D FFT Implementation
     // ========================================================================
 
@@ -1477,5 +1838,71 @@ pub mod fftw_backend {
                 inner: self.get_or_create_inverse_2d(nrows, ncols)?,
             })
         }
+    }
+}
+
+#[cfg(all(test, feature = "realfft"))]
+mod tests_c2c {
+    use super::realfft_backend::{RealFftC2cPlan, RealFftC2cPlanF32};
+    use crate::fft_backend::{C2cPlan, C2cPlanF32};
+    use num_complex::Complex;
+
+    /// DFT of a pure DC signal (all ones): X[0] = N, X[k≠0] = 0.
+    #[test]
+    fn c2c_f64_dc_signal() {
+        let n = 8;
+        let mut plan = RealFftC2cPlan::new(n);
+        let mut buf: Vec<Complex<f64>> = vec![Complex::new(1.0, 0.0); n];
+        plan.forward(&mut buf).unwrap();
+        assert!((buf[0].re - n as f64).abs() < 1e-10, "DC bin should be N");
+        assert!(buf[0].im.abs() < 1e-10);
+        for k in 1..n {
+            assert!(buf[k].norm() < 1e-10, "bin {k} should be zero");
+        }
+    }
+
+    /// Round-trip: forward then inverse (divided by N) recovers the original signal.
+    #[test]
+    fn c2c_f64_round_trip() {
+        let n = 16;
+        let original: Vec<Complex<f64>> = (0..n)
+            .map(|i| Complex::new(i as f64, -(i as f64)))
+            .collect();
+        let mut buf = original.clone();
+        let mut plan = RealFftC2cPlan::new(n);
+        plan.forward(&mut buf).unwrap();
+        plan.inverse(&mut buf).unwrap();
+        let scale = 1.0 / n as f64;
+        for (a, b) in buf.iter().zip(original.iter()) {
+            assert!((a.re * scale - b.re).abs() < 1e-10);
+            assert!((a.im * scale - b.im).abs() < 1e-10);
+        }
+    }
+
+    /// f32 round-trip.
+    #[test]
+    fn c2c_f32_round_trip() {
+        let n = 16;
+        let original: Vec<Complex<f32>> = (0..n)
+            .map(|i| Complex::new(i as f32, -(i as f32)))
+            .collect();
+        let mut buf = original.clone();
+        let mut plan = RealFftC2cPlanF32::new(n);
+        plan.forward(&mut buf).unwrap();
+        plan.inverse(&mut buf).unwrap();
+        let scale = 1.0f32 / n as f32;
+        for (a, b) in buf.iter().zip(original.iter()) {
+            assert!((a.re * scale - b.re).abs() < 1e-5);
+            assert!((a.im * scale - b.im).abs() < 1e-5);
+        }
+    }
+
+    /// Dimension mismatch returns an error rather than panicking.
+    #[test]
+    fn c2c_f64_dimension_mismatch() {
+        let mut plan = RealFftC2cPlan::new(8);
+        let mut buf = vec![Complex::new(0.0, 0.0); 7]; // wrong size
+        assert!(plan.forward(&mut buf).is_err());
+        assert!(plan.inverse(&mut buf).is_err());
     }
 }

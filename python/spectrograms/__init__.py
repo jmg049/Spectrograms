@@ -69,6 +69,7 @@ __all__ = [
     "CqtParams",
     "ChromaParams",
     "MfccParams",
+    "MdctParams",
     "WindowType",
     # Results
     "Spectrogram",
@@ -124,6 +125,10 @@ __all__ = [
     "sharpen_fft",
     # 2D FFT Planner
     "Fft2dPlanner",
+    # MDCT
+    "mdct",
+    "imdct",
     # Version
     "__version__",
+    "StftResult"
 ]
