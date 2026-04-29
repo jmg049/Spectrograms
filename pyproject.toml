@@ -40,7 +40,7 @@ features = ["python", "realfft", "serde", "rayon"]
 module-name = "spectrograms._spectrograms"
 python-source = "python"
 include = ["**/*.pyi", "**/py.typed"]
-exclude = ["manual", "**/examples/*", "**/tests/*", "**/*.rs"]
+exclude = ["manual", "**/examples/*", "**/tests/*"]
 
 [dependency-groups]
 dev = [
