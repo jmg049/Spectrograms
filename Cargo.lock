@@ -580,18 +580,18 @@ dependencies = [
 
 [[package]]
 name = "non-empty-iter"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537de765a54a1fd71965dd9304e4bf3a599a1a1a98dd0aa5c3988e81da964626"
+checksum = "ac123b8e4bd1fef3e8e972ba7a07f046ac6b608633ad761c61876b7197313f63"
 dependencies = [
  "non-zero-size",
 ]
 
 [[package]]
 name = "non-empty-slice"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bef315dd331f323b2e7e2518cdf8768aad045438e90a27e5b72c189dc28add6"
+checksum = "9935c822e11be79ef40f986558b00da0ff176b7c87ddf6d9fb8b9138a6112c20"
 dependencies = [
  "non-empty-iter",
  "non-zero-size",
@@ -602,9 +602,9 @@ dependencies = [
 
 [[package]]
 name = "non-zero-size"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1796c2586c7347347506b2bc36ddd1265def6cf97fa0858d2a4cb4302ec5eb28"
+checksum = "401b3a4027292c1c318fd2305783f791d5579d18e7143ef72d653bf0c29e6b36"
 
 [[package]]
 name = "num"
@@ -702,9 +702,9 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "ownership"
-version = "0.2.4"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72233826974c6a749a480cd447313365c1081244b9681b8b1462a974741c28af"
+checksum = "cfb1aeb68b9f2683ee3f83960c10668b37a8a640224ba1169697ee8fd1e906c1"
 
 [[package]]
 name = "page_size"
@@ -1107,7 +1107,7 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "spectrograms"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "bincode2",
  "criterion",
