@@ -6,6 +6,7 @@
 
 ### Added
 
+- Re-export the complex-to-complex FFT plans (`RealFftC2cPlan`, `RealFftC2cPlanF32`, behind the `realfft` feature) and `num_complex::Complex`, so downstream crates can drive the planned C2C FFTs directly (used by `opus_native`'s MDCT backend).
 - **MDCT/IMDCT**: New `mdct` module with `MdctParams`, `mdct`, `imdct`, `mdct_f32`, and `imdct_f32`.
   - Generic over f32/f64 via sealed trait; computed in O(N log N) via a single C2c(N) FFT (packing trick).
   - `MdctParams::sine_window` constructor produces parameters that satisfy the TDAC condition for perfect reconstruction at 50% hop.

@@ -329,6 +329,8 @@ pub use chroma::{
 pub use cqt::{CqtParams, CqtResult, cqt};
 pub use erb::{ErbParams, ErbSpacing, GammatoneParams, gammatone_iir_spectrogram};
 pub use error::{SpectrogramError, SpectrogramResult};
+#[cfg(feature = "realfft")]
+pub use fft_backend::realfft_backend::{RealFftC2cPlan, RealFftC2cPlanF32};
 pub use fft_backend::{
     C2cPlan, C2cPlanF32, C2rPlan, C2rPlanner, R2cPlan, R2cPlanF32, R2cPlanner, r2c_output_size,
 };
@@ -336,6 +338,9 @@ pub use fft2d::*;
 pub use image_ops::*;
 pub use mdct::{MdctParams, imdct, imdct_f32, mdct, mdct_f32};
 pub use mfcc::{Mfcc, MfccParams, mfcc, mfcc_from_log_mel};
+// The complex type used by the FFT plan traits, so downstream crates can name
+// it without depending on num-complex directly.
+pub use num_complex::Complex;
 pub use spectrogram::*;
 pub use window::{
     WindowType, blackman_window, gaussian_window, hamming_window, hanning_window, kaiser_window,
