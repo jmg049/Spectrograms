@@ -2808,6 +2808,17 @@ where
     }
 }
 
+impl<FreqScale, AmpScale> DerefMut for Spectrogram<FreqScale, AmpScale>
+where
+    FreqScale: Copy + Clone + 'static,
+    AmpScale: AmpScaleSpec + 'static,
+{
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
 impl<AmpScale> Spectrogram<LinearHz, AmpScale>
 where
     AmpScale: AmpScaleSpec + 'static,

@@ -327,7 +327,7 @@ pub use chroma::{
     ChromaNorm, ChromaParams, Chromagram, N_CHROMA, chromagram, chromagram_from_spectrogram,
 };
 pub use cqt::{CqtParams, CqtResult, cqt};
-pub use erb::{ErbParams, GammatoneParams};
+pub use erb::{ErbParams, ErbSpacing, GammatoneParams, gammatone_iir_spectrogram};
 pub use error::{SpectrogramError, SpectrogramResult};
 pub use fft_backend::{
     C2cPlan, C2cPlanF32, C2rPlan, C2rPlanner, R2cPlan, R2cPlanF32, R2cPlanner, r2c_output_size,

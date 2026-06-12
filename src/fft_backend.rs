@@ -476,7 +476,7 @@ pub mod realfft_backend {
 
     impl RealFftPlanF32 {
         /// Create an f32 R2c plan for transform size `n_fft`.
-        #[must_use] 
+        #[must_use]
         pub fn new(n_fft: usize) -> Self {
             let mut planner: InnerPlanner<f32> = InnerPlanner::new();
             let plan = planner.plan_fft_forward(n_fft);
@@ -529,7 +529,7 @@ pub mod realfft_backend {
 
     impl RealFftC2cPlan {
         /// Create a C2c plan for transform size `n_fft`.
-        #[must_use] 
+        #[must_use]
         pub fn new(n_fft: usize) -> Self {
             let mut p = RustFftPlanner::<f64>::new();
             let fwd = p.plan_fft_forward(n_fft);
@@ -584,7 +584,7 @@ pub mod realfft_backend {
 
     impl RealFftC2cPlanF32 {
         /// Create an f32 C2c plan for transform size `n_fft`.
-        #[must_use] 
+        #[must_use]
         pub fn new(n_fft: usize) -> Self {
             let mut p = RustFftPlanner::<f32>::new();
             let fwd = p.plan_fft_forward(n_fft);
