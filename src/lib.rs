@@ -222,6 +222,8 @@ mod fft_backend;
 pub mod image_ops;
 mod mdct;
 mod mfcc;
+mod convolution;
+mod min_phase;
 mod spectrogram;
 mod window;
 
@@ -316,6 +318,8 @@ pub mod image {
 /// # }
 /// ```
 pub mod fft {
+    pub use crate::convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
+    pub use crate::min_phase::{minimum_phase, minimum_phase_with};
     pub use crate::fft2d::*;
     pub use crate::spectrogram::{
         fft, irfft, istft, magnitude_spectrum, power_spectrum, rfft, stft,
@@ -323,6 +327,8 @@ pub mod fft {
 }
 
 // Re-export everything at top level for backward compatibility
+pub use convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
+pub use min_phase::{minimum_phase, minimum_phase_with};
 pub use chroma::{
     ChromaNorm, ChromaParams, Chromagram, N_CHROMA, chromagram, chromagram_from_spectrogram,
 };
