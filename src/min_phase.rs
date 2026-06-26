@@ -174,8 +174,8 @@ mod tests {
                     (2.0 * std::f64::consts::PI * fc * x).sin() / (std::f64::consts::PI * x)
                 };
                 // Hann window
-                let w = 0.5
-                    - 0.5 * (2.0 * std::f64::consts::PI * k as f64 / (taps - 1) as f64).cos();
+                let w =
+                    0.5 - 0.5 * (2.0 * std::f64::consts::PI * k as f64 / (taps - 1) as f64).cos();
                 (sinc * w) as f32
             })
             .collect();

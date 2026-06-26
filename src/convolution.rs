@@ -35,9 +35,7 @@ pub fn fft_convolve(
     let b_spec = fft(b, n)?;
     let product: Array1<Complex<f64>> = &a_spec * &b_spec;
 
-    let product_slice = product
-        .as_slice()
-        .expect("fft output is contiguous");
+    let product_slice = product.as_slice().expect("fft output is contiguous");
     // SAFETY: r2c output size is >= 1 for n >= 1.
     let product_ne = unsafe { NonEmptySlice::new_unchecked(product_slice) };
 
@@ -79,23 +77,28 @@ pub fn fft_deconvolve(
         .fold(0.0_f64, f64::max);
     let eps = regularization * max_d2;
 
-    let quotient: Array1<Complex<f64>> = Array1::from_iter(
-        num_spec.iter().zip(den_spec.iter()).map(|(nn, dd)| {
+    let quotient: Array1<Complex<f64>> =
+        Array1::from_iter(num_spec.iter().zip(den_spec.iter()).map(|(nn, dd)| {
             let denom = dd.norm_sqr() + eps;
             if denom == 0.0 {
                 Complex::new(0.0, 0.0)
             } else {
                 (*nn) * dd.conj() / denom
             }
-        }),
-    );
+        }));
 
-    let q_slice = quotient.as_slice().expect("Array1 from_iter is always contiguous");
+    let q_slice = quotient
+        .as_slice()
+        .expect("Array1 from_iter is always contiguous");
     // SAFETY: r2c output size >= 1.
     let q_ne = unsafe { NonEmptySlice::new_unchecked(q_slice) };
 
     let full = irfft(q_ne, n)?;
-    let out_len = if n_len >= d_len { n_len - d_len + 1 } else { n_len };
+    let out_len = if n_len >= d_len {
+        n_len - d_len + 1
+    } else {
+        n_len
+    };
     let mut v = full.into_vec();
     v.truncate(out_len.max(1));
     // SAFETY: length >= 1.
@@ -297,13 +300,9 @@ mod tests {
         let h = ne(vec![0.0, 0.0, 1.0, 0.5]); // impulse at index 2, plus a tap
         let y = fft_convolve(x.as_non_empty_slice(), h.as_non_empty_slice()).unwrap();
 
-        let recovered = fft_deconvolve(
-            y.as_non_empty_slice(),
-            x.as_non_empty_slice(),
-            0.0,
-        )
-        .unwrap()
-        .into_vec();
+        let recovered = fft_deconvolve(y.as_non_empty_slice(), x.as_non_empty_slice(), 0.0)
+            .unwrap()
+            .into_vec();
 
         let hv = h.into_vec();
         assert!(recovered.len() >= hv.len());
@@ -356,15 +355,15 @@ mod tests {
             .collect();
 
         let block = 128usize;
-        let mut conv =
-            OverlapSaveConvolver::new(&ir, NonZeroUsize::new(block).unwrap()).unwrap();
+        let mut conv = OverlapSaveConvolver::new(&ir, NonZeroUsize::new(block).unwrap()).unwrap();
 
         // Streamed output.
         let mut got = vec![0.0f32; total];
         let mut obuf = vec![0.0f32; block];
         let mut start = 0;
         while start + block <= total {
-            conv.process_block(&x[start..start + block], &mut obuf).unwrap();
+            conv.process_block(&x[start..start + block], &mut obuf)
+                .unwrap();
             got[start..start + block].copy_from_slice(&obuf);
             start += block;
         }

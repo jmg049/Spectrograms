@@ -3,6 +3,7 @@
 //! Run with: cargo bench --bench mdct_benchmarks --no-default-features --features realfft
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use non_empty_slice::NonEmptySlice;
 use spectrograms::*;
 use std::hint::black_box;
 
@@ -40,7 +41,9 @@ fn bench_mdct_window_sizes(c: &mut Criterion) {
             BenchmarkId::from_parameter(label),
             &(&signal, &params),
             |b, &(sig, par)| {
-                b.iter(|| black_box(compute_mdct(black_box(sig), par).unwrap()));
+                let sig = sig.as_slice();
+                let sig = unsafe { NonEmptySlice::from_slice_unchecked(sig) };
+                b.iter(|| black_box(mdct(black_box(sig), par).unwrap()));
             },
         );
     }
@@ -53,7 +56,7 @@ fn bench_imdct_window_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("imdct_window_sizes");
 
     let signal = generate_signal(44100.0, 1.0);
-
+    let signal = NonEmptySlice::new(signal.as_slice()).unwrap();
     let configs = [
         (nzu!(256), "256"),
         (nzu!(512), "512"),
@@ -64,13 +67,13 @@ fn bench_imdct_window_sizes(c: &mut Criterion) {
 
     for (window_size, label) in configs {
         let params = MdctParams::sine_window(window_size).unwrap();
-        let coeffs = compute_mdct(&signal, &params).unwrap();
-        group.throughput(Throughput::Elements(signal.len() as u64));
+        let coeffs = mdct(&signal, &params).unwrap();
+        group.throughput(Throughput::Elements(signal.len().get() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(label),
             &(&coeffs, &params),
             |b, &(co, par)| {
-                b.iter(|| black_box(compute_imdct(black_box(co), par, None).unwrap()));
+                b.iter(|| black_box(imdct(black_box(co), par, None).unwrap()));
             },
         );
     }
@@ -83,6 +86,7 @@ fn bench_mdct_roundtrip(c: &mut Criterion) {
     let mut group = c.benchmark_group("mdct_roundtrip");
 
     let signal = generate_signal(44100.0, 1.0);
+    let signal = NonEmptySlice::new(signal.as_slice()).unwrap();
     let orig_len = signal.len();
 
     let configs = [
@@ -94,14 +98,14 @@ fn bench_mdct_roundtrip(c: &mut Criterion) {
 
     for (window_size, label) in configs {
         let params = MdctParams::sine_window(window_size).unwrap();
-        group.throughput(Throughput::Elements(signal.len() as u64));
+        group.throughput(Throughput::Elements(signal.len().get() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(label),
             &(&signal, &params),
             |b, &(sig, par)| {
                 b.iter(|| {
-                    let coeffs = compute_mdct(black_box(sig), par).unwrap();
-                    black_box(compute_imdct(&coeffs, par, Some(orig_len)).unwrap())
+                    let coeffs = mdct(black_box(sig), par).unwrap();
+                    black_box(imdct(&coeffs, par, Some(orig_len.get())).unwrap())
                 });
             },
         );
@@ -115,6 +119,7 @@ fn bench_mdct_hop_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("mdct_hop_sizes");
 
     let signal = generate_signal(44100.0, 1.0);
+    let signal = NonEmptySlice::new(signal.as_slice()).unwrap();
     let window_size = nzu!(2048);
 
     let hop_configs = [
@@ -125,12 +130,12 @@ fn bench_mdct_hop_sizes(c: &mut Criterion) {
 
     for (hop_size, label) in hop_configs {
         let params = MdctParams::new(window_size, hop_size, WindowType::Hanning).unwrap();
-        group.throughput(Throughput::Elements(signal.len() as u64));
+        group.throughput(Throughput::Elements(signal.len().get() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(label),
             &(&signal, &params),
             |b, &(sig, par)| {
-                b.iter(|| black_box(compute_mdct(black_box(sig), par).unwrap()));
+                b.iter(|| black_box(mdct(black_box(sig), par).unwrap()));
             },
         );
     }
@@ -143,27 +148,28 @@ fn bench_mdct_window_types(c: &mut Criterion) {
     let mut group = c.benchmark_group("mdct_window_types");
 
     let signal = generate_signal(44100.0, 1.0);
+    let signal = NonEmptySlice::new(signal.as_slice()).unwrap();
     let window_size = nzu!(2048);
     let hop_size = nzu!(1024);
 
-    group.throughput(Throughput::Elements(signal.len() as u64));
+    group.throughput(Throughput::Elements(signal.len().get() as u64));
 
     // Sine window (perfect-reconstruction)
     let sine_params = MdctParams::sine_window(window_size).unwrap();
     group.bench_function("sine", |b| {
-        b.iter(|| black_box(compute_mdct(black_box(&signal), &sine_params).unwrap()));
+        b.iter(|| black_box(mdct(black_box(&signal), &sine_params).unwrap()));
     });
 
     // Hanning window
     let hanning_params = MdctParams::new(window_size, hop_size, WindowType::Hanning).unwrap();
     group.bench_function("hanning", |b| {
-        b.iter(|| black_box(compute_mdct(black_box(&signal), &hanning_params).unwrap()));
+        b.iter(|| black_box(mdct(black_box(&signal), &hanning_params).unwrap()));
     });
 
     // Blackman window
     let blackman_params = MdctParams::new(window_size, hop_size, WindowType::Blackman).unwrap();
     group.bench_function("blackman", |b| {
-        b.iter(|| black_box(compute_mdct(black_box(&signal), &blackman_params).unwrap()));
+        b.iter(|| black_box(mdct(black_box(&signal), &blackman_params).unwrap()));
     });
 
     group.finish();
@@ -174,6 +180,7 @@ fn bench_mdct_codec_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("mdct_codec_sizes");
 
     let signal = generate_signal(44100.0, 1.0);
+    let signal = NonEmptySlice::new(signal.as_slice()).unwrap();
 
     // MP3: window_size=1152 (N=576 MDCT coefficients per frame)
     // AAC: window_size=2048 (N=1024)
@@ -187,12 +194,12 @@ fn bench_mdct_codec_sizes(c: &mut Criterion) {
 
     for (window_size, hop_size, label) in codec_configs {
         let params = MdctParams::sine_window(window_size).unwrap();
-        group.throughput(Throughput::Elements(signal.len() as u64));
+        group.throughput(Throughput::Elements(signal.len().get() as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(label),
             &(&signal, &params),
             |b, &(sig, par)| {
-                b.iter(|| black_box(compute_mdct(black_box(sig), par).unwrap()));
+                b.iter(|| black_box(mdct(black_box(sig), par).unwrap()));
             },
         );
         let _ = hop_size; // used only for documentation

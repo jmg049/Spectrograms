@@ -16,6 +16,7 @@
 //!   cargo bench --bench mdct_vs_vorbis --no-default-features --features fftw
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use non_empty_slice::NonEmptySlice;
 use spectrograms::*;
 use std::hint::black_box;
 use std::num::NonZeroUsize;
@@ -139,14 +140,15 @@ fn bench_mdct_forward(c: &mut Criterion) {
     let configs: &[(usize, &str)] = &[(512, "512"), (1024, "1024"), (2048, "2048")];
 
     let signal_f64 = generate_signal_f64(44100.0, 1.0);
+    let signal_f64 = NonEmptySlice::new(signal_f64.as_slice()).unwrap();
     let signal_f32 = generate_signal_f32(44100.0, 1.0);
-
+    let signal_f32 = NonEmptySlice::new(signal_f32.as_slice()).unwrap();
     for &(window_size, label) in configs {
         let hop_size = window_size / 2;
         let n_coeff = window_size / 2;
-        let n_frames = (signal_f64.len() - window_size) / hop_size + 1;
+        let n_frames = (signal_f64.len().get() - window_size) / hop_size + 1;
 
-        group.throughput(Throughput::Elements(signal_f64.len() as u64));
+        group.throughput(Throughput::Elements(signal_f64.len().get() as u64));
 
         // ── Our MDCT (f64, sine window, realfft or fftw backend) ────────────
         let rust_params = MdctParams::sine_window(NonZeroUsize::new(window_size).unwrap()).unwrap();
@@ -155,7 +157,7 @@ fn bench_mdct_forward(c: &mut Criterion) {
             BenchmarkId::new("rust_f64", label),
             &(&signal_f64, &rust_params),
             |b, &(sig, par)| {
-                b.iter(|| black_box(compute_mdct(black_box(sig), par).unwrap()));
+                b.iter(|| black_box(mdct(black_box(sig), par).unwrap()));
             },
         );
 
@@ -164,14 +166,14 @@ fn bench_mdct_forward(c: &mut Criterion) {
             BenchmarkId::new("rust_f32", label),
             &(&signal_f32, &rust_params),
             |b, &(sig, par)| {
-                b.iter(|| black_box(compute_mdct_f32(black_box(sig), par).unwrap()));
+                b.iter(|| black_box(mdct_f32(black_box(sig), par).unwrap()));
             },
         );
 
         // ── libvorbis MDCT (f32, pre-windowing included) ────────────────────
         //
         // libvorbis mdct_forward expects a pre-windowed frame.
-        // We include windowing time to match the semantics of our compute_mdct
+        // We include windowing time to match the semantics of our mdct
         // (which also applies the window as part of its pre-twiddle step).
         let window_f32 = make_sine_window_f32(window_size);
         let mut vorbis = VorbisMdct::new(window_size);
@@ -209,25 +211,27 @@ fn bench_mdct_inverse(c: &mut Criterion) {
     let configs: &[(usize, &str)] = &[(512, "512"), (1024, "1024"), (2048, "2048")];
 
     let signal_f64 = generate_signal_f64(44100.0, 1.0);
+    let signal_f64 = NonEmptySlice::new(signal_f64.as_slice()).unwrap();
     let signal_f32 = generate_signal_f32(44100.0, 1.0);
+    let signal_f32 = NonEmptySlice::new(signal_f32.as_slice()).unwrap();
 
     for &(window_size, label) in configs {
         let hop_size = window_size / 2;
         let n_coeff = window_size / 2;
-        let n_frames = (signal_f64.len() - window_size) / hop_size + 1;
+        let n_frames = (signal_f64.len().get() - window_size) / hop_size + 1;
 
-        group.throughput(Throughput::Elements(signal_f64.len() as u64));
+        group.throughput(Throughput::Elements(signal_f64.len().get() as u64));
 
         // ── Our IMDCT (f64) ─────────────────────────────────────────────────
         let rust_params = MdctParams::sine_window(NonZeroUsize::new(window_size).unwrap()).unwrap();
-        let coeffs_f64 = compute_mdct(&signal_f64, &rust_params).unwrap();
-        let coeffs_f32_bench = compute_mdct_f32(&signal_f32, &rust_params).unwrap();
+        let coeffs_f64 = mdct(&signal_f64, &rust_params).unwrap();
+        let coeffs_f32_bench = mdct_f32(&signal_f32, &rust_params).unwrap();
 
         group.bench_with_input(
             BenchmarkId::new("rust_f64", label),
             &(&coeffs_f64, &rust_params),
             |b, &(co, par)| {
-                b.iter(|| black_box(compute_imdct(black_box(co), par, None).unwrap()));
+                b.iter(|| black_box(imdct(black_box(co), par, None).unwrap()));
             },
         );
 
@@ -236,7 +240,7 @@ fn bench_mdct_inverse(c: &mut Criterion) {
             BenchmarkId::new("rust_f32", label),
             &(&coeffs_f32_bench, &rust_params),
             |b, &(co, par)| {
-                b.iter(|| black_box(compute_imdct_f32(black_box(co), par, None).unwrap()));
+                b.iter(|| black_box(imdct_f32(black_box(co), par, None).unwrap()));
             },
         );
 

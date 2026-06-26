@@ -214,6 +214,7 @@
 
 pub mod binaural;
 mod chroma;
+mod convolution;
 mod cqt;
 mod erb;
 mod error;
@@ -222,7 +223,6 @@ mod fft_backend;
 pub mod image_ops;
 mod mdct;
 mod mfcc;
-mod convolution;
 mod min_phase;
 mod spectrogram;
 mod window;
@@ -319,19 +319,18 @@ pub mod image {
 /// ```
 pub mod fft {
     pub use crate::convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
-    pub use crate::min_phase::{minimum_phase, minimum_phase_with};
     pub use crate::fft2d::*;
+    pub use crate::min_phase::{minimum_phase, minimum_phase_with};
     pub use crate::spectrogram::{
         fft, irfft, istft, magnitude_spectrum, power_spectrum, rfft, stft,
     };
 }
 
 // Re-export everything at top level for backward compatibility
-pub use convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
-pub use min_phase::{minimum_phase, minimum_phase_with};
 pub use chroma::{
     ChromaNorm, ChromaParams, Chromagram, N_CHROMA, chromagram, chromagram_from_spectrogram,
 };
+pub use convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
 pub use cqt::{CqtParams, CqtResult, cqt};
 pub use erb::{ErbParams, ErbSpacing, GammatoneParams, gammatone_iir_spectrogram};
 pub use error::{SpectrogramError, SpectrogramResult};
@@ -344,6 +343,7 @@ pub use fft2d::*;
 pub use image_ops::*;
 pub use mdct::{MdctParams, imdct, imdct_f32, mdct, mdct_f32};
 pub use mfcc::{Mfcc, MfccParams, mfcc, mfcc_from_log_mel};
+pub use min_phase::{minimum_phase, minimum_phase_with};
 // The complex type used by the FFT plan traits, so downstream crates can name
 // it without depending on num-complex directly.
 pub use num_complex::Complex;
