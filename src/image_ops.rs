@@ -29,9 +29,9 @@
 //! ```
 
 use ndarray::{Array2, ArrayView2};
-use std::f64::consts::PI;
 use std::num::NonZeroUsize;
 
+use crate::Sample;
 use crate::fft2d::{fft2d, ifft2d};
 use crate::{SpectrogramError, SpectrogramResult};
 
@@ -77,10 +77,10 @@ use crate::{SpectrogramError, SpectrogramResult};
 /// For repeated convolutions with the same kernel size, consider using a
 /// planner from the [`fft2d`](mod@crate::fft2d) module to cache FFT plans.
 #[inline]
-pub fn convolve_fft(
-    image: &ArrayView2<f64>,
-    kernel: &ArrayView2<f64>,
-) -> SpectrogramResult<Array2<f64>> {
+pub fn convolve_fft<T: Sample>(
+    image: &ArrayView2<T>,
+    kernel: &ArrayView2<T>,
+) -> SpectrogramResult<Array2<T>> {
     let (img_rows, img_cols) = image.dim();
     let (ker_rows, ker_cols) = kernel.dim();
 
@@ -120,11 +120,14 @@ pub fn convolve_fft(
 /// at position (0, 0) after padding. This means we need to place the kernel's
 /// center at (0, 0) and wrap the rest of the kernel around using periodic
 /// boundary conditions.
-fn pad_kernel_for_fft(kernel: &ArrayView2<f64>, target_shape: (usize, usize)) -> Array2<f64> {
+fn pad_kernel_for_fft<T: Sample>(
+    kernel: &ArrayView2<T>,
+    target_shape: (usize, usize),
+) -> Array2<T> {
     let (target_rows, target_cols) = target_shape;
     let (ker_rows, ker_cols) = kernel.dim();
 
-    let mut result = Array2::<f64>::zeros(target_shape);
+    let mut result = Array2::<T>::zeros(target_shape);
 
     // Kernel center position
     let ker_center_row = ker_rows / 2;
@@ -174,7 +177,7 @@ fn pad_kernel_for_fft(kernel: &ArrayView2<f64>, target_shape: (usize, usize)) ->
 /// use spectrograms::{nzu, image_ops::gaussian_kernel_2d};
 ///
 /// // 5x5 Gaussian with sigma=1.0
-/// let kernel = gaussian_kernel_2d(nzu!(5), 1.0).unwrap();
+/// let kernel = gaussian_kernel_2d::<f64>(nzu!(5), 1.0).unwrap();
 /// assert_eq!(kernel.shape(), &[5, 5]);
 ///
 /// // Kernel should be normalized
@@ -182,7 +185,10 @@ fn pad_kernel_for_fft(kernel: &ArrayView2<f64>, target_shape: (usize, usize)) ->
 /// assert!((sum - 1.0).abs() < 1e-10);
 /// ```
 #[inline]
-pub fn gaussian_kernel_2d(size: NonZeroUsize, sigma: f64) -> SpectrogramResult<Array2<f64>> {
+pub fn gaussian_kernel_2d<T: Sample>(
+    size: NonZeroUsize,
+    sigma: f64,
+) -> SpectrogramResult<Array2<T>> {
     if size.get().is_multiple_of(2) {
         return Err(SpectrogramError::invalid_input(
             "kernel size must be odd and > 0",
@@ -194,8 +200,9 @@ pub fn gaussian_kernel_2d(size: NonZeroUsize, sigma: f64) -> SpectrogramResult<A
     let size = size.get();
     let center = (size / 2) as f64;
     let variance = sigma * sigma;
-    let coeff = 1.0 / (2.0 * PI * variance);
+    let coeff = 1.0 / (2.0 * std::f64::consts::PI * variance);
 
+    // Geometry is computed in f64 (unchanged math); cast to `T` once normalized.
     let mut kernel = Array2::<f64>::zeros((size, size));
 
     for i in 0..size {
@@ -208,10 +215,8 @@ pub fn gaussian_kernel_2d(size: NonZeroUsize, sigma: f64) -> SpectrogramResult<A
     }
 
     // Normalize to sum to 1.0
-    let sum: f64 = kernel.iter().sum();
-    kernel.mapv_inplace(|v| v / sum);
-
-    Ok(kernel)
+    let sum = kernel.sum();
+    Ok(kernel.mapv(|v| T::from_f64(v / sum)))
 }
 
 /// Create a circular low-pass filter mask in frequency domain.
@@ -228,9 +233,9 @@ pub fn gaussian_kernel_2d(size: NonZeroUsize, sigma: f64) -> SpectrogramResult<A
 /// # Returns
 ///
 /// Binary mask (0.0 or 1.0) where 1.0 indicates frequencies to keep.
-fn create_lowpass_mask(shape: (usize, usize), cutoff_fraction: f64) -> Array2<f64> {
+fn create_lowpass_mask<T: Sample>(shape: (usize, usize), cutoff_fraction: f64) -> Array2<T> {
     let (nrows, ncols) = shape;
-    let mut mask = Array2::<f64>::zeros(shape);
+    let mut mask = Array2::<T>::zeros(shape);
 
     // DC is at (0, 0), so we measure distance from corners with wrapping
     let max_freq_row = (nrows / 2) as f64;
@@ -253,7 +258,7 @@ fn create_lowpass_mask(shape: (usize, usize), cutoff_fraction: f64) -> Array2<f6
 
             let dist_sq = freq_col.mul_add(freq_col, freq_row.powi(2));
             if dist_sq <= max_radius {
-                mask[[i, j]] = 1.0;
+                mask[[i, j]] = T::one();
             }
         }
     }
@@ -293,10 +298,10 @@ fn create_lowpass_mask(shape: (usize, usize), cutoff_fraction: f64) -> Array2<f6
 /// let smoothed = lowpass_filter(&image.view(), 0.3).unwrap();
 /// ```
 #[inline]
-pub fn lowpass_filter(
-    image: &ArrayView2<f64>,
+pub fn lowpass_filter<T: Sample>(
+    image: &ArrayView2<T>,
     cutoff_fraction: f64,
-) -> SpectrogramResult<Array2<f64>> {
+) -> SpectrogramResult<Array2<T>> {
     if !(0.0..=1.0).contains(&cutoff_fraction) {
         return Err(SpectrogramError::invalid_input(
             "cutoff_fraction must be between 0.0 and 1.0",
@@ -304,10 +309,10 @@ pub fn lowpass_filter(
     }
 
     let spectrum = fft2d(image)?;
-    let mask = create_lowpass_mask(spectrum.dim(), cutoff_fraction);
+    let mask = create_lowpass_mask::<T>(spectrum.dim(), cutoff_fraction);
 
     // Apply mask (element-wise multiplication)
-    let filtered = &spectrum * &mask.mapv(|v| num_complex::Complex::new(v, 0.0));
+    let filtered = &spectrum * &mask.mapv(|v| num_complex::Complex::new(v, T::zero()));
 
     ifft2d(&filtered, image.ncols())
 }
@@ -342,10 +347,10 @@ pub fn lowpass_filter(
 /// let edges = highpass_filter(&image.view(), 0.1).unwrap();
 /// ```
 #[inline]
-pub fn highpass_filter(
-    image: &ArrayView2<f64>,
+pub fn highpass_filter<T: Sample>(
+    image: &ArrayView2<T>,
     cutoff_fraction: f64,
-) -> SpectrogramResult<Array2<f64>> {
+) -> SpectrogramResult<Array2<T>> {
     if !(0.0..=1.0).contains(&cutoff_fraction) {
         return Err(SpectrogramError::invalid_input(
             "cutoff_fraction must be between 0.0 and 1.0",
@@ -353,13 +358,13 @@ pub fn highpass_filter(
     }
 
     let spectrum = fft2d(image)?;
-    let lowpass_mask = create_lowpass_mask(spectrum.dim(), cutoff_fraction);
+    let lowpass_mask = create_lowpass_mask::<T>(spectrum.dim(), cutoff_fraction);
 
     // High-pass = 1 - low-pass
-    let highpass_mask = lowpass_mask.mapv(|v| 1.0 - v);
+    let highpass_mask = lowpass_mask.mapv(|v| T::one() - v);
 
     // Apply mask
-    let filtered = &spectrum * &highpass_mask.mapv(|v| num_complex::Complex::new(v, 0.0));
+    let filtered = &spectrum * &highpass_mask.mapv(|v| num_complex::Complex::new(v, T::zero()));
 
     ifft2d(&filtered, image.ncols())
 }
@@ -395,11 +400,11 @@ pub fn highpass_filter(
 /// let filtered = bandpass_filter(&image.view(), 0.2, 0.6).unwrap();
 /// ```
 #[inline]
-pub fn bandpass_filter(
-    image: &ArrayView2<f64>,
+pub fn bandpass_filter<T: Sample>(
+    image: &ArrayView2<T>,
     low_cutoff: f64,
     high_cutoff: f64,
-) -> SpectrogramResult<Array2<f64>> {
+) -> SpectrogramResult<Array2<T>> {
     if !(0.0..=1.0).contains(&low_cutoff) || !(0.0..=1.0).contains(&high_cutoff) {
         return Err(SpectrogramError::invalid_input(
             "cutoff fractions must be between 0.0 and 1.0",
@@ -414,14 +419,14 @@ pub fn bandpass_filter(
 
     let spectrum = fft2d(image)?;
 
-    let low_mask = create_lowpass_mask(spectrum.dim(), low_cutoff);
-    let high_mask = create_lowpass_mask(spectrum.dim(), high_cutoff);
+    let low_mask = create_lowpass_mask::<T>(spectrum.dim(), low_cutoff);
+    let high_mask = create_lowpass_mask::<T>(spectrum.dim(), high_cutoff);
 
     // Band-pass = high_mask - low_mask (frequencies between the two)
     let bandpass_mask = &high_mask - &low_mask;
 
     // Apply mask
-    let filtered = &spectrum * &bandpass_mask.mapv(|v| num_complex::Complex::new(v, 0.0));
+    let filtered = &spectrum * &bandpass_mask.mapv(|v| num_complex::Complex::new(v, T::zero()));
 
     ifft2d(&filtered, image.ncols())
 }
@@ -459,7 +464,7 @@ pub fn bandpass_filter(
 /// operators like Sobel or Canny. This FFT-based method is useful for
 /// quick frequency-domain analysis.
 #[inline]
-pub fn detect_edges_fft(image: &ArrayView2<f64>) -> SpectrogramResult<Array2<f64>> {
+pub fn detect_edges_fft<T: Sample>(image: &ArrayView2<T>) -> SpectrogramResult<Array2<T>> {
     // High-pass filter with low cutoff removes DC and low frequencies
     highpass_filter(image, 0.1)
 }
@@ -495,7 +500,7 @@ pub fn detect_edges_fft(image: &ArrayView2<f64>) -> SpectrogramResult<Array2<f64
 /// let sharpened = sharpen_fft(&image.view(), 1.0).unwrap();
 /// ```
 #[inline]
-pub fn sharpen_fft(image: &ArrayView2<f64>, amount: f64) -> SpectrogramResult<Array2<f64>> {
+pub fn sharpen_fft<T: Sample>(image: &ArrayView2<T>, amount: f64) -> SpectrogramResult<Array2<T>> {
     if amount < 0.0 {
         return Err(SpectrogramError::invalid_input("amount must be >= 0"));
     }
@@ -504,7 +509,8 @@ pub fn sharpen_fft(image: &ArrayView2<f64>, amount: f64) -> SpectrogramResult<Ar
     let high_freq = highpass_filter(image, 0.2)?;
 
     // Add weighted high frequencies to original
-    Ok(image + &(high_freq * amount))
+    let amount = T::from_f64(amount);
+    Ok(image + &high_freq.mapv(|v| v * amount))
 }
 
 #[cfg(test)]
@@ -515,14 +521,14 @@ mod tests {
 
     #[test]
     fn test_gaussian_kernel_normalized() {
-        let kernel = gaussian_kernel_2d(nzu!(5), 1.0).unwrap();
+        let kernel = gaussian_kernel_2d::<f64>(nzu!(5), 1.0).unwrap();
         let sum: f64 = kernel.iter().sum();
         assert!((sum - 1.0).abs() < 1e-10, "kernel should sum to 1.0");
     }
 
     #[test]
     fn test_gaussian_kernel_symmetric() {
-        let kernel = gaussian_kernel_2d(nzu!(5), 1.0).unwrap();
+        let kernel = gaussian_kernel_2d::<f64>(nzu!(5), 1.0).unwrap();
         let center = 2;
 
         // Check symmetry around center

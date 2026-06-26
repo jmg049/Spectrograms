@@ -139,49 +139,54 @@ class WindowType:
         ...
 
     @classmethod
-    def make_hanning(cls, n: int) -> npt.NDArray[np.float64]:
+    def make_hanning(cls, n: int, dtype: str = "float64") -> npt.NDArray[np.floating]:
         """Create a Hanning window of length n.
 
         :param n: Window length
-        :return: Hanning window of length n
+        :param dtype: Output precision, "float32" or "float64" (default)
+        :return: Hanning window of length n (dtype follows ``dtype``)
         """
         ...
 
     @classmethod
-    def make_hamming(cls, n: int) -> npt.NDArray[np.float64]:
+    def make_hamming(cls, n: int, dtype: str = "float64") -> npt.NDArray[np.floating]:
         """Create a Hamming window of length n.
 
         :param n: Window length
-        :return: Hamming window of length n
+        :param dtype: Output precision, "float32" or "float64" (default)
+        :return: Hamming window of length n (dtype follows ``dtype``)
         """
         ...
 
     @classmethod
-    def make_blackman(cls, n: int) -> npt.NDArray[np.float64]:
+    def make_blackman(cls, n: int, dtype: str = "float64") -> npt.NDArray[np.floating]:
         """Create a Blackman window of length n.
 
         :param n: Window length
-        :return: Blackman window of length n
+        :param dtype: Output precision, "float32" or "float64" (default)
+        :return: Blackman window of length n (dtype follows ``dtype``)
         """
         ...
 
     @classmethod
-    def make_kaiser(cls, n: int, beta: float) -> npt.NDArray[np.float64]:
+    def make_kaiser(cls, n: int, beta: float, dtype: str = "float64") -> npt.NDArray[np.floating]:
         """Create a Kaiser window of length n with parameter beta.
 
         :param n: Window length
         :param beta: Beta parameter controlling window shape
-        :return: Kaiser window of length n
+        :param dtype: Output precision, "float32" or "float64" (default)
+        :return: Kaiser window of length n (dtype follows ``dtype``)
         """
         ...
 
     @classmethod
-    def make_gaussian(cls, n: int, std: float) -> npt.NDArray[np.float64]:
+    def make_gaussian(cls, n: int, std: float, dtype: str = "float64") -> npt.NDArray[np.floating]:
         """Create a Gaussian window of length n with standard deviation std.
 
         :param n: Window length
         :param std: Standard deviation parameter
-        :return: Gaussian window of length n
+        :param dtype: Output precision, "float32" or "float64" (default)
+        :return: Gaussian window of length n (dtype follows ``dtype``)
         """
         ...
 
@@ -498,10 +503,27 @@ class ITDSpectrogramParams:
         ...
 
 class StftResult:
-    """Result of a Short-Time Fourier Transform computation."""
+    """Result of a Short-Time Fourier Transform computation.
 
-    def data(self) -> npt.NDArray[np.complex128]:
-        """STFT data as a 2D array of shape (n_bins, n_frames)."""
+    Carries the complex STFT matrix as a native-precision NumPy array
+    (``complex64`` or ``complex128``) plus frequency/time metadata. The object is
+    array-compatible via ``__array__`` and ``__dlpack__`` (the underlying array
+    lives on the Python heap for zero-copy sharing).
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.complexfloating]:
+        """Complex STFT data as a 2D array of shape (n_bins, n_frames).
+
+        The element type is ``complex64`` or ``complex128`` depending on the
+        ``dtype`` requested at compute time (see :attr:`dtype`).
+        """
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """Real-precision dtype name of the stored data: ``"float32"`` or
+        ``"float64"``. The numpy array itself is ``complex64``/``complex128``."""
         ...
 
     @property
@@ -515,6 +537,11 @@ class StftResult:
         ...
 
     @property
+    def frequencies(self) -> list[float]:
+        """Frequency axis values in Hz."""
+        ...
+
+    @property
     def n_bins(self) -> int:
         """Number of frequency bins (= n_fft / 2 + 1)."""
         ...
@@ -522,6 +549,11 @@ class StftResult:
     @property
     def n_frames(self) -> int:
         """Number of time frames."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the STFT matrix as (n_bins, n_frames)."""
         ...
 
     @property
@@ -534,20 +566,176 @@ class StftResult:
         """Time resolution in seconds (= hop_size / sample_rate)."""
         ...
 
-    def norm(self) -> npt.NDArray[np.float64]:
-        """Compute the magnitude (|data|) as a real 2D array."""
+    def norm(self) -> npt.NDArray[np.floating]:
+        """Compute the magnitude (|data|) as a real 2D array.
+
+        The element type follows :attr:`dtype` (``float32``/``float64``).
+        """
         ...
-        
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.complexfloating]:
+        """Return the complex STFT data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the complex STFT data as a DLPack capsule for tensor exchange."""
+        ...
+
+
+class Chromagram:
+    """Chromagram (pitch class profile) result.
+
+    Carries the chroma feature matrix as a native-precision NumPy array
+    (``float32`` or ``float64``, see :attr:`dtype`) plus the parameters used to
+    compute it. The object is array-compatible via ``__array__`` and
+    ``__dlpack__``.
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.floating]:
+        """Chroma feature matrix as a 2D array of shape (n_bins, n_frames)."""
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
+        ...
+
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames."""
+        ...
+
+    @property
+    def n_bins(self) -> int:
+        """Number of chroma bins (always 12)."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the chroma matrix as (n_bins, n_frames)."""
+        ...
+
+    @property
+    def params(self) -> ChromaParams:
+        """The ChromaParams used to compute this chromagram."""
+        ...
+
+    labels: list[str]
+    """The 12 pitch-class labels from C to B."""
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.floating]:
+        """Return the chroma data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the chromagram data as a DLPack capsule for tensor exchange."""
+        ...
+
+
+class Mfcc:
+    """MFCC (Mel-Frequency Cepstral Coefficients) result.
+
+    Carries the coefficient matrix as a native-precision NumPy array
+    (``float32`` or ``float64``, see :attr:`dtype`) plus the parameters used to
+    compute it. The object is array-compatible via ``__array__`` and
+    ``__dlpack__``.
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.floating]:
+        """MFCC coefficient matrix as a 2D array of shape (n_bins, n_frames)."""
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
+        ...
+
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames."""
+        ...
+
+    @property
+    def n_bins(self) -> int:
+        """Number of cepstral coefficients (rows)."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the coefficient matrix as (n_bins, n_frames)."""
+        ...
+
+    @property
+    def params(self) -> MfccParams:
+        """The MfccParams used to compute these coefficients."""
+        ...
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.floating]:
+        """Return the MFCC data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the MFCC data as a DLPack capsule for tensor exchange."""
+        ...
+
 
 class Spectrogram:
     """Spectrogram computation result.
 
     Contains the spectrogram data as a NumPy array along with frequency and time axes.
+
+    The data is stored natively in the precision requested when the spectrogram was
+    computed (the ``dtype`` argument of the ``compute_*`` functions): either
+    ``float64`` (default) or ``float32``. Use :attr:`dtype` to inspect it.
     """
 
     @property
-    def data(self) -> npt.NDArray[np.float64]:
-        """Get the spectrogram data as a 2D NumPy array with shape (n_bins, n_frames)."""
+    def data(self) -> npt.NDArray[np.floating]:
+        """Get the spectrogram data as a 2D NumPy array with shape (n_bins, n_frames).
+
+        The element type is ``float32`` or ``float64`` depending on the ``dtype``
+        requested at compute time (see :attr:`dtype`).
+        """
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
         ...
 
     @property
@@ -678,175 +866,219 @@ class SpectrogramPlanner:
     """
 
     def __init__(self) -> None: ...
-    def linear_power_plan(self, params: SpectrogramParams) -> LinearPowerPlan:
+    def linear_power_plan(
+        self, params: SpectrogramParams, dtype: str = "float64"
+    ) -> LinearPowerPlan:
         """Create a plan for computing linear power spectrograms.
         :param params: Spectrogram parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: LinearPowerPlan
         """
         ...
 
-    def linear_magnitude_plan(self, params: SpectrogramParams) -> LinearMagnitudePlan:
+    def linear_magnitude_plan(
+        self, params: SpectrogramParams, dtype: str = "float64"
+    ) -> LinearMagnitudePlan:
         """Create a plan for computing linear magnitude spectrograms.
 
         :param params: Spectrogram parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: LinearMagnitudePlan
         """
         ...
 
     def linear_db_plan(
-        self, params: SpectrogramParams, db_params: LogParams
+        self,
+        params: SpectrogramParams,
+        db_params: LogParams,
+        dtype: str = "float64",
     ) -> LinearDbPlan:
         """Create a plan for computing linear decibel spectrograms.
         :param params: Spectrogram parameters
         :param db_params: Decibel conversion parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
         :return: LinearDbPlan
         """
         ...
 
     def mel_power_plan(
-        self, params: SpectrogramParams, mel_params: MelParams
+        self, params: SpectrogramParams, mel_params: MelParams, dtype: str = "float64"
     ) -> MelPowerPlan:
         """Create a plan for computing mel power spectrograms.
 
         :param params: Spectrogram parameters
         :param mel_params: Mel filterbank parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: MelPowerPlan
         """
         ...
 
     def mel_magnitude_plan(
-        self, params: SpectrogramParams, mel_params: MelParams
+        self, params: SpectrogramParams, mel_params: MelParams, dtype: str = "float64"
     ) -> MelMagnitudePlan:
         """Create a plan for computing mel magnitude spectrograms.
 
         :param params: Spectrogram parameters
         :param mel_params: Mel filterbank parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: MelMagnitudePlan
         """
         ...
 
     def mel_db_plan(
-        self, params: SpectrogramParams, mel_params: MelParams, db_params: LogParams
+        self,
+        params: SpectrogramParams,
+        mel_params: MelParams,
+        db_params: LogParams,
+        dtype: str = "float64",
     ) -> MelDbPlan:
         """Create a plan for computing mel decibel spectrograms.
 
         :param params: Spectrogram parameters
         :param mel_params: Mel filterbank parameters
         :param db_params: Decibel conversion parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: MelDbPlan
         """
         ...
 
     def erb_power_plan(
-        self, params: SpectrogramParams, erb_params: ErbParams
+        self, params: SpectrogramParams, erb_params: ErbParams, dtype: str = "float64"
     ) -> ErbPowerPlan:
         """Create a plan for computing ERB power spectrograms.
         :param params: Spectrogram parameters
         :param erb_params: ERB filterbank parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: ErbPowerPlan
         """
         ...
 
     def erb_magnitude_plan(
-        self, params: SpectrogramParams, erb_params: ErbParams
+        self, params: SpectrogramParams, erb_params: ErbParams, dtype: str = "float64"
     ) -> ErbMagnitudePlan:
         """Create a plan for computing ERB magnitude spectrograms.
 
         :param params: Spectrogram parameters
         :param erb_params: ERB filterbank parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: ErbMagnitudePlan
         """
         ...
 
     def erb_db_plan(
-        self, params: SpectrogramParams, erb_params: ErbParams, db_params: LogParams
+        self,
+        params: SpectrogramParams,
+        erb_params: ErbParams,
+        db_params: LogParams,
+        dtype: str = "float64",
     ) -> ErbDbPlan:
         """Create a plan for computing ERB decibel spectrograms.
 
         :param params: Spectrogram parameters
         :param erb_params: ERB filterbank parameters
         :param db_params: Decibel conversion parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: ErbDbPlan
         """
         ...
 
     def loghz_power_plan(
-        self, params: SpectrogramParams, loghz_params: LogHzParams
+        self,
+        params: SpectrogramParams,
+        loghz_params: LogHzParams,
+        dtype: str = "float64",
     ) -> LogHzPowerPlan:
         """Create a plan for computing logarithmic Hz power spectrograms.
 
         :param params: Spectrogram parameters
         :param loghz_params: Logarithmic Hz filterbank parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: LogHzPowerPlan
         """
         ...
 
     def loghz_magnitude_plan(
-        self, params: SpectrogramParams, loghz_params: LogHzParams
+        self,
+        params: SpectrogramParams,
+        loghz_params: LogHzParams,
+        dtype: str = "float64",
     ) -> LogHzMagnitudePlan:
         """Create a plan for computing logarithmic Hz magnitude spectrograms.
 
         :param params: Spectrogram parameters
         :param loghz_params: Logarithmic Hz filterbank parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: LogHzMagnitudePlan
         """
         ...
 
     def loghz_db_plan(
-        self, params: SpectrogramParams, loghz_params: LogHzParams, db_params: LogParams
+        self,
+        params: SpectrogramParams,
+        loghz_params: LogHzParams,
+        db_params: LogParams,
+        dtype: str = "float64",
     ) -> LogHzDbPlan:
         """Create a plan for computing logarithmic Hz decibel spectrograms.
 
         :param params: Spectrogram parameters
         :param loghz_params: Logarithmic Hz filterbank parameters
         :param db_params: Decibel conversion parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: LogHzDbPlan
         """
         ...
 
     def cqt_power_plan(
-        self, params: SpectrogramParams, cqt_params: CqtParams
+        self, params: SpectrogramParams, cqt_params: CqtParams, dtype: str = "float64"
     ) -> CqtPowerPlan:
         """Create a plan for computing CQT power spectrograms.
 
         :param params: Spectrogram parameters
         :param cqt_params: CQT parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: CqtPowerPlan
         """
         ...
 
     def cqt_magnitude_plan(
-        self, params: SpectrogramParams, cqt_params: CqtParams
+        self, params: SpectrogramParams, cqt_params: CqtParams, dtype: str = "float64"
     ) -> CqtMagnitudePlan:
         """Create a plan for computing CQT magnitude spectrograms.
 
         :param params: Spectrogram parameters
         :param cqt_params: CQT parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: CqtMagnitudePlan
         """
         ...
 
     def cqt_db_plan(
-        self, params: SpectrogramParams, cqt_params: CqtParams, db_params: LogParams
+        self,
+        params: SpectrogramParams,
+        cqt_params: CqtParams,
+        db_params: LogParams,
+        dtype: str = "float64",
     ) -> CqtDbPlan:
         """Create a plan for computing CQT decibel spectrograms.
 
         :param params: Spectrogram parameters
         :param cqt_params: CQT parameters
         :param db_params: Decibel conversion parameters
+        :param dtype: Output precision, ``"float32"`` or ``"float64"`` (default)
 
         :return: CqtDbPlan
         """
@@ -855,22 +1087,28 @@ class SpectrogramPlanner:
 class LinearPowerPlan:
     """Plan for computing linear power spectrograms."""
 
+    @property
+    def dtype(self) -> str:
+        """The NumPy dtype the plan computes in (``"float32"`` / ``"float64"``).
+
+        ``compute(...).data`` and ``compute_frame(...)`` follow this precision.
+        """
+        ...
+
     def compute(self, samples: ArrayLike) -> Spectrogram:
         """Compute a spectrogram from audio samples.
 
         :param samples: Audio samples as a 1D NumPy array
-        :return: Computed spectrogram
+        :return: Computed spectrogram (``.data`` follows the plan's ``dtype``)
         """
         ...
 
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]:
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray:
         """Compute a single frame of the spectrogram.
 
         :param samples: Audio samples as a 1D NumPy array
         :param frame_idx: Frame index to compute
-        :return: 1D array containing the frame data
+        :return: 1D array containing the frame data (in the plan's precision)
         """
         ...
 
@@ -885,15 +1123,17 @@ class LinearPowerPlan:
 class LinearMagnitudePlan:
     """Plan for computing linear magnitude spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LinearDbPlan:
     """Plan for computing linear decibel spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram:
         """
         Compute a linear decibel spectrogram from audio samples.
@@ -902,9 +1142,7 @@ class LinearDbPlan:
         :return: Computed spectrogram in decibels
         """
         ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]:
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray:
         """
         Compute a single frame of the linear decibel spectrogram.
 
@@ -919,6 +1157,8 @@ class LinearDbPlan:
 class MelPowerPlan:
     """Plan for computing mel power spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram:
         """
         Compute a mel power spectrogram from audio samples.
@@ -928,9 +1168,7 @@ class MelPowerPlan:
         :return: Computed mel power spectrogram
         """
         ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]:
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray:
         """
         Compute a single frame of the mel power spectrogram.
 
@@ -944,100 +1182,100 @@ class MelPowerPlan:
 class MelMagnitudePlan:
     """Plan for computing mel magnitude spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class MelDbPlan:
     """Plan for computing mel decibel spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class ErbPowerPlan:
     """Plan for computing ERB power spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class ErbMagnitudePlan:
     """Plan for computing ERB magnitude spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class ErbDbPlan:
     """Plan for computing ERB decibel spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LogHzPowerPlan:
     """Plan for computing logarithmic Hz power spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LogHzMagnitudePlan:
     """Plan for computing logarithmic Hz magnitude spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class LogHzDbPlan:
     """Plan for computing logarithmic Hz decibel spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class CqtPowerPlan:
     """Plan for computing CQT power spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class CqtMagnitudePlan:
     """Plan for computing CQT magnitude spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 class CqtDbPlan:
     """Plan for computing CQT decibel spectrograms."""
 
+    @property
+    def dtype(self) -> str: ...
     def compute(self, samples: ArrayLike) -> Spectrogram: ...
-    def compute_frame(
-        self, samples: ArrayLike, frame_idx: int
-    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame(self, samples: ArrayLike, frame_idx: int) -> npt.NDArray: ...
     def output_shape(self, signal_length: int) -> tuple[int, int]: ...
 
 # ============================================================================
@@ -1048,6 +1286,7 @@ def compute_linear_power_spectrogram(
     samples: ArrayLike,
     params: SpectrogramParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a linear power spectrogram.
 
@@ -1062,6 +1301,7 @@ def compute_linear_magnitude_spectrogram(
     samples: ArrayLike,
     params: SpectrogramParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a linear magnitude spectrogram.
 
@@ -1076,6 +1316,7 @@ def compute_linear_db_spectrogram(
     samples: ArrayLike,
     params: SpectrogramParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a linear decibel spectrogram.
 
@@ -1091,6 +1332,7 @@ def compute_mel_power_spectrogram(
     params: SpectrogramParams,
     mel_params: MelParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a mel power spectrogram.
 
@@ -1107,6 +1349,7 @@ def compute_mel_magnitude_spectrogram(
     params: SpectrogramParams,
     mel_params: MelParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a mel magnitude spectrogram.
 
@@ -1123,6 +1366,7 @@ def compute_mel_db_spectrogram(
     params: SpectrogramParams,
     mel_params: MelParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a mel decibel spectrogram.
 
@@ -1139,6 +1383,7 @@ def compute_erb_power_spectrogram(
     params: SpectrogramParams,
     erb_params: ErbParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute an ERB power spectrogram.
 
@@ -1155,6 +1400,7 @@ def compute_erb_magnitude_spectrogram(
     params: SpectrogramParams,
     erb_params: ErbParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute an ERB magnitude spectrogram.
 
@@ -1171,6 +1417,7 @@ def compute_erb_db_spectrogram(
     params: SpectrogramParams,
     erb_params: ErbParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute an ERB decibel spectrogram.
 
@@ -1187,6 +1434,7 @@ def compute_loghz_power_spectrogram(
     params: SpectrogramParams,
     loghz_params: LogHzParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a logarithmic Hz power spectrogram.
 
@@ -1203,6 +1451,7 @@ def compute_loghz_magnitude_spectrogram(
     params: SpectrogramParams,
     loghz_params: LogHzParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a logarithmic Hz magnitude spectrogram.
 
@@ -1219,6 +1468,7 @@ def compute_loghz_db_spectrogram(
     params: SpectrogramParams,
     loghz_params: LogHzParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a logarithmic Hz decibel spectrogram.
 
@@ -1235,6 +1485,7 @@ def compute_cqt_power_spectrogram(
     params: SpectrogramParams,
     cqt_params: CqtParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a Constant-Q Transform power spectrogram.
 
@@ -1251,6 +1502,7 @@ def compute_cqt_magnitude_spectrogram(
     params: SpectrogramParams,
     cqt_params: CqtParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a Constant-Q Transform magnitude spectrogram.
 
@@ -1267,6 +1519,7 @@ def compute_cqt_db_spectrogram(
     params: SpectrogramParams,
     cqt_params: CqtParams,
     db: Optional[LogParams] = None,
+    dtype: str = "float64",
 ) -> Spectrogram:
     """Compute a Constant-Q Transform decibel spectrogram.
 
@@ -1278,14 +1531,109 @@ def compute_cqt_db_spectrogram(
     """
     ...
 
+class ItdSpectrogram:
+    """Interaural Time Difference (ITD) spectrogram result.
+
+    Carries the ITD matrix (in seconds) as a native-precision NumPy array
+    (``float32`` or ``float64``, see :attr:`dtype`) plus the frequency/time axes
+    and the parameters used to compute it. Array-compatible via ``__array__`` /
+    ``__dlpack__``.
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.floating]:
+        """ITD matrix (seconds) as a 2D array of shape (n_bins, n_frames)."""
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
+        ...
+
+    @property
+    def n_bins(self) -> int:
+        """Number of frequency bins (rows)."""
+        ...
+
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames (columns)."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the matrix as (n_bins, n_frames)."""
+        ...
+
+    @property
+    def frequencies(self) -> list[float]:
+        """Frequency axis values in Hz."""
+        ...
+
+    @property
+    def times(self) -> list[float]:
+        """Time axis values in seconds."""
+        ...
+
+    def frequency_range(self) -> tuple[float, float]:
+        """Frequency range as (f_min, f_max) in Hz."""
+        ...
+
+    def duration(self) -> float:
+        """Total duration spanned by the time axis in seconds."""
+        ...
+
+    @property
+    def params(self) -> ITDSpectrogramParams:
+        """The ITDSpectrogramParams used to compute this spectrogram."""
+        ...
+
+    def histogram(
+        self,
+        num_bins: Optional[int] = None,
+        delay_range: Optional[tuple[float, float]] = None,
+        energy_weighted: bool = False,
+        normalize: bool = False,
+    ) -> npt.NDArray[np.float64]:
+        """Compute a 2D float64 histogram of ITD values over time.
+
+        :param num_bins: Number of histogram bins (default: 400)
+        :param delay_range: Delay range in seconds as (min, max) (default: (-0.00088, 0.00088))
+        :param energy_weighted: Weight by energy if True
+        :param normalize: Normalize each time frame to sum to 1 if True
+        :return: 2D float64 array of shape (num_bins, n_frames)
+        """
+        ...
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.floating]:
+        """Return the ITD data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the ITD data as a DLPack capsule for tensor exchange."""
+        ...
+
 def compute_itd_spectrogram(
     audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
-    params: ITDSpectrogramParams
-) -> npt.NDArray[np.float64]:
+    params: ITDSpectrogramParams,
+    dtype: str = "float64",
+) -> ItdSpectrogram:
     """Compute an interaural time difference (ITD) spectrogram.
 
     :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
     :param params: ITD spectrogram parameters
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: ITD spectrogram as a 2D NumPy array (n_bins x n_frames)
     """
     ...
@@ -1294,12 +1642,14 @@ def compute_itd_spectrogram_diff(
     reference: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
     test: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
     params: ITDSpectrogramParams,
+    dtype: str = "float64",
 ) -> tuple[npt.NDArray[np.float64], float, float]:
     """Compute the difference between two ITD spectrograms.
 
     :param reference: List of two 1D NumPy arrays containing the left and right channel audio samples for the reference signal
     :param test: List of two 1D NumPy arrays containing the left and right channel audio samples for the test signal
     :param params: ITD spectrogram parameters
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it (the scalar tuple elements are always Python floats)
     :return: Tuple containing the ITD difference spectrogram, mean difference in degrees, and mean difference in ITD
     """
     ...
@@ -1347,14 +1697,109 @@ class IPDSpectrogramParams:
         """Whether phase differences are wrapped to [-π, π]."""
         ...
 
+class IpdSpectrogram:
+    """Interaural Phase Difference (IPD) spectrogram result.
+
+    Carries the IPD matrix (in radians) as a native-precision NumPy array
+    (``float32`` or ``float64``, see :attr:`dtype`) plus the frequency/time axes
+    and the parameters used to compute it. Array-compatible via ``__array__`` /
+    ``__dlpack__``.
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.floating]:
+        """IPD matrix (radians) as a 2D array of shape (n_bins, n_frames)."""
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
+        ...
+
+    @property
+    def n_bins(self) -> int:
+        """Number of frequency bins (rows)."""
+        ...
+
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames (columns)."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the matrix as (n_bins, n_frames)."""
+        ...
+
+    @property
+    def frequencies(self) -> list[float]:
+        """Frequency axis values in Hz."""
+        ...
+
+    @property
+    def times(self) -> list[float]:
+        """Time axis values in seconds."""
+        ...
+
+    def frequency_range(self) -> tuple[float, float]:
+        """Frequency range as (f_min, f_max) in Hz."""
+        ...
+
+    def duration(self) -> float:
+        """Total duration spanned by the time axis in seconds."""
+        ...
+
+    @property
+    def params(self) -> IPDSpectrogramParams:
+        """The IPDSpectrogramParams used to compute this spectrogram."""
+        ...
+
+    def histogram(
+        self,
+        num_bins: Optional[int] = None,
+        phase_range: Optional[tuple[float, float]] = None,
+        energy_weighted: bool = False,
+        normalize: bool = False,
+    ) -> npt.NDArray[np.float64]:
+        """Compute a 2D float64 histogram of IPD values over time.
+
+        :param num_bins: Number of histogram bins (default: 400)
+        :param phase_range: Phase range in radians as (min, max) (default: (-pi, pi))
+        :param energy_weighted: Weight by energy if True
+        :param normalize: Normalize each time frame to sum to 1 if True
+        :return: 2D float64 array of shape (num_bins, n_frames)
+        """
+        ...
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.floating]:
+        """Return the IPD data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the IPD data as a DLPack capsule for tensor exchange."""
+        ...
+
 def compute_ipd_spectrogram(
     audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
-    params: IPDSpectrogramParams
-) -> npt.NDArray[np.float64]:
+    params: IPDSpectrogramParams,
+    dtype: str = "float64",
+) -> IpdSpectrogram:
     """Compute an interaural phase difference (IPD) spectrogram.
 
     :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
     :param params: IPD spectrogram parameters
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: IPD spectrogram as a 2D NumPy array (n_bins x n_frames) in radians
     """
     ...
@@ -1395,14 +1840,111 @@ class ILDSpectrogramParams:
         """Maximum frequency in Hz for ILD analysis."""
         ...
 
+class IldSpectrogram:
+    """Interaural Level Difference (ILD) spectrogram result.
+
+    Carries the ILD matrix (in dB) as a native-precision NumPy array
+    (``float32`` or ``float64``, see :attr:`dtype`) plus the frequency/time axes
+    and the parameters used to compute it. Array-compatible via ``__array__`` /
+    ``__dlpack__``.
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.floating]:
+        """ILD matrix (dB) as a 2D array of shape (n_bins, n_frames)."""
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
+        ...
+
+    @property
+    def n_bins(self) -> int:
+        """Number of frequency bins (rows)."""
+        ...
+
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames (columns)."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the matrix as (n_bins, n_frames)."""
+        ...
+
+    @property
+    def frequencies(self) -> list[float]:
+        """Frequency axis values in Hz."""
+        ...
+
+    @property
+    def times(self) -> list[float]:
+        """Time axis values in seconds."""
+        ...
+
+    def frequency_range(self) -> tuple[float, float]:
+        """Frequency range as (f_min, f_max) in Hz."""
+        ...
+
+    def duration(self) -> float:
+        """Total duration spanned by the time axis in seconds."""
+        ...
+
+    @property
+    def params(self) -> ILDSpectrogramParams:
+        """The ILDSpectrogramParams used to compute this spectrogram."""
+        ...
+
+    def histogram(
+        self,
+        num_bins: Optional[int] = None,
+        db_range: Optional[tuple[float, float]] = None,
+        exponent: Optional[int] = None,
+        energy_weighted: bool = False,
+        normalize: bool = False,
+    ) -> npt.NDArray[np.float64]:
+        """Compute a 2D float64 histogram of ILD values over time.
+
+        :param num_bins: Number of histogram bins (default: 400)
+        :param db_range: dB range as (min, max) (default: (-24, 24))
+        :param exponent: Power to raise histogram values to (default: 3)
+        :param energy_weighted: Weight by energy if True
+        :param normalize: Normalize each time frame to sum to 1 if True
+        :return: 2D float64 array of shape (num_bins, n_frames)
+        """
+        ...
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.floating]:
+        """Return the ILD data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the ILD data as a DLPack capsule for tensor exchange."""
+        ...
+
 def compute_ild_spectrogram(
     audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
-    params: ILDSpectrogramParams
-) -> npt.NDArray[np.float64]:
+    params: ILDSpectrogramParams,
+    dtype: str = "float64",
+) -> IldSpectrogram:
     """Compute an interaural level difference (ILD) spectrogram in dB.
 
     :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
     :param params: ILD spectrogram parameters
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: ILD spectrogram as a 2D NumPy array (n_bins x n_frames) in dB
     """
     ...
@@ -1443,10 +1985,106 @@ class ILRSpectrogramParams:
         """Maximum frequency in Hz for ILR analysis."""
         ...
 
+class IlrSpectrogram:
+    """Interaural Level Ratio (ILR) spectrogram result.
+
+    Carries the ILR matrix (range [-1, 1]) as a native-precision NumPy array
+    (``float32`` or ``float64``, see :attr:`dtype`) plus the frequency/time axes
+    and the parameters used to compute it. Array-compatible via ``__array__`` /
+    ``__dlpack__``.
+    """
+
+    @property
+    def data(self) -> npt.NDArray[np.floating]:
+        """ILR matrix as a 2D array of shape (n_bins, n_frames)."""
+        ...
+
+    @property
+    def dtype(self) -> str:
+        """NumPy dtype name of the stored data: ``"float32"`` or ``"float64"``."""
+        ...
+
+    @property
+    def n_bins(self) -> int:
+        """Number of frequency bins (rows)."""
+        ...
+
+    @property
+    def n_frames(self) -> int:
+        """Number of time frames (columns)."""
+        ...
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the matrix as (n_bins, n_frames)."""
+        ...
+
+    @property
+    def frequencies(self) -> list[float]:
+        """Frequency axis values in Hz."""
+        ...
+
+    @property
+    def times(self) -> list[float]:
+        """Time axis values in seconds."""
+        ...
+
+    def frequency_range(self) -> tuple[float, float]:
+        """Frequency range as (f_min, f_max) in Hz."""
+        ...
+
+    def duration(self) -> float:
+        """Total duration spanned by the time axis in seconds."""
+        ...
+
+    @property
+    def params(self) -> ILRSpectrogramParams:
+        """The ILRSpectrogramParams used to compute this spectrogram."""
+        ...
+
+    def histogram(
+        self,
+        num_bins: Optional[int] = None,
+        ratio_range: Optional[tuple[float, float]] = None,
+        exponent: Optional[int] = None,
+        energy_weighted: bool = False,
+        normalize: bool = False,
+    ) -> npt.NDArray[np.float64]:
+        """Compute a 2D float64 histogram of ILR values over time.
+
+        :param num_bins: Number of histogram bins (default: 400)
+        :param ratio_range: Ratio range as (min, max) (default: (-1, 1))
+        :param exponent: Power to raise histogram values to (default: 3)
+        :param energy_weighted: Weight by energy if True
+        :param normalize: Normalize each time frame to sum to 1 if True
+        :return: 2D float64 array of shape (num_bins, n_frames)
+        """
+        ...
+
+    def __array__(self, dtype: DTypeLike = None) -> npt.NDArray[np.floating]:
+        """Return the ILR data as a NumPy array."""
+        ...
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """Return the DLPack device tuple (1, 0) for CPU."""
+        ...
+
+    def __dlpack__(
+        self,
+        *,
+        stream: Optional[int] = None,
+        max_version: Optional[tuple[int, int]] = None,
+        dl_device: Optional[tuple[int, int]] = None,
+        copy: Optional[bool] = None,
+    ) -> Any:
+        """Export the ILR data as a DLPack capsule for tensor exchange."""
+        ...
+
 def compute_ilr_spectrogram(
     audio: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
-    params: ILRSpectrogramParams
-) -> npt.NDArray[np.float64]:
+    params: ILRSpectrogramParams,
+    dtype: str = "float64",
+) -> IlrSpectrogram:
     """Compute an interaural level ratio (ILR) spectrogram.
 
     Returns values in range [-1, 1] where:
@@ -1455,6 +2093,7 @@ def compute_ilr_spectrogram(
 
     :param audio: List of two 1D NumPy arrays containing the left and right channel audio samples
     :param params: ILR spectrogram parameters
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: ILR spectrogram as a 2D NumPy array (n_bins x n_frames)
     """
     ...
@@ -1463,12 +2102,14 @@ def compute_ilr_spectrogram_diff(
     reference: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
     test: npt.NDArray[np.float64] | list[npt.NDArray[np.float64]],
     params: ILRSpectrogramParams,
+    dtype: str = "float64",
 ) -> tuple[npt.NDArray[np.float64], float]:
     """Compute the difference between two ILR spectrograms.
 
     :param reference: List of two 1D NumPy arrays containing the left and right channel audio samples for the reference signal
     :param test: List of two 1D NumPy arrays containing the left and right channel audio samples for the test signal
     :param params: ILR spectrogram parameters
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it (the scalar tuple element is always a Python float)
     :return: Tuple containing the ILR difference array and mean absolute difference
     """
     ...
@@ -1522,11 +2163,13 @@ class MdctParams:
 def mdct(
     samples: ArrayLike,
     params: MdctParams,
+    dtype: str = "float64",
 ) -> npt.NDArray[np.float64]:
     """Compute the MDCT of an audio signal.
 
     :param samples: 1D array of real audio samples. Length must be >= window_size.
     :param params: MDCT parameters.
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: 2D array of shape (N, n_frames) where N = window_size // 2.
     :raises ValueError: If samples is too short or parameters are invalid.
     """
@@ -1536,12 +2179,14 @@ def imdct(
     coefficients: npt.NDArray[np.float64],
     params: MdctParams,
     original_length: Optional[int] = None,
+    dtype: str = "float64",
 ) -> npt.NDArray[np.float64]:
     """Compute the IMDCT (inverse MDCT) from MDCT coefficients.
 
     :param coefficients: 2D array of shape (N, n_frames) as from mdct.
     :param params: MDCT parameters (must match those used for analysis).
     :param original_length: If provided, output is truncated to this length.
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: 1D array of reconstructed audio samples.
     :raises ValueError: If coefficients shape doesn't match params.
     """
@@ -1556,14 +2201,16 @@ def compute_chromagram(
     stft_params: StftParams,
     sample_rate: float,
     chroma_params: ChromaParams,
-) -> npt.NDArray[np.float64]:
+    dtype: str = "float64",
+) -> Chromagram:
     """Compute a chromagram (pitch class profile).
 
     :param samples: Audio samples as a 1D NumPy array
     :param stft_params: STFT parameters
     :param sample_rate: Sample rate in Hz
     :param chroma_params: Chromagram parameters
-    :return: Chromagram as a 2D NumPy array (12 x n_frames)
+    :param dtype: Output precision, "float64" (default) or "float32"
+    :return: A :class:`Chromagram` whose ``.data`` is a 2D NumPy array (12 x n_frames), float64 or float32
     """
     ...
 
@@ -1573,7 +2220,8 @@ def compute_mfcc(
     sample_rate: float,
     n_mels: int,
     mfcc_params: MfccParams,
-) -> npt.NDArray[np.float64]:
+    dtype: str = "float64",
+) -> Mfcc:
     """Compute MFCCs (Mel-Frequency Cepstral Coefficients).
 
     :param samples: Audio samples as a 1D NumPy array
@@ -1581,20 +2229,22 @@ def compute_mfcc(
     :param sample_rate: Sample rate in Hz
     :param n_mels: Number of mel bands
     :param mfcc_params: MFCC parameters
-    :return: MFCCs as a 2D NumPy array (n_mfcc x n_frames)
+    :param dtype: Output precision, "float64" (default) or "float32"
+    :return: An :class:`Mfcc` whose ``.data`` is a 2D NumPy array (n_mfcc x n_frames), float64 or float32
     """
     ...
 
 def compute_stft(
-    samples: ArrayLike, params: SpectrogramParams
-) -> npt.NDArray[np.complex128]:
+    samples: ArrayLike, params: SpectrogramParams, dtype: str = "float64"
+) -> StftResult:
     """Compute the raw STFT (Short-Time Fourier Transform).
 
     Returns the complex-valued STFT matrix before any frequency mapping or amplitude scaling.
 
     :param samples: Audio samples as a 1D NumPy array
     :param params: Spectrogram parameters
-    :return: Complex STFT as a 2D NumPy array of complex128 (n_fft/2+1 x n_frames)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned complex array is complex128 or complex64 to match
+    :return: A :class:`StftResult` whose ``.data`` is a complex 2D NumPy array (n_fft/2+1 x n_frames), complex128 or complex64
     """
     ...
 
@@ -1602,32 +2252,40 @@ def compute_stft(
 # FFT Functions
 # ============================================================================
 
-def compute_fft(samples: ArrayLike, n_fft: int) -> npt.NDArray[np.complex128]:
+def compute_fft(
+    samples: ArrayLike, n_fft: Optional[int] = None, dtype: str = "float64"
+) -> npt.NDArray[np.complex128]:
     """Compute the real-to-complex FFT of a signal.
 
     Computes the FFT of a real-valued signal, returning only positive frequencies
     (exploiting Hermitian symmetry).
 
     :param samples: Audio samples as a 1D NumPy array (length must equal n_fft)
-    :param n_fft: FFT size
-    :return: Complex FFT as a 1D NumPy array of complex128 with length n_fft/2+1
+    :param n_fft: FFT size (defaults to the input length)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned complex array is complex128 or complex64 to match
+    :return: Complex FFT as a 1D NumPy array with length n_fft/2+1, complex128 or complex64
     :raises DimensionMismatchError: If samples length doesn't equal n_fft
     """
     ...
 
-def compute_rfft(samples: ArrayLike, n_fft: int) -> npt.NDArray[np.float64]:
+def compute_rfft(
+    samples: ArrayLike, n_fft: int, dtype: str = "float64"
+) -> npt.NDArray[np.float64]:
     """Compute the magnitude spectrum of a signal, zero-padding or truncating to n_fft samples.
 
     Computes the FFT magnitude (|X[k]|) for positive frequencies only.
 
     :param samples: Audio samples as a 1D NumPy array
     :param n_fft: FFT size (input is zero-padded or truncated to this length)
-    :return: Magnitude spectrum as a 1D NumPy array of float64 with length n_fft/2+1
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
+    :return: Magnitude spectrum as a 1D NumPy array with length n_fft/2+1
     :raises ValueError: If n_fft is zero
     """
     ...
 
-def compute_irfft(spectrum: ArrayLike, n_fft: int) -> npt.NDArray[np.float64]:
+def compute_irfft(
+    spectrum: ArrayLike, n_fft: int, dtype: str = "float64"
+) -> npt.NDArray[np.float64]:
     """Compute the inverse real FFT (complex to real).
 
     Converts a complex frequency-domain representation back to real time-domain samples.
@@ -1635,13 +2293,14 @@ def compute_irfft(spectrum: ArrayLike, n_fft: int) -> npt.NDArray[np.float64]:
 
     :param spectrum: Complex frequency spectrum as a 1D NumPy array (length must equal n_fft/2+1)
     :param n_fft: FFT size (determines output length)
+    :param dtype: Output precision, "float64" (default) or "float32"; the input is read as complex128 or complex64 to match, and the returned array dtype follows it
     :return: Real time-domain signal as a 1D NumPy array with length n_fft
     :raises DimensionMismatchError: If spectrum length doesn't equal n_fft/2+1
     """
     ...
 
 def compute_power_spectrum(
-    samples: ArrayLike, n_fft: int, window: Optional[WindowType] = None
+    samples: ArrayLike, n_fft: int, window: Optional[WindowType] = None, dtype: str = "float64"
 ) -> npt.NDArray[np.float64]:
     """Compute the power spectrum of a signal (|X|²).
 
@@ -1651,13 +2310,14 @@ def compute_power_spectrum(
     :param samples: Audio samples as a 1D NumPy array (length must equal n_fft)
     :param n_fft: FFT size
     :param window: Optional window function (None for rectangular window)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Power spectrum as a 1D NumPy array with length n_fft/2+1
     :raises DimensionMismatchError: If samples length doesn't equal n_fft
     """
     ...
 
 def compute_magnitude_spectrum(
-    samples: ArrayLike, n_fft: int, window: Optional[WindowType] = None
+    samples: ArrayLike, n_fft: int, window: Optional[WindowType] = None, dtype: str = "float64"
 ) -> npt.NDArray[np.float64]:
     """Compute the magnitude spectrum of a signal (|X|).
 
@@ -1667,6 +2327,7 @@ def compute_magnitude_spectrum(
     :param samples: Audio samples as a 1D NumPy array (length must equal n_fft)
     :param n_fft: FFT size
     :param window: Optional window function (None for rectangular window)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Magnitude spectrum as a 1D NumPy array with length n_fft/2+1
     :raises DimensionMismatchError: If samples length doesn't equal n_fft
     """
@@ -1678,6 +2339,7 @@ def compute_istft(
     hop_size: int,
     window: WindowType,
     center: bool = True,
+    dtype: str = "float64",
 ) -> npt.NDArray[np.float64]:
     """Compute the inverse STFT (Short-Time Fourier Transform).
 
@@ -1688,6 +2350,7 @@ def compute_istft(
     :param hop_size: Number of samples between successive frames (must match forward STFT)
     :param window: Window function to apply (should match forward STFT window)
     :param center: If true, assume the forward STFT was centered (must match forward STFT)
+    :param dtype: Output precision, "float64" (default) or "float32"; the input is read as complex128 or complex64 to match, and the returned array dtype follows it
     :return: Reconstructed time-domain signal as a 1D NumPy array
     :raises DimensionMismatchError: If STFT matrix shape doesn't match parameters
     """
@@ -1697,56 +2360,64 @@ def compute_istft(
 # 2D FFT Functions
 # ============================================================================
 
-def fft2d(data: ArrayLike) -> npt.NDArray[np.complex64]:
+def fft2d(data: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.complex64]:
     """Compute 2D FFT of a real-valued 2D array.
 
     :param data: Input 2D array (e.g., image) with shape (nrows, ncols)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned complex array is complex128 or complex64 to match
     :return: Complex 2D array with shape (nrows, ncols/2 + 1) due to Hermitian symmetry
     """
     ...
 
-def ifft2d(spectrum: ArrayLike, output_ncols: int) -> npt.NDArray[np.float64]:
+def ifft2d(
+    spectrum: ArrayLike, output_ncols: int, dtype: str = "float64"
+) -> npt.NDArray[np.float64]:
     """Compute inverse 2D FFT from frequency domain back to spatial domain.
 
     :param spectrum: Complex frequency array with shape (nrows, ncols/2 + 1)
     :param output_ncols: Number of columns in the output (must match original image width)
+    :param dtype: Output precision, "float64" (default) or "float32"; the input is read as complex128 or complex64 to match, and the returned array dtype follows it
     :return: Real 2D array with shape (nrows, output_ncols)
     """
     ...
 
-def power_spectrum_2d(data: ArrayLike) -> npt.NDArray[np.float64]:
+def power_spectrum_2d(data: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Compute 2D power spectrum (squared magnitude).
 
     :param data: Input 2D array with shape (nrows, ncols)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Power spectrum with shape (nrows, ncols/2 + 1)
     """
     ...
 
-def magnitude_spectrum_2d(data: ArrayLike) -> npt.NDArray[np.float64]:
+def magnitude_spectrum_2d(data: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Compute 2D magnitude spectrum.
 
     :param data: Input 2D array with shape (nrows, ncols)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Magnitude spectrum with shape (nrows, ncols/2 + 1)
     """
     ...
 
-def fftshift(arr: ArrayLike) -> npt.NDArray[np.float64]:
+def fftshift(arr: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Shift zero-frequency component to center.
 
     :param arr: Input 2D array
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Shifted array with DC component at center
     """
     ...
 
-def ifftshift(arr: ArrayLike) -> npt.NDArray[np.float64]:
+def ifftshift(arr: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Inverse of fftshift - shift center back to corners.
 
     :param arr: Input 2D array
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Shifted array with DC component at corners
     """
     ...
 
-def fftfreq(n: int, d: float) -> npt.NDArray[np.float64]:
+def fftfreq(n: int, d: float = 1.0, dtype: str = "float64") -> npt.NDArray[np.floating]:
     """Compute FFT frequency bins for a given sample spacing.
 
     Returns the frequency bin centers for a DFT of length n with sample
@@ -1754,11 +2425,12 @@ def fftfreq(n: int, d: float) -> npt.NDArray[np.float64]:
 
     :param n: Number of samples/bins
     :param d: Sample spacing (inverse of sampling rate)
-    :return: Frequency values for each bin
+    :param dtype: Output precision, "float64" (default) or "float32"
+    :return: Frequency values for each bin, float64 or float32
     """
     ...
 
-def rfftfreq(n: int, d: float) -> npt.NDArray[np.float64]:
+def rfftfreq(n: int, d: float = 1.0, dtype: str = "float64") -> npt.NDArray[np.floating]:
     """Compute FFT frequency bins for real FFT (rfft).
 
     Returns the frequency bin centers for a real-to-complex FFT of length n
@@ -1767,22 +2439,25 @@ def rfftfreq(n: int, d: float) -> npt.NDArray[np.float64]:
 
     :param n: Number of samples in the input signal
     :param d: Sample spacing (inverse of sampling rate)
-    :return: Positive frequency values
+    :param dtype: Output precision, "float64" (default) or "float32"
+    :return: Positive frequency values, float64 or float32
     """
     ...
 
-def fftshift_1d(arr: ArrayLike) -> npt.NDArray[np.float64]:
+def fftshift_1d(arr: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Shift zero-frequency component to center for 1D arrays.
 
     :param arr: Input 1D array
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Shifted array with DC component at center
     """
     ...
 
-def ifftshift_1d(arr: ArrayLike) -> npt.NDArray[np.float64]:
+def ifftshift_1d(arr: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Inverse of fftshift_1d — shift center back to index 0 for 1D arrays.
 
     :param arr: Input 1D array
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Shifted array with DC component at index 0
     """
     ...
@@ -1791,69 +2466,84 @@ def ifftshift_1d(arr: ArrayLike) -> npt.NDArray[np.float64]:
 # Image Processing Functions
 # ============================================================================
 
-def gaussian_kernel_2d(size: int, sigma: float) -> npt.NDArray[np.float64]:
+def gaussian_kernel_2d(
+    size: int, sigma: float, dtype: str = "float64"
+) -> npt.NDArray[np.floating]:
     """Create 2D Gaussian kernel for blurring.
 
     :param size: Kernel size (must be odd, e.g., 3, 5, 7, 9)
     :param sigma: Standard deviation of the Gaussian
-    :return: Normalized Gaussian kernel with shape (size, size)
+    :param dtype: Output precision, "float64" (default) or "float32"
+    :return: Normalized Gaussian kernel with shape (size, size), float64 or float32
     """
     ...
 
-def convolve_fft(image: ArrayLike, kernel: ArrayLike) -> npt.NDArray[np.float64]:
+def convolve_fft(
+    image: ArrayLike, kernel: ArrayLike, dtype: str = "float64"
+) -> npt.NDArray[np.float64]:
     """Convolve 2D image with kernel using FFT.
 
     :param image: Input image with shape (nrows, ncols)
     :param kernel: Convolution kernel (must be smaller than image)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Convolved image (same size as input)
     """
     ...
 
-def lowpass_filter(image: ArrayLike, cutoff_fraction: float) -> npt.NDArray[np.float64]:
+def lowpass_filter(
+    image: ArrayLike, cutoff_fraction: float, dtype: str = "float64"
+) -> npt.NDArray[np.float64]:
     """Apply low-pass filter to suppress high frequencies.
 
     :param image: Input image
     :param cutoff_fraction: Cutoff radius as fraction (0.0 to 1.0)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Filtered image
     """
     ...
 
 def highpass_filter(
-    image: ArrayLike, cutoff_fraction: float
+    image: ArrayLike, cutoff_fraction: float, dtype: str = "float64"
 ) -> npt.NDArray[np.float64]:
     """Apply high-pass filter to suppress low frequencies.
 
     :param image: Input image
     :param cutoff_fraction: Cutoff radius as fraction (0.0 to 1.0)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Filtered image with edges emphasized
     """
     ...
 
 def bandpass_filter(
-    image: ArrayLike, low_cutoff: float, high_cutoff: float
+    image: ArrayLike, low_cutoff: float, high_cutoff: float, dtype: str = "float64"
 ) -> npt.NDArray[np.float64]:
     """Apply band-pass filter to keep frequencies in a range.
 
     :param image: Input image
     :param low_cutoff: Lower cutoff as fraction (0.0 to 1.0)
     :param high_cutoff: Upper cutoff as fraction (0.0 to 1.0)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Filtered image
     """
     ...
 
-def detect_edges_fft(image: ArrayLike) -> npt.NDArray[np.float64]:
+def detect_edges_fft(image: ArrayLike, dtype: str = "float64") -> npt.NDArray[np.float64]:
     """Detect edges using high-pass filtering.
 
     :param image: Input image
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Edge-detected image
     """
     ...
 
-def sharpen_fft(image: ArrayLike, amount: float) -> npt.NDArray[np.float64]:
+def sharpen_fft(
+    image: ArrayLike, amount: float, dtype: str = "float64"
+) -> npt.NDArray[np.float64]:
     """Sharpen image by enhancing high frequencies.
 
     :param image: Input image
     :param amount: Sharpening strength (typical range: 0.5 to 2.0)
+    :param dtype: Output precision, "float64" (default) or "float32"; the returned array dtype follows it
     :return: Sharpened image
     """
     ...
@@ -1869,40 +2559,49 @@ class Fft2dPlanner:
     processing multiple arrays with the same dimensions.
     """
 
-    def __init__(self) -> None:
-        """Create a new 2D FFT planner."""
-        ...
+    def __init__(self, dtype: str = "float64") -> None:
+        """Create a new 2D FFT planner.
 
-    def fft2d(self, data: ArrayLike) -> npt.NDArray[np.complex64]:
-        """Compute 2D FFT using cached plans.
-
-        :param data: Input 2D array with shape (nrows, ncols)
-        :return: Complex 2D array with shape (nrows, ncols/2 + 1)
+        :param dtype: Working precision, "float64" (default) or "float32"; fixed
+            for the lifetime of the planner.
         """
         ...
 
-    def ifft2d(self, spectrum: ArrayLike, output_ncols: int) -> npt.NDArray[np.float64]:
+    @property
+    def dtype(self) -> str:
+        """The working precision of this planner ("float32" or "float64")."""
+        ...
+
+    def fft2d(self, data: ArrayLike) -> npt.NDArray[np.complexfloating]:
+        """Compute 2D FFT using cached plans.
+
+        :param data: Input 2D array with shape (nrows, ncols)
+        :return: Complex 2D array with shape (nrows, ncols/2 + 1), complex128 or complex64
+        """
+        ...
+
+    def ifft2d(self, spectrum: ArrayLike, output_ncols: int) -> npt.NDArray[np.floating]:
         """Compute inverse 2D FFT using cached plans.
 
         :param spectrum: Complex frequency array
         :param output_ncols: Number of columns in output
-        :return: Real 2D array
+        :return: Real 2D array, float64 or float32
         """
         ...
 
-    def power_spectrum_2d(self, data: ArrayLike) -> npt.NDArray[np.float64]:
+    def power_spectrum_2d(self, data: ArrayLike) -> npt.NDArray[np.floating]:
         """Compute 2D power spectrum using cached plans.
 
         :param data: Input 2D array
-        :return: Power spectrum
+        :return: Power spectrum, float64 or float32
         """
         ...
 
-    def magnitude_spectrum_2d(self, data: ArrayLike) -> npt.NDArray[np.float64]:
+    def magnitude_spectrum_2d(self, data: ArrayLike) -> npt.NDArray[np.floating]:
         """Compute 2D magnitude spectrum using cached plans.
 
         :param data: Input 2D array
-        :return: Magnitude spectrum
+        :return: Magnitude spectrum, float64 or float32
         """
         ...
 

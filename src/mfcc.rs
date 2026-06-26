@@ -7,7 +7,7 @@ use std::{num::NonZeroUsize, ops::Deref};
 use ndarray::Array2;
 use non_empty_slice::{NonEmptySlice, NonEmptyVec};
 
-use crate::{SpectrogramError, SpectrogramResult, StftParams, nzu};
+use crate::{Sample, SpectrogramError, SpectrogramResult, StftParams, nzu};
 
 /// MFCC computation parameters.
 ///
@@ -143,22 +143,22 @@ impl MfccParams {
 /// MFCC features representation.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Mfcc {
+pub struct Mfcc<T = f64> {
     /// MFCC coefficient matrix with shape (`n_mfcc`, `n_frames`)
-    pub data: Array2<f64>,
+    pub data: Array2<T>,
     /// Parameters used to compute these MFCCs
     params: MfccParams,
 }
 
-impl AsRef<Array2<f64>> for Mfcc {
+impl<T: Sample> AsRef<Array2<T>> for Mfcc<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl Deref for Mfcc {
-    type Target = Array2<f64>;
+impl<T: Sample> Deref for Mfcc<T> {
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -166,7 +166,7 @@ impl Deref for Mfcc {
     }
 }
 
-impl Mfcc {
+impl<T: Sample> Mfcc<T> {
     /// Get the number of MFCC coefficients.
     ///
     /// # Returns
@@ -221,10 +221,10 @@ impl Mfcc {
 ///
 /// Returns an error if `n_mfcc` is greater than `n_mels`.
 #[inline]
-pub fn mfcc_from_log_mel(
-    log_mel_spec: &Array2<f64>,
+pub fn mfcc_from_log_mel<T: Sample>(
+    log_mel_spec: &Array2<T>,
     params: &MfccParams,
-) -> SpectrogramResult<Mfcc> {
+) -> SpectrogramResult<Mfcc<T>> {
     let n_mels = log_mel_spec.nrows();
     let n_frames = log_mel_spec.ncols();
 
@@ -233,10 +233,10 @@ pub fn mfcc_from_log_mel(
     }
 
     // Apply DCT-II to each frame
-    let mut mfcc_data = Array2::<f64>::zeros((params.n_mfcc.get(), n_frames));
+    let mut mfcc_data = Array2::<T>::zeros((params.n_mfcc.get(), n_frames));
 
     // Preallocate buffer to avoid per-frame allocation
-    let mut mel_frame = vec![0.0; n_mels];
+    let mut mel_frame = vec![T::zero(); n_mels];
 
     for frame_idx in 0..n_frames {
         // Extract mel spectrum for this frame into reusable buffer
@@ -275,16 +275,16 @@ pub fn mfcc_from_log_mel(
 /// Compute Discrete Cosine Transform (DCT-II).
 ///
 /// DCT-II is used to decorrelate mel-filterbank energies.
-fn dct_ii(input: &[f64]) -> NonEmptyVec<f64> {
+fn dct_ii<T: Sample>(input: &[T]) -> NonEmptyVec<T> {
     let n = input.len();
-    let mut output = vec![0.0; n];
+    let mut output = vec![T::zero(); n];
 
     for (k, sample) in output.iter_mut().enumerate().take(n) {
-        *sample = input.iter().enumerate().fold(0.0, |acc, (i, &val)| {
-            val.mul_add(
-                (std::f64::consts::PI * k as f64 * (i as f64 + 0.5) / n as f64).cos(),
-                acc,
-            )
+        *sample = input.iter().enumerate().fold(T::zero(), |acc, (i, &val)| {
+            // DCT-II basis is computed in f64 then converted to T.
+            let basis =
+                T::from_f64((std::f64::consts::PI * k as f64 * (i as f64 + 0.5) / n as f64).cos());
+            val.mul_add(basis, acc)
         });
     }
     // safety: output is non-empty since n > 0
@@ -294,15 +294,17 @@ fn dct_ii(input: &[f64]) -> NonEmptyVec<f64> {
 /// Apply cepstral liftering to MFCC coefficients.
 ///
 /// Liftering applies a sinusoidal weighting to emphasize mid-range coefficients.
-fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
+fn apply_liftering<T: Sample>(mfcc: &mut Array2<T>, lifter: usize) {
     let n_mfcc = mfcc.nrows();
     let n_frames = mfcc.ncols();
 
-    // Compute lifter weights
-    let mut weights = vec![0.0; n_mfcc];
+    // Compute lifter weights (in f64, converted to T)
+    let mut weights = vec![T::zero(); n_mfcc];
     for (i, w) in weights.iter_mut().enumerate().take(n_mfcc) {
-        *w = (lifter as f64 / 2.0)
-            .mul_add((std::f64::consts::PI * i as f64 / lifter as f64).sin(), 1.0);
+        *w = T::from_f64(
+            (lifter as f64 / 2.0)
+                .mul_add((std::f64::consts::PI * i as f64 / lifter as f64).sin(), 1.0),
+        );
     }
 
     // Apply weights to each frame
@@ -345,7 +347,7 @@ fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
 /// let stft = StftParams::new(nzu!(512), nzu!(160), WindowType::Hanning, true)?;
 /// let mfcc_params = MfccParams::speech_standard();
 ///
-/// let mfccs = mfcc(&samples, &stft, 16000.0, nzu!(40), &mfcc_params)?;
+/// let mfccs: Mfcc = mfcc(&samples, &stft, 16000.0, nzu!(40), &mfcc_params)?;
 ///
 /// assert_eq!(mfccs.n_coefficients(), nzu!(13));
 /// println!("MFCCs: {} coefficients x {} frames",
@@ -354,23 +356,24 @@ fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
 /// # }
 /// ```
 #[inline]
-pub fn mfcc(
-    samples: &NonEmptySlice<f64>,
+pub fn mfcc<T: Sample>(
+    samples: &NonEmptySlice<T>,
     stft_params: &StftParams,
     sample_rate: f64,
     n_mels: NonZeroUsize,
     mfcc_params: &MfccParams,
-) -> SpectrogramResult<Mfcc> {
-    use crate::{LogParams, MelDbSpectrogram, MelParams, SpectrogramParams};
+) -> SpectrogramResult<Mfcc<T>> {
+    use crate::{Decibels, LogParams, Mel, MelParams, Spectrogram, SpectrogramParams};
 
     // Create parameters
     let params = SpectrogramParams::new(stft_params.clone(), sample_rate)?;
     let mel = MelParams::new(n_mels, 0.0, sample_rate / 2.0)?;
     let db = LogParams::new(-80.0)?;
 
-    // Compute log mel spectrogram
-    let log_mel_spec = MelDbSpectrogram::compute(samples, &params, &mel, Some(&db))?;
+    // Compute the log-mel spectrogram at precision `T`.
+    let log_mel_spec = Spectrogram::<Mel, Decibels, T>::compute(samples, &params, &mel, Some(&db))?;
+    let log_mel_t: Array2<T> = log_mel_spec.data().clone();
 
     // Extract MFCCs from log mel spectrogram
-    mfcc_from_log_mel(log_mel_spec.data(), mfcc_params)
+    mfcc_from_log_mel(&log_mel_t, mfcc_params)
 }

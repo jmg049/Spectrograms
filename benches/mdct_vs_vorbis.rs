@@ -166,7 +166,7 @@ fn bench_mdct_forward(c: &mut Criterion) {
             BenchmarkId::new("rust_f32", label),
             &(&signal_f32, &rust_params),
             |b, &(sig, par)| {
-                b.iter(|| black_box(mdct_f32(black_box(sig), par).unwrap()));
+                b.iter(|| black_box(mdct::<f32>(black_box(sig), par).unwrap()));
             },
         );
 
@@ -225,7 +225,7 @@ fn bench_mdct_inverse(c: &mut Criterion) {
         // ── Our IMDCT (f64) ─────────────────────────────────────────────────
         let rust_params = MdctParams::sine_window(NonZeroUsize::new(window_size).unwrap()).unwrap();
         let coeffs_f64 = mdct(&signal_f64, &rust_params).unwrap();
-        let coeffs_f32_bench = mdct_f32(&signal_f32, &rust_params).unwrap();
+        let coeffs_f32_bench = mdct::<f32>(&signal_f32, &rust_params).unwrap();
 
         group.bench_with_input(
             BenchmarkId::new("rust_f64", label),
@@ -240,7 +240,7 @@ fn bench_mdct_inverse(c: &mut Criterion) {
             BenchmarkId::new("rust_f32", label),
             &(&coeffs_f32_bench, &rust_params),
             |b, &(co, par)| {
-                b.iter(|| black_box(imdct_f32(black_box(co), par, None).unwrap()));
+                b.iter(|| black_box(imdct::<f32>(black_box(co), par, None).unwrap()));
             },
         );
 

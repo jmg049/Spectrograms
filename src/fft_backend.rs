@@ -22,7 +22,7 @@ pub const fn r2c_output_size(n: usize) -> usize {
 /// - own any internal scratch buffers
 /// - be reusable across many calls
 /// - perform no heap allocation during `process`
-pub trait R2cPlan {
+pub trait R2cPlan<T = f64> {
     fn n_fft(&self) -> usize;
     fn output_len(&self) -> usize;
 
@@ -40,26 +40,12 @@ pub trait R2cPlan {
     /// # Errors
     ///
     /// Returns SpectrogramError::dimension_mismatch if input or output lengths do not match expected sizes.
-    fn process(&mut self, input: &[f64], output: &mut [Complex<f64>]) -> SpectrogramResult<()>;
-}
-
-/// A planned real-to-complex FFT using f32 arithmetic.
-///
-/// Same contract as [`R2cPlan`] but operates on single-precision floats.
-pub trait R2cPlanF32: Send {
-    fn n_fft(&self) -> usize;
-    fn output_len(&self) -> usize;
-    /// Perform the FFT.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the input/output lengths don't match the plan size.
-    fn process(&mut self, input: &[f32], output: &mut [Complex<f32>]) -> SpectrogramResult<()>;
+    fn process(&mut self, input: &[T], output: &mut [Complex<T>]) -> SpectrogramResult<()>;
 }
 
 /// Planner that can construct FFT plans.
-pub trait R2cPlanner {
-    type Plan: R2cPlan;
+pub trait R2cPlanner<T = f64> {
+    type Plan: R2cPlan<T>;
 
     /// Plan a real-to-complex FFT.
     ///
@@ -78,7 +64,7 @@ pub trait R2cPlanner {
 }
 
 /// A planned complex-to-real inverse FFT for a fixed transform length.
-pub trait C2rPlan {
+pub trait C2rPlan<T = f64> {
     /// FFT size
     ///
     /// # Returns
@@ -107,12 +93,12 @@ pub trait C2rPlan {
     /// # Errors
     ///
     /// Returns SpectrogramError::dimension_mismatch if input or output lengths do not match expected sizes.
-    fn process(&mut self, input: &[Complex<f64>], output: &mut [f64]) -> SpectrogramResult<()>;
+    fn process(&mut self, input: &[Complex<T>], output: &mut [T]) -> SpectrogramResult<()>;
 }
 
 /// Planner that can construct inverse FFT plans.
-pub trait C2rPlanner {
-    type Plan: C2rPlan;
+pub trait C2rPlanner<T = f64> {
+    type Plan: C2rPlan<T>;
 
     /// Plan a complex-to-real inverse FFT.
     ///
@@ -137,39 +123,20 @@ pub trait C2rPlanner {
 ///
 /// Normalization: neither `forward` nor `inverse` normalizes. The caller is responsible
 /// for dividing by N after an inverse transform if a round-trip is desired.
-pub trait C2cPlan: Send {
+pub trait C2cPlan<T = f64>: Send {
     fn n_fft(&self) -> usize;
     /// Forward DFT: `X[k] = Σ x[n] exp(−2πi·k·n/N)`
     ///
     /// # Errors
     ///
     /// Returns an error if the buffer length doesn't match the plan size.
-    fn forward(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()>;
+    fn forward(&mut self, buf: &mut [Complex<T>]) -> SpectrogramResult<()>;
     /// Inverse DFT (unnormalized): `x[n] = Σ X[k] exp(+2πi·k·n/N)`
     ///
     /// # Errors
     ///
     /// Returns an error if the buffer length doesn't match the plan size.
-    fn inverse(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()>;
-}
-
-/// A planned complex-to-complex FFT using f32 (single-precision) arithmetic.
-///
-/// Same contract as [`C2cPlan`] but operates on single-precision floats.
-pub trait C2cPlanF32: Send {
-    fn n_fft(&self) -> usize;
-    /// Forward DFT (f32).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the buffer length doesn't match the plan size.
-    fn forward(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()>;
-    /// Inverse DFT, unnormalized (f32).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the buffer length doesn't match the plan size.
-    fn inverse(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()>;
+    fn inverse(&mut self, buf: &mut [Complex<T>]) -> SpectrogramResult<()>;
 }
 
 // ============================================================================
@@ -199,7 +166,7 @@ pub const fn r2c_output_size_2d(nrows: usize, ncols: usize) -> (usize, usize) {
 /// - own any internal scratch buffers
 /// - be reusable across many calls
 /// - perform no heap allocation during `process`
-pub trait R2cPlan2d {
+pub trait R2cPlan2d<T = f64> {
     /// Process 2D real input to complex output.
     ///
     /// # Arguments
@@ -214,12 +181,12 @@ pub trait R2cPlan2d {
     /// # Errors
     ///
     /// Returns SpectrogramError::dimension_mismatch if input or output lengths do not match expected sizes.
-    fn process(&mut self, input: &[f64], output: &mut [Complex<f64>]) -> SpectrogramResult<()>;
+    fn process(&mut self, input: &[T], output: &mut [Complex<T>]) -> SpectrogramResult<()>;
 }
 
 /// Planner that can construct 2D FFT plans.
-pub trait R2cPlanner2d {
-    type Plan: R2cPlan2d;
+pub trait R2cPlanner2d<T = f64> {
+    type Plan: R2cPlan2d<T>;
 
     /// Plan a 2D real-to-complex FFT.
     ///
@@ -239,7 +206,7 @@ pub trait R2cPlanner2d {
 }
 
 /// A planned 2D complex-to-real inverse FFT for fixed dimensions.
-pub trait C2rPlan2d {
+pub trait C2rPlan2d<T = f64> {
     /// Process 2D complex input to real output.
     ///
     /// # Arguments
@@ -254,12 +221,12 @@ pub trait C2rPlan2d {
     /// # Errors
     ///
     /// Returns SpectrogramError::dimension_mismatch if input or output lengths do not match expected sizes.
-    fn process(&mut self, input: &[Complex<f64>], output: &mut [f64]) -> SpectrogramResult<()>;
+    fn process(&mut self, input: &[Complex<T>], output: &mut [T]) -> SpectrogramResult<()>;
 }
 
 /// Planner that can construct 2D inverse FFT plans.
-pub trait C2rPlanner2d {
-    type Plan: C2rPlan2d;
+pub trait C2rPlanner2d<T = f64> {
+    type Plan: C2rPlan2d<T>;
 
     /// Plan a 2D complex-to-real inverse FFT.
     ///
@@ -294,10 +261,10 @@ pub trait C2rPlanner2d {
 ///
 /// Returns SpectrogramError::dimension_mismatch if input or output lengths do not match expected sizes.
 #[inline]
-pub const fn validate_fft_io(
+pub fn validate_fft_io<T>(
     n_fft: usize,
-    input: &[f64],
-    output: &[Complex<f64>],
+    input: &[T],
+    output: &[Complex<T>],
 ) -> SpectrogramResult<()> {
     if input.len() != n_fft {
         return Err(SpectrogramError::dimension_mismatch(n_fft, input.len()));
@@ -331,11 +298,11 @@ pub const fn validate_fft_io(
 ///
 /// Returns SpectrogramError::dimension_mismatch if input or output lengths do not match expected sizes.
 #[inline]
-pub const fn validate_fft_io_2d(
+pub fn validate_fft_io_2d<T>(
     nrows: usize,
     ncols: usize,
-    input: &[f64],
-    output: &[Complex<f64>],
+    input: &[T],
+    output: &[Complex<T>],
 ) -> SpectrogramResult<()> {
     let input_len = nrows * ncols;
     if input.len() != input_len {
@@ -360,7 +327,7 @@ pub mod realfft_backend {
     use std::sync::Arc;
 
     use num_complex::Complex;
-    pub use realfft::{ComplexToReal, RealFftPlanner as InnerPlanner, RealToComplex};
+    pub use realfft::{ComplexToReal, FftNum, RealFftPlanner as InnerPlanner, RealToComplex};
 
     use crate::fft_backend::{
         C2rPlan, C2rPlanner, R2cPlan, R2cPlanner, r2c_output_size, validate_fft_io,
@@ -373,14 +340,24 @@ pub mod realfft_backend {
     ///
     /// This planner maintains separate caches for forward (real-to-complex)
     /// and inverse (complex-to-real) FFT plans to avoid redundant plan creation.
-    #[derive(Default)]
-    pub struct RealFftPlanner {
-        inner: InnerPlanner<f64>,
-        cache_r2c: HashMap<usize, Arc<dyn RealToComplex<f64>>>,
-        cache_c2r: HashMap<usize, Arc<dyn ComplexToReal<f64>>>,
+    pub struct RealFftPlanner<T: FftNum = f64> {
+        inner: InnerPlanner<T>,
+        cache_r2c: HashMap<usize, Arc<dyn RealToComplex<T>>>,
+        cache_c2r: HashMap<usize, Arc<dyn ComplexToReal<T>>>,
     }
 
-    impl RealFftPlanner {
+    impl<T: FftNum> Default for RealFftPlanner<T> {
+        #[inline]
+        fn default() -> Self {
+            Self {
+                inner: InnerPlanner::<T>::new(),
+                cache_r2c: HashMap::new(),
+                cache_c2r: HashMap::new(),
+            }
+        }
+    }
+
+    impl<T: FftNum> RealFftPlanner<T> {
         /// Create a new RealFftPlanner with empty caches.
         ///
         /// # Returns
@@ -392,7 +369,7 @@ pub mod realfft_backend {
             Self::default()
         }
 
-        pub(crate) fn get_or_create(&mut self, n_fft: usize) -> Arc<dyn RealToComplex<f64>> {
+        pub(crate) fn get_or_create(&mut self, n_fft: usize) -> Arc<dyn RealToComplex<T>> {
             if let Some(p) = self.cache_r2c.get(&n_fft) {
                 return p.clone();
             }
@@ -401,10 +378,7 @@ pub mod realfft_backend {
             p
         }
 
-        pub(crate) fn get_or_create_inverse(
-            &mut self,
-            n_fft: usize,
-        ) -> Arc<dyn ComplexToReal<f64>> {
+        pub(crate) fn get_or_create_inverse(&mut self, n_fft: usize) -> Arc<dyn ComplexToReal<T>> {
             if let Some(p) = self.cache_c2r.get(&n_fft) {
                 return p.clone();
             }
@@ -418,23 +392,23 @@ pub mod realfft_backend {
     ///
     /// Implements a plan for performing FFTs from real time domain to complex frequency domain.=
     #[derive(Clone)]
-    pub struct RealFftPlan {
+    pub struct RealFftPlan<T: FftNum = f64> {
         n_fft: usize,
-        plan: Arc<dyn RealToComplex<f64>>,
-        scratch: Vec<f64>,
+        plan: Arc<dyn RealToComplex<T>>,
+        scratch: Vec<T>,
     }
 
-    impl RealFftPlan {
-        pub(crate) fn new(n_fft: usize, plan: Arc<dyn RealToComplex<f64>>) -> Self {
+    impl<T: FftNum> RealFftPlan<T> {
+        pub(crate) fn new(n_fft: usize, plan: Arc<dyn RealToComplex<T>>) -> Self {
             Self {
                 n_fft,
                 plan,
-                scratch: vec![0.0; n_fft],
+                scratch: vec![T::zero(); n_fft],
             }
         }
     }
 
-    impl R2cPlan for RealFftPlan {
+    impl<T: FftNum> R2cPlan<T> for RealFftPlan<T> {
         #[inline]
         fn n_fft(&self) -> usize {
             self.n_fft
@@ -446,7 +420,7 @@ pub mod realfft_backend {
         }
 
         #[inline]
-        fn process(&mut self, input: &[f64], output: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+        fn process(&mut self, input: &[T], output: &mut [Complex<T>]) -> SpectrogramResult<()> {
             validate_fft_io(self.n_fft, input, output)?;
 
             self.scratch.copy_from_slice(input);
@@ -457,60 +431,13 @@ pub mod realfft_backend {
         }
     }
 
-    impl R2cPlanner for RealFftPlanner {
-        type Plan = RealFftPlan;
+    impl<T: FftNum> R2cPlanner<T> for RealFftPlanner<T> {
+        type Plan = RealFftPlan<T>;
 
         #[inline]
         fn plan_r2c(&mut self, n_fft: usize) -> SpectrogramResult<Self::Plan> {
             let plan = self.get_or_create(n_fft);
             Ok(RealFftPlan::new(n_fft, plan))
-        }
-    }
-
-    /// Real-to-Complex FFT plan using f32 (single-precision) arithmetic.
-    pub struct RealFftPlanF32 {
-        n_fft: usize,
-        plan: Arc<dyn RealToComplex<f32>>,
-        scratch: Vec<f32>,
-    }
-
-    impl RealFftPlanF32 {
-        /// Create an f32 R2c plan for transform size `n_fft`.
-        #[must_use]
-        pub fn new(n_fft: usize) -> Self {
-            let mut planner: InnerPlanner<f32> = InnerPlanner::new();
-            let plan = planner.plan_fft_forward(n_fft);
-            Self {
-                n_fft,
-                plan,
-                scratch: vec![0.0f32; n_fft],
-            }
-        }
-    }
-
-    impl crate::fft_backend::R2cPlanF32 for RealFftPlanF32 {
-        #[inline]
-        fn n_fft(&self) -> usize {
-            self.n_fft
-        }
-
-        #[inline]
-        fn output_len(&self) -> usize {
-            r2c_output_size(self.n_fft)
-        }
-
-        #[inline]
-        fn process(&mut self, input: &[f32], output: &mut [Complex<f32>]) -> SpectrogramResult<()> {
-            if input.len() != self.n_fft {
-                return Err(SpectrogramError::dimension_mismatch(
-                    self.n_fft,
-                    input.len(),
-                ));
-            }
-            self.scratch.copy_from_slice(input);
-            self.plan
-                .process(&mut self.scratch, output)
-                .map_err(|e| SpectrogramError::fft_backend("realfft_f32", format!("{e:?}")))
         }
     }
 
@@ -520,18 +447,18 @@ pub mod realfft_backend {
     ///
     /// Both forward and inverse directions share a single scratch buffer sized to
     /// the larger of the two inplace scratch requirements.
-    pub struct RealFftC2cPlan {
+    pub struct RealFftC2cPlan<T: rustfft::FftNum = f64> {
         n_fft: usize,
-        fwd: Arc<dyn rustfft::Fft<f64>>,
-        inv: Arc<dyn rustfft::Fft<f64>>,
-        scratch: Vec<Complex<f64>>,
+        fwd: Arc<dyn rustfft::Fft<T>>,
+        inv: Arc<dyn rustfft::Fft<T>>,
+        scratch: Vec<Complex<T>>,
     }
 
-    impl RealFftC2cPlan {
+    impl<T: rustfft::FftNum> RealFftC2cPlan<T> {
         /// Create a C2c plan for transform size `n_fft`.
         #[must_use]
         pub fn new(n_fft: usize) -> Self {
-            let mut p = RustFftPlanner::<f64>::new();
+            let mut p = RustFftPlanner::<T>::new();
             let fwd = p.plan_fft_forward(n_fft);
             let inv = p.plan_fft_inverse(n_fft);
             let scratch_len = fwd
@@ -541,19 +468,19 @@ pub mod realfft_backend {
                 n_fft,
                 fwd,
                 inv,
-                scratch: vec![Complex::new(0.0, 0.0); scratch_len],
+                scratch: vec![Complex::new(T::zero(), T::zero()); scratch_len],
             }
         }
     }
 
-    impl crate::fft_backend::C2cPlan for RealFftC2cPlan {
+    impl<T: rustfft::FftNum> crate::fft_backend::C2cPlan<T> for RealFftC2cPlan<T> {
         #[inline]
         fn n_fft(&self) -> usize {
             self.n_fft
         }
 
         #[inline]
-        fn forward(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+        fn forward(&mut self, buf: &mut [Complex<T>]) -> SpectrogramResult<()> {
             if buf.len() != self.n_fft {
                 return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
             }
@@ -562,7 +489,7 @@ pub mod realfft_backend {
         }
 
         #[inline]
-        fn inverse(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+        fn inverse(&mut self, buf: &mut [Complex<T>]) -> SpectrogramResult<()> {
             if buf.len() != self.n_fft {
                 return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
             }
@@ -572,86 +499,31 @@ pub mod realfft_backend {
     }
 
     // SAFETY: rustfft::Fft<T> is Send; scratch is owned by the plan.
-    unsafe impl Send for RealFftC2cPlan {}
-
-    /// Complex-to-complex FFT plan (f32) backed by rustfft.
-    pub struct RealFftC2cPlanF32 {
-        n_fft: usize,
-        fwd: Arc<dyn rustfft::Fft<f32>>,
-        inv: Arc<dyn rustfft::Fft<f32>>,
-        scratch: Vec<Complex<f32>>,
-    }
-
-    impl RealFftC2cPlanF32 {
-        /// Create an f32 C2c plan for transform size `n_fft`.
-        #[must_use]
-        pub fn new(n_fft: usize) -> Self {
-            let mut p = RustFftPlanner::<f32>::new();
-            let fwd = p.plan_fft_forward(n_fft);
-            let inv = p.plan_fft_inverse(n_fft);
-            let scratch_len = fwd
-                .get_inplace_scratch_len()
-                .max(inv.get_inplace_scratch_len());
-            Self {
-                n_fft,
-                fwd,
-                inv,
-                scratch: vec![Complex::new(0.0f32, 0.0f32); scratch_len],
-            }
-        }
-    }
-
-    impl crate::fft_backend::C2cPlanF32 for RealFftC2cPlanF32 {
-        #[inline]
-        fn n_fft(&self) -> usize {
-            self.n_fft
-        }
-
-        #[inline]
-        fn forward(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()> {
-            if buf.len() != self.n_fft {
-                return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
-            }
-            self.fwd.process_with_scratch(buf, &mut self.scratch);
-            Ok(())
-        }
-
-        #[inline]
-        fn inverse(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()> {
-            if buf.len() != self.n_fft {
-                return Err(SpectrogramError::dimension_mismatch(self.n_fft, buf.len()));
-            }
-            self.inv.process_with_scratch(buf, &mut self.scratch);
-            Ok(())
-        }
-    }
-
-    // SAFETY: rustfft::Fft<T> is Send; scratch is owned by the plan.
-    unsafe impl Send for RealFftC2cPlanF32 {}
+    unsafe impl<T: rustfft::FftNum> Send for RealFftC2cPlan<T> {}
 
     /// Complex-to-Real Inverse FFT Plan
     ///
     /// Implements a plan for performing inverse FFTs from complex frequency domain
     /// to real time domain.
     #[derive(Clone)]
-    pub struct RealFftInversePlan {
+    pub struct RealFftInversePlan<T: FftNum = f64> {
         n_fft: usize,
-        plan: Arc<dyn ComplexToReal<f64>>,
-        scratch: Vec<Complex<f64>>,
+        plan: Arc<dyn ComplexToReal<T>>,
+        scratch: Vec<Complex<T>>,
     }
 
-    impl RealFftInversePlan {
-        pub(crate) fn new(n_fft: usize, plan: Arc<dyn ComplexToReal<f64>>) -> Self {
+    impl<T: FftNum> RealFftInversePlan<T> {
+        pub(crate) fn new(n_fft: usize, plan: Arc<dyn ComplexToReal<T>>) -> Self {
             let scratch_len = r2c_output_size(n_fft);
             Self {
                 n_fft,
                 plan,
-                scratch: vec![Complex::new(0.0, 0.0); scratch_len],
+                scratch: vec![Complex::new(T::zero(), T::zero()); scratch_len],
             }
         }
     }
 
-    impl C2rPlan for RealFftInversePlan {
+    impl<T: FftNum> C2rPlan<T> for RealFftInversePlan<T> {
         #[inline]
         fn n_fft(&self) -> usize {
             self.n_fft
@@ -663,7 +535,7 @@ pub mod realfft_backend {
         }
 
         #[inline]
-        fn process(&mut self, input: &[Complex<f64>], output: &mut [f64]) -> SpectrogramResult<()> {
+        fn process(&mut self, input: &[Complex<T>], output: &mut [T]) -> SpectrogramResult<()> {
             let expected_in = r2c_output_size(self.n_fft);
             if input.len() != expected_in {
                 return Err(SpectrogramError::dimension_mismatch(
@@ -685,17 +557,17 @@ pub mod realfft_backend {
                 .map_err(|e| SpectrogramError::fft_backend("realfft", format!("{e:?}")))?;
 
             // RealFFT inverse needs normalization
-            let scale = 1.0 / self.n_fft as f64;
+            let scale = T::one() / T::from_usize(self.n_fft).unwrap_or_else(T::one);
             for val in output.iter_mut() {
-                *val *= scale;
+                *val = *val * scale;
             }
 
             Ok(())
         }
     }
 
-    impl C2rPlanner for RealFftPlanner {
-        type Plan = RealFftInversePlan;
+    impl<T: FftNum> C2rPlanner<T> for RealFftPlanner<T> {
+        type Plan = RealFftInversePlan<T>;
 
         #[inline]
         fn plan_c2r(&mut self, n_fft: usize) -> SpectrogramResult<Self::Plan> {
@@ -711,18 +583,18 @@ pub mod realfft_backend {
     #[cfg(feature = "realfft")]
     use rustfft::FftPlanner as RustFftPlanner;
 
-    impl RealFftPlanner {
+    impl<T: FftNum> RealFftPlanner<T> {
         /// Get or create a complex-to-complex FFT plan for column transforms.
-        pub(crate) fn get_or_create_complex(n: usize) -> Arc<dyn rustfft::Fft<f64>> {
+        pub(crate) fn get_or_create_complex(n: usize) -> Arc<dyn rustfft::Fft<T>> {
             // Use the inner RealFftPlanner's complex FFT planner
             // Note: realfft::RealFftPlanner wraps rustfft::FftPlanner
             // We need to create a separate planner for complex FFTs
-            let mut complex_planner = RustFftPlanner::<f64>::new();
+            let mut complex_planner = RustFftPlanner::<T>::new();
             complex_planner.plan_fft_forward(n)
         }
 
-        pub(crate) fn get_or_create_complex_inverse(n: usize) -> Arc<dyn rustfft::Fft<f64>> {
-            let mut complex_planner = RustFftPlanner::<f64>::new();
+        pub(crate) fn get_or_create_complex_inverse(n: usize) -> Arc<dyn rustfft::Fft<T>> {
+            let mut complex_planner = RustFftPlanner::<T>::new();
             complex_planner.plan_fft_inverse(n)
         }
     }
@@ -739,27 +611,27 @@ pub mod realfft_backend {
     ///
     /// The process method performs the full 2D FFT in-place without additional allocations.
     #[derive(Clone)]
-    pub struct RealFftPlan2d {
+    pub struct RealFftPlan2d<T: FftNum = f64> {
         nrows: usize,
         ncols: usize,
         out_shape: (usize, usize),
         // Plans for row transforms (real -> complex, size ncols)
-        row_plan: Arc<dyn RealToComplex<f64>>,
+        row_plan: Arc<dyn RealToComplex<T>>,
         // Plans for column transforms (complex -> complex, size nrows)
-        col_plan: Arc<dyn rustfft::Fft<f64>>,
+        col_plan: Arc<dyn rustfft::Fft<T>>,
         // Scratch buffers
-        scratch_row: Vec<f64>,
-        scratch_col: Vec<Complex<f64>>,
+        scratch_row: Vec<T>,
+        scratch_col: Vec<Complex<T>>,
         // Intermediate storage after row FFTs
-        intermediate: Vec<Complex<f64>>,
+        intermediate: Vec<Complex<T>>,
     }
 
-    impl RealFftPlan2d {
+    impl<T: FftNum> RealFftPlan2d<T> {
         pub(crate) fn new(
             nrows: usize,
             ncols: usize,
-            row_plan: Arc<dyn RealToComplex<f64>>,
-            col_plan: Arc<dyn rustfft::Fft<f64>>,
+            row_plan: Arc<dyn RealToComplex<T>>,
+            col_plan: Arc<dyn rustfft::Fft<T>>,
         ) -> Self {
             let out_shape = crate::fft_backend::r2c_output_size_2d(nrows, ncols);
             let intermediate_len = nrows * out_shape.1;
@@ -770,15 +642,15 @@ pub mod realfft_backend {
                 out_shape,
                 row_plan,
                 col_plan,
-                scratch_row: vec![0.0; ncols],
-                scratch_col: vec![Complex::new(0.0, 0.0); nrows],
-                intermediate: vec![Complex::new(0.0, 0.0); intermediate_len],
+                scratch_row: vec![T::zero(); ncols],
+                scratch_col: vec![Complex::new(T::zero(), T::zero()); nrows],
+                intermediate: vec![Complex::new(T::zero(), T::zero()); intermediate_len],
             }
         }
     }
 
-    impl crate::fft_backend::R2cPlan2d for RealFftPlan2d {
-        fn process(&mut self, input: &[f64], output: &mut [Complex<f64>]) -> SpectrogramResult<()> {
+    impl<T: FftNum> crate::fft_backend::R2cPlan2d<T> for RealFftPlan2d<T> {
+        fn process(&mut self, input: &[T], output: &mut [Complex<T>]) -> SpectrogramResult<()> {
             crate::fft_backend::validate_fft_io_2d(self.nrows, self.ncols, input, output)?;
 
             // Step 1: FFT each row (real -> complex)
@@ -819,8 +691,8 @@ pub mod realfft_backend {
         }
     }
 
-    impl crate::fft_backend::R2cPlanner2d for RealFftPlanner {
-        type Plan = RealFftPlan2d;
+    impl<T: FftNum> crate::fft_backend::R2cPlanner2d<T> for RealFftPlanner<T> {
+        type Plan = RealFftPlan2d<T>;
 
         fn plan_r2c_2d(&mut self, nrows: usize, ncols: usize) -> SpectrogramResult<Self::Plan> {
             let row_plan = self.get_or_create(ncols);
@@ -830,27 +702,27 @@ pub mod realfft_backend {
     }
 
     #[derive(Clone)]
-    pub struct RealFftInversePlan2d {
+    pub struct RealFftInversePlan2d<T: FftNum = f64> {
         nrows: usize,
         ncols: usize,
         in_shape: (usize, usize),
         // Plans for column inverse transforms (complex -> complex, size nrows)
-        col_plan: Arc<dyn rustfft::Fft<f64>>,
+        col_plan: Arc<dyn rustfft::Fft<T>>,
         // Plans for row inverse transforms (complex -> real, size ncols)
-        row_plan: Arc<dyn ComplexToReal<f64>>,
+        row_plan: Arc<dyn ComplexToReal<T>>,
         // Scratch buffers
-        scratch_col: Vec<Complex<f64>>,
-        scratch_row: Vec<Complex<f64>>,
+        scratch_col: Vec<Complex<T>>,
+        scratch_row: Vec<Complex<T>>,
         // Intermediate storage after column IFFTs
-        intermediate: Vec<Complex<f64>>,
+        intermediate: Vec<Complex<T>>,
     }
 
-    impl RealFftInversePlan2d {
+    impl<T: FftNum> RealFftInversePlan2d<T> {
         pub(crate) fn new(
             nrows: usize,
             ncols: usize,
-            col_plan: Arc<dyn rustfft::Fft<f64>>,
-            row_plan: Arc<dyn ComplexToReal<f64>>,
+            col_plan: Arc<dyn rustfft::Fft<T>>,
+            row_plan: Arc<dyn ComplexToReal<T>>,
         ) -> Self {
             let in_shape = crate::fft_backend::r2c_output_size_2d(nrows, ncols);
             let intermediate_len = nrows * in_shape.1;
@@ -861,15 +733,15 @@ pub mod realfft_backend {
                 in_shape,
                 col_plan,
                 row_plan,
-                scratch_col: vec![Complex::new(0.0, 0.0); nrows],
-                scratch_row: vec![Complex::new(0.0, 0.0); in_shape.1],
-                intermediate: vec![Complex::new(0.0, 0.0); intermediate_len],
+                scratch_col: vec![Complex::new(T::zero(), T::zero()); nrows],
+                scratch_row: vec![Complex::new(T::zero(), T::zero()); in_shape.1],
+                intermediate: vec![Complex::new(T::zero(), T::zero()); intermediate_len],
             }
         }
     }
 
-    impl crate::fft_backend::C2rPlan2d for RealFftInversePlan2d {
-        fn process(&mut self, input: &[Complex<f64>], output: &mut [f64]) -> SpectrogramResult<()> {
+    impl<T: FftNum> crate::fft_backend::C2rPlan2d<T> for RealFftInversePlan2d<T> {
+        fn process(&mut self, input: &[Complex<T>], output: &mut [T]) -> SpectrogramResult<()> {
             let expected_in_len = self.in_shape.0 * self.in_shape.1;
             if input.len() != expected_in_len {
                 return Err(SpectrogramError::dimension_mismatch(
@@ -911,12 +783,12 @@ pub mod realfft_backend {
             // must have purely real values for each row
             for row_idx in 0..self.nrows {
                 // DC component (first column) must be real
-                self.intermediate[row_idx * self.in_shape.1].im = 0.0;
+                self.intermediate[row_idx * self.in_shape.1].im = T::zero();
 
                 // Nyquist component (last column, if ncols is even) must be real
                 if self.ncols.is_multiple_of(2) {
                     let nyquist_col = self.in_shape.1 - 1;
-                    self.intermediate[row_idx * self.in_shape.1 + nyquist_col].im = 0.0;
+                    self.intermediate[row_idx * self.in_shape.1 + nyquist_col].im = T::zero();
                 }
             }
 
@@ -936,22 +808,133 @@ pub mod realfft_backend {
             }
 
             // RealFFT inverse needs normalization
-            let scale = 1.0 / (self.nrows * self.ncols) as f64;
+            let scale =
+                T::one() / T::from_usize(self.nrows * self.ncols).unwrap_or_else(T::one);
             for val in output.iter_mut() {
-                *val *= scale;
+                *val = *val * scale;
             }
 
             Ok(())
         }
     }
 
-    impl crate::fft_backend::C2rPlanner2d for RealFftPlanner {
-        type Plan = RealFftInversePlan2d;
+    impl<T: FftNum> crate::fft_backend::C2rPlanner2d<T> for RealFftPlanner<T> {
+        type Plan = RealFftInversePlan2d<T>;
 
         fn plan_c2r_2d(&mut self, nrows: usize, ncols: usize) -> SpectrogramResult<Self::Plan> {
             let col_plan = Self::get_or_create_complex_inverse(nrows);
             let row_plan = self.get_or_create_inverse(ncols);
             Ok(RealFftInversePlan2d::new(nrows, ncols, col_plan, row_plan))
+        }
+    }
+
+    // ── Sample implementations (realfft backend) ──────────────────────────────
+    //
+    // Each `plan_*` constructor builds a fresh plan per call.
+    // TODO: per-type plan cache to avoid re-planning on every construction.
+    macro_rules! impl_sample_realfft {
+        ($t:ty) => {
+            impl crate::Sample for $t {
+                type R2cPlan = RealFftPlan<$t>;
+                type C2rPlan = RealFftInversePlan<$t>;
+                type C2cPlan = RealFftC2cPlan<$t>;
+                type R2cPlan2d = RealFftPlan2d<$t>;
+                type C2rPlan2d = RealFftInversePlan2d<$t>;
+
+                fn plan_r2c(n_fft: usize) -> SpectrogramResult<Self::R2cPlan> {
+                    let mut planner = InnerPlanner::<$t>::new();
+                    let plan = planner.plan_fft_forward(n_fft);
+                    Ok(RealFftPlan::new(n_fft, plan))
+                }
+
+                fn plan_c2r(n_fft: usize) -> SpectrogramResult<Self::C2rPlan> {
+                    let mut planner = InnerPlanner::<$t>::new();
+                    let plan = planner.plan_fft_inverse(n_fft);
+                    Ok(RealFftInversePlan::new(n_fft, plan))
+                }
+
+                fn plan_c2c(n_fft: usize) -> SpectrogramResult<Self::C2cPlan> {
+                    Ok(RealFftC2cPlan::<$t>::new(n_fft))
+                }
+
+                fn plan_r2c_2d(
+                    nrows: usize,
+                    ncols: usize,
+                ) -> SpectrogramResult<Self::R2cPlan2d> {
+                    use crate::fft_backend::R2cPlanner2d;
+                    let mut planner = RealFftPlanner::<$t>::new();
+                    planner.plan_r2c_2d(nrows, ncols)
+                }
+
+                fn plan_c2r_2d(
+                    nrows: usize,
+                    ncols: usize,
+                ) -> SpectrogramResult<Self::C2rPlan2d> {
+                    use crate::fft_backend::C2rPlanner2d;
+                    let mut planner = RealFftPlanner::<$t>::new();
+                    planner.plan_c2r_2d(nrows, ncols)
+                }
+
+                #[inline]
+                fn from_f64(x: f64) -> Self {
+                    x as $t
+                }
+
+                #[inline]
+                fn from_usize(n: usize) -> Self {
+                    n as $t
+                }
+            }
+        };
+    }
+
+    impl_sample_realfft!(f32);
+
+    // f64 routes its one-shot R2C/C2R plans through the global plan cache, so
+    // repeated `fft`/`irfft`/`fft_convolve` calls reuse precomputed twiddles and
+    // `clear_plan_cache`/`cache_stats` stay meaningful. (f32 builds fresh above;
+    // the f32 + plan-cache combination is uncommon.)
+    impl crate::Sample for f64 {
+        type R2cPlan = RealFftPlan<f64>;
+        type C2rPlan = RealFftInversePlan<f64>;
+        type C2cPlan = RealFftC2cPlan<f64>;
+        type R2cPlan2d = RealFftPlan2d<f64>;
+        type C2rPlan2d = RealFftInversePlan2d<f64>;
+
+        fn plan_r2c(n_fft: usize) -> SpectrogramResult<Self::R2cPlan> {
+            let plan = crate::fft_backend::get_or_create_r2c_plan(n_fft)?;
+            Ok((*plan).clone())
+        }
+
+        fn plan_c2r(n_fft: usize) -> SpectrogramResult<Self::C2rPlan> {
+            let plan = crate::fft_backend::get_or_create_c2r_plan(n_fft)?;
+            Ok((*plan).clone())
+        }
+
+        fn plan_c2c(n_fft: usize) -> SpectrogramResult<Self::C2cPlan> {
+            Ok(RealFftC2cPlan::<f64>::new(n_fft))
+        }
+
+        fn plan_r2c_2d(nrows: usize, ncols: usize) -> SpectrogramResult<Self::R2cPlan2d> {
+            use crate::fft_backend::R2cPlanner2d;
+            let mut planner = RealFftPlanner::<f64>::new();
+            planner.plan_r2c_2d(nrows, ncols)
+        }
+
+        fn plan_c2r_2d(nrows: usize, ncols: usize) -> SpectrogramResult<Self::C2rPlan2d> {
+            use crate::fft_backend::C2rPlanner2d;
+            let mut planner = RealFftPlanner::<f64>::new();
+            planner.plan_c2r_2d(nrows, ncols)
+        }
+
+        #[inline]
+        fn from_f64(x: f64) -> Self {
+            x
+        }
+
+        #[inline]
+        fn from_usize(n: usize) -> Self {
+            n as f64
         }
     }
 }
@@ -1311,7 +1294,7 @@ pub mod fftw_backend {
         }
     }
 
-    impl R2cPlan for FftwPlan {
+    impl R2cPlan<f64> for FftwPlan {
         fn n_fft(&self) -> usize {
             self.inner.n_fft
         }
@@ -1348,7 +1331,7 @@ pub mod fftw_backend {
         }
     }
 
-    impl R2cPlanner for FftwPlanner {
+    impl R2cPlanner<f64> for FftwPlanner {
         type Plan = FftwPlan;
 
         fn plan_r2c(&mut self, n_fft: usize) -> SpectrogramResult<Self::Plan> {
@@ -1363,7 +1346,7 @@ pub mod fftw_backend {
         inner: Arc<InversePlanInner>,
     }
 
-    impl C2rPlan for FftwInversePlan {
+    impl C2rPlan<f64> for FftwInversePlan {
         fn n_fft(&self) -> usize {
             self.inner.n_fft
         }
@@ -1412,7 +1395,7 @@ pub mod fftw_backend {
         }
     }
 
-    impl C2rPlanner for FftwPlanner {
+    impl C2rPlanner<f64> for FftwPlanner {
         type Plan = FftwInversePlan;
 
         fn plan_c2r(&mut self, n_fft: usize) -> SpectrogramResult<Self::Plan> {
@@ -1517,7 +1500,7 @@ pub mod fftw_backend {
         }
     }
 
-    impl crate::fft_backend::C2cPlan for FftwC2cPlan {
+    impl crate::fft_backend::C2cPlan<f64> for FftwC2cPlan {
         fn n_fft(&self) -> usize {
             self.inner.n_fft
         }
@@ -1733,7 +1716,7 @@ pub mod fftw_backend {
         inner: Arc<PlanInner2d>,
     }
 
-    impl crate::fft_backend::R2cPlan2d for FftwPlan2d {
+    impl crate::fft_backend::R2cPlan2d<f64> for FftwPlan2d {
         fn process(&mut self, input: &[f64], output: &mut [Complex<f64>]) -> SpectrogramResult<()> {
             crate::fft_backend::validate_fft_io_2d(
                 self.inner.nrows,
@@ -1771,7 +1754,7 @@ pub mod fftw_backend {
         }
     }
 
-    impl crate::fft_backend::R2cPlanner2d for FftwPlanner {
+    impl crate::fft_backend::R2cPlanner2d<f64> for FftwPlanner {
         type Plan = FftwPlan2d;
 
         fn plan_r2c_2d(&mut self, nrows: usize, ncols: usize) -> SpectrogramResult<Self::Plan> {
@@ -1786,7 +1769,7 @@ pub mod fftw_backend {
         inner: Arc<InversePlanInner2d>,
     }
 
-    impl crate::fft_backend::C2rPlan2d for FftwInversePlan2d {
+    impl crate::fft_backend::C2rPlan2d<f64> for FftwInversePlan2d {
         fn process(&mut self, input: &[Complex<f64>], output: &mut [f64]) -> SpectrogramResult<()> {
             let expected_in_len = self.inner.in_shape.0 * self.inner.in_shape.1;
             if input.len() != expected_in_len {
@@ -1830,7 +1813,7 @@ pub mod fftw_backend {
         }
     }
 
-    impl crate::fft_backend::C2rPlanner2d for FftwPlanner {
+    impl crate::fft_backend::C2rPlanner2d<f64> for FftwPlanner {
         type Plan = FftwInversePlan2d;
 
         fn plan_c2r_2d(&mut self, nrows: usize, ncols: usize) -> SpectrogramResult<Self::Plan> {
@@ -1839,12 +1822,58 @@ pub mod fftw_backend {
             })
         }
     }
+
+    // ── Sample implementation (fftw backend, f64 only) ────────────────────────
+    //
+    // FFTW here uses the double-precision `fftw_sys` API, so only `f64` is
+    // supported. There is intentionally no `Sample for f32` under this backend.
+    // Each `plan_*` constructor builds a fresh planner per call.
+    // TODO: per-type plan cache to avoid re-planning on every construction.
+    impl crate::Sample for f64 {
+        type R2cPlan = FftwPlan;
+        type C2rPlan = FftwInversePlan;
+        type C2cPlan = FftwC2cPlan;
+        type R2cPlan2d = FftwPlan2d;
+        type C2rPlan2d = FftwInversePlan2d;
+
+        fn plan_r2c(n_fft: usize) -> SpectrogramResult<Self::R2cPlan> {
+            FftwPlanner::new().plan_r2c(n_fft)
+        }
+
+        fn plan_c2r(n_fft: usize) -> SpectrogramResult<Self::C2rPlan> {
+            FftwPlanner::new().plan_c2r(n_fft)
+        }
+
+        fn plan_c2c(n_fft: usize) -> SpectrogramResult<Self::C2cPlan> {
+            FftwPlanner::new().plan_c2c(n_fft)
+        }
+
+        fn plan_r2c_2d(nrows: usize, ncols: usize) -> SpectrogramResult<Self::R2cPlan2d> {
+            use crate::fft_backend::R2cPlanner2d;
+            FftwPlanner::new().plan_r2c_2d(nrows, ncols)
+        }
+
+        fn plan_c2r_2d(nrows: usize, ncols: usize) -> SpectrogramResult<Self::C2rPlan2d> {
+            use crate::fft_backend::C2rPlanner2d;
+            FftwPlanner::new().plan_c2r_2d(nrows, ncols)
+        }
+
+        #[inline]
+        fn from_f64(x: f64) -> Self {
+            x
+        }
+
+        #[inline]
+        fn from_usize(n: usize) -> Self {
+            n as f64
+        }
+    }
 }
 
 #[cfg(all(test, feature = "realfft"))]
 mod tests_c2c {
-    use super::realfft_backend::{RealFftC2cPlan, RealFftC2cPlanF32};
-    use crate::fft_backend::{C2cPlan, C2cPlanF32};
+    use super::realfft_backend::RealFftC2cPlan;
+    use crate::fft_backend::C2cPlan;
     use num_complex::Complex;
 
     /// DFT of a pure DC signal (all ones): X[0] = N, X[k≠0] = 0.
@@ -1887,7 +1916,7 @@ mod tests_c2c {
             .map(|i| Complex::new(i as f32, -(i as f32)))
             .collect();
         let mut buf = original.clone();
-        let mut plan = RealFftC2cPlanF32::new(n);
+        let mut plan = RealFftC2cPlan::<f32>::new(n);
         plan.forward(&mut buf).unwrap();
         plan.inverse(&mut buf).unwrap();
         let scale = 1.0f32 / n as f32;

@@ -131,7 +131,7 @@ fn test_spectrogram_plan_reuse() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, _>(&params, None)
         .unwrap();
 
     let spec1 = plan.compute(&samples1).unwrap();

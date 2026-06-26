@@ -9,9 +9,9 @@ use ndarray::Array1;
 use non_empty_slice::{NonEmptySlice, NonEmptyVec};
 use num_complex::Complex;
 
+use crate::Sample;
 use crate::error::{SpectrogramError, SpectrogramResult};
-use crate::fft_backend::C2cPlanF32;
-use crate::fft_backend::realfft_backend::RealFftC2cPlanF32;
+use crate::fft_backend::C2cPlan;
 use crate::spectrogram::{fft, irfft};
 
 /// Linear convolution of two real signals via FFT.
@@ -22,10 +22,10 @@ use crate::spectrogram::{fft, irfft};
 ///
 /// # Errors
 /// Propagates any FFT/IFFT failure from the underlying plan.
-pub fn fft_convolve(
-    a: &NonEmptySlice<f64>,
-    b: &NonEmptySlice<f64>,
-) -> SpectrogramResult<NonEmptyVec<f64>> {
+pub fn fft_convolve<T: Sample>(
+    a: &NonEmptySlice<T>,
+    b: &NonEmptySlice<T>,
+) -> SpectrogramResult<NonEmptyVec<T>> {
     let out_len = a.len().get() + b.len().get() - 1;
     let n_fft = out_len.next_power_of_two();
     // SAFETY: out_len >= 1, so n_fft >= 1.
@@ -33,7 +33,7 @@ pub fn fft_convolve(
 
     let a_spec = fft(a, n)?;
     let b_spec = fft(b, n)?;
-    let product: Array1<Complex<f64>> = &a_spec * &b_spec;
+    let product: Array1<Complex<T>> = &a_spec * &b_spec;
 
     let product_slice = product.as_slice().expect("fft output is contiguous");
     // SAFETY: r2c output size is >= 1 for n >= 1.
@@ -57,11 +57,11 @@ pub fn fft_convolve(
 ///
 /// # Errors
 /// Propagates any FFT/IFFT failure from the underlying plan.
-pub fn fft_deconvolve(
-    numerator: &NonEmptySlice<f64>,
-    denominator: &NonEmptySlice<f64>,
+pub fn fft_deconvolve<T: Sample>(
+    numerator: &NonEmptySlice<T>,
+    denominator: &NonEmptySlice<T>,
     regularization: f64,
-) -> SpectrogramResult<NonEmptyVec<f64>> {
+) -> SpectrogramResult<NonEmptyVec<T>> {
     let n_len = numerator.len().get();
     let d_len = denominator.len().get();
     let n_fft = n_len.max(d_len).next_power_of_two();
@@ -74,14 +74,14 @@ pub fn fft_deconvolve(
     let max_d2 = den_spec
         .iter()
         .map(Complex::norm_sqr)
-        .fold(0.0_f64, f64::max);
-    let eps = regularization * max_d2;
+        .fold(T::zero(), T::max);
+    let eps = T::from_f64(regularization) * max_d2;
 
-    let quotient: Array1<Complex<f64>> =
+    let quotient: Array1<Complex<T>> =
         Array1::from_iter(num_spec.iter().zip(den_spec.iter()).map(|(nn, dd)| {
             let denom = dd.norm_sqr() + eps;
-            if denom == 0.0 {
-                Complex::new(0.0, 0.0)
+            if denom == T::zero() {
+                Complex::new(T::zero(), T::zero())
             } else {
                 (*nn) * dd.conj() / denom
             }
@@ -105,7 +105,7 @@ pub fn fft_deconvolve(
     Ok(unsafe { NonEmptyVec::new_unchecked(v) })
 }
 
-/// Streaming FFT convolution engine (overlap-save, single-precision).
+/// Streaming FFT convolution engine (overlap-save).
 ///
 /// Designed for real-time block processing such as room-correction FIR filtering
 /// with long impulse responses (thousands of taps), where direct time-domain
@@ -146,21 +146,21 @@ pub fn fft_deconvolve(
 /// // Steady-state output of a normalized 3-tap average of all-ones is ~1.0.
 /// assert!((output[100] - 1.0).abs() < 1e-5);
 /// ```
-pub struct OverlapSaveConvolver {
+pub struct OverlapSaveConvolver<T: Sample = f64> {
     block: usize,
     n_fft: usize,
     overlap: usize,
-    fft: RealFftC2cPlanF32,
+    fft: T::C2cPlan,
     /// FFT of the zero-padded impulse response (length `n_fft`).
-    h_spec: Vec<Complex<f32>>,
+    h_spec: Vec<Complex<T>>,
     /// Most recent `overlap` input samples carried between blocks.
-    history: Vec<f32>,
+    history: Vec<T>,
     /// Complex work buffer reused every block (length `n_fft`).
-    work: Vec<Complex<f32>>,
-    inv_n: f32,
+    work: Vec<Complex<T>>,
+    inv_n: T,
 }
 
-impl OverlapSaveConvolver {
+impl<T: Sample> OverlapSaveConvolver<T> {
     /// Build a convolver for impulse response `ir` and a fixed `block` size.
     ///
     /// The FFT size is `next_power_of_two(block + ir.len() − 1)`. The impulse
@@ -168,7 +168,7 @@ impl OverlapSaveConvolver {
     ///
     /// # Errors
     /// Returns an error if `ir` is empty or the FFT plan cannot be built.
-    pub fn new(ir: &[f32], block: NonZeroUsize) -> SpectrogramResult<Self> {
+    pub fn new(ir: &[T], block: NonZeroUsize) -> SpectrogramResult<Self> {
         if ir.is_empty() {
             return Err(SpectrogramError::invalid_input(
                 "impulse response must not be empty",
@@ -178,10 +178,10 @@ impl OverlapSaveConvolver {
         let n_fft = (block + ir.len() - 1).next_power_of_two();
         let overlap = n_fft - block;
 
-        let mut fft = RealFftC2cPlanF32::new(n_fft);
+        let mut fft = T::plan_c2c(n_fft)?;
 
         // Cache the IR spectrum: zero-pad to n_fft, forward FFT.
-        let mut h_spec = vec![Complex::new(0.0f32, 0.0f32); n_fft];
+        let mut h_spec = vec![Complex::new(T::zero(), T::zero()); n_fft];
         for (dst, &src) in h_spec.iter_mut().zip(ir.iter()) {
             dst.re = src;
         }
@@ -193,9 +193,9 @@ impl OverlapSaveConvolver {
             overlap,
             fft,
             h_spec,
-            history: vec![0.0f32; overlap],
-            work: vec![Complex::new(0.0f32, 0.0f32); n_fft],
-            inv_n: 1.0 / n_fft as f32,
+            history: vec![T::zero(); overlap],
+            work: vec![Complex::new(T::zero(), T::zero()); n_fft],
+            inv_n: T::one() / T::from_usize(n_fft),
         })
     }
 
@@ -213,7 +213,7 @@ impl OverlapSaveConvolver {
 
     /// Reset inter-block state to silence (clears the overlap history).
     pub fn reset(&mut self) {
-        self.history.iter_mut().for_each(|x| *x = 0.0);
+        self.history.iter_mut().for_each(|x| *x = T::zero());
     }
 
     /// Filter one block in place-free fashion: `output[i] = (h * x)[i]`.
@@ -224,7 +224,7 @@ impl OverlapSaveConvolver {
     /// # Errors
     /// Returns an error if either slice length differs from the block size, or if
     /// an FFT step fails.
-    pub fn process_block(&mut self, input: &[f32], output: &mut [f32]) -> SpectrogramResult<()> {
+    pub fn process_block(&mut self, input: &[T], output: &mut [T]) -> SpectrogramResult<()> {
         if input.len() != self.block || output.len() != self.block {
             return Err(SpectrogramError::invalid_input(format!(
                 "process_block expects input and output of length {} (got {} and {})",
@@ -240,11 +240,11 @@ impl OverlapSaveConvolver {
             .zip(self.history.iter())
         {
             dst.re = src;
-            dst.im = 0.0;
+            dst.im = T::zero();
         }
         for (dst, &src) in self.work[self.overlap..].iter_mut().zip(input.iter()) {
             dst.re = src;
-            dst.im = 0.0;
+            dst.im = T::zero();
         }
 
         // Save the new history = last `overlap` samples of [history | input]

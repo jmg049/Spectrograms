@@ -165,7 +165,7 @@ fn test_custom_window_infinity_error() {
 fn test_custom_window_in_make_window() {
     let coeffs = vec![0.1, 0.5, 1.0, 0.5, 0.1];
     let window = WindowType::custom(coeffs.clone()).unwrap();
-    let result = make_window(window, nzu!(5));
+    let result = make_window::<f64>(window, nzu!(5));
 
     assert_eq!(result.len().get(), 5);
     for (i, &val) in result.iter().enumerate() {
@@ -179,7 +179,7 @@ fn test_custom_window_size_mismatch_panic() {
     let coeffs = vec![0.1, 0.5, 1.0, 0.5, 0.1];
     let window = WindowType::custom(coeffs).unwrap();
     // Try to use 5-element window with n_fft=10
-    let _ = make_window(window, nzu!(10));
+    let _ = make_window::<f64>(window, nzu!(10));
 }
 
 #[test]

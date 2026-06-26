@@ -3,20 +3,60 @@
 use std::num::NonZeroUsize;
 
 use crate::{
-    Cqt, Decibels, Gammatone, LinearHz, LogHz, Magnitude, Mel, Power, Spectrogram, chromagram, fft,
-    irfft, istft, magnitude_spectrum, mfcc, power_spectrum, rfft,
+    AmpScaleSpec, Cqt, Decibels, Gammatone, LinearHz, LogHz, Magnitude, Mel, Power, Spectrogram,
+    SpectrogramPlanner, SpectrogramResult, chromagram, fft, irfft, istft, magnitude_spectrum, mfcc,
+    power_spectrum, rfft,
 };
-use numpy::{
-    Complex64, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyUntypedArrayMethods,
-};
+use numpy::{PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
 
+use super::dtype::{
+    Dtype, array1_to_py, complex_2d_owned, parse_dtype, vec1_to_py, with_complex_1d, with_real_1d,
+};
 use super::params::{
     PyChromaParams, PyCqtParams, PyErbParams, PyLogHzParams, PyLogParams, PyMelParams,
-    PyMfccParams, PySpectrogramParams, PyStftParams, PyWindowType,
+    PyMfccParams, PySpectrogramParams, PyStftParams, PyStftResult, PyWindowType,
 };
-use super::spectrogram::PySpectrogram;
+use super::spectrogram::{PyScalar, PySpectrogram};
+use super::{PyChromagram, PyMfcc};
 use non_empty_slice::NonEmptySlice;
+
+/// Shared body for the `dtype`-aware spectrogram compute functions.
+///
+/// Forces `samples` to a contiguous array of the requested precision `T`
+/// (via NumPy's `ascontiguousarray`), wraps it as a [`NonEmptySlice`], runs the
+/// supplied compute closure, and transfers the resulting data to Python.
+fn compute_typed<F, A, T, Run>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    run: Run,
+) -> PyResult<PySpectrogram>
+where
+    F: Copy + Clone + 'static,
+    A: AmpScaleSpec + 'static,
+    T: PyScalar,
+    Run: FnOnce(&NonEmptySlice<T>) -> SpectrogramResult<Spectrogram<F, A, T>>,
+{
+    // Import numpy once per call (cheap, cached by Python)
+    let np = py.import("numpy")?;
+
+    // Force the requested dtype and contiguous layout using NumPy itself.
+    let array_any = np.call_method1("ascontiguousarray", (samples, T::DTYPE))?;
+
+    // Downcast into a concrete NumPy array of element type T.
+    let array = array_any.cast::<PyArray1<T>>()?;
+
+    let readonly = array.readonly();
+    let slice = readonly.as_slice()?; // &[T]
+
+    let samples_slice = NonEmptySlice::new(slice).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
+    })?;
+
+    let spec = run(samples_slice)?;
+
+    Ok(PySpectrogram::from_spectrogram(py, spec))
+}
 
 macro_rules! impl_py_compute_fns {
     (
@@ -39,7 +79,10 @@ macro_rules! impl_py_compute_fns {
                 "samples : numpy.typing.NDArray[numpy.float64]\n",
                 "    Audio samples as a 1D NumPy array\n",
                 "params : SpectrogramParams\n",
-                "    Spectrogram parameters\n\n",
+                "    Spectrogram parameters\n",
+                "dtype : str, optional\n",
+                "    Output precision: \"float64\" (default) or \"float32\". The\n",
+                "    spectrogram is computed natively at this precision.\n\n",
                 "Returns\n",
                 "-------\n",
                 "Spectrogram\n",
@@ -48,41 +91,35 @@ macro_rules! impl_py_compute_fns {
             )]
             #[pyfunction]
             #[pyo3(signature = (samples: "numpy.typing.NDArray[numpy.float64]",
-             params: "SpectrogramParams", db_params: "Optional[LogParams]"=None), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, db_params: Option[PyLogParams]=None)")]
+             params: "SpectrogramParams", db_params: "Optional[LogParams]"=None,
+             dtype: "str"=None), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, db_params: Option[PyLogParams]=None, dtype: str = \"float64\")")]
             fn $fn_name(
                 py: Python,
                 samples: &Bound<'_, PyAny>,
                 params: PySpectrogramParams,
                 db_params: Option<PyLogParams>,
+                dtype: Option<&str>,
             ) -> PyResult<PySpectrogram> {
-
-                // Import numpy once per call (cheap, cached by Python)
-                let np = py.import("numpy")?;
-
-                // Force dtype=float64 and contiguous layout using NumPy itself
-                let array_any = np.call_method1(
-                    "ascontiguousarray",
-                    (samples, "float64"),
-                )?;
-
-                // Downcast into a concrete NumPy array
-                let array = array_any.cast::<PyArray1<f64>>()?;
-
-                let samples = array.readonly();
-                let samples = samples.as_slice()?;   // &[f64]
-
-                let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-                    pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-                })?;
-                let spec = py.detach(|| {
-                    Spectrogram::<$freq_scale, $amp_scale>::compute(
-                        samples_slice,
-                        &params.inner,
-                        db_params.as_ref().map(|p| &p.inner),
-                    )
-                })?;
-
-                Ok(PySpectrogram::from_spectrogram(py, spec))
+                match parse_dtype(dtype)? {
+                    Dtype::F32 => compute_typed::<$freq_scale, $amp_scale, f32, _>(py, samples, |s| {
+                        py.detach(|| {
+                            Spectrogram::<$freq_scale, $amp_scale, f32>::compute(
+                                s,
+                                &params.inner,
+                                db_params.as_ref().map(|p| &p.inner),
+                            )
+                        })
+                    }),
+                    Dtype::F64 => compute_typed::<$freq_scale, $amp_scale, f64, _>(py, samples, |s| {
+                        py.detach(|| {
+                            Spectrogram::<$freq_scale, $amp_scale, f64>::compute(
+                                s,
+                                &params.inner,
+                                db_params.as_ref().map(|p| &p.inner),
+                            )
+                        })
+                    }),
+                }
             }
 
         )+
@@ -143,7 +180,10 @@ macro_rules! impl_filterbank_compute_fns {
                 "filter_params : ", stringify!($py_filter_ty), "\n",
                 "    Filterbank parameters\n",
                 "db : typing.Optional[LogParams], optional\n",
-                "    Optional decibel scaling parameters\n\n",
+                "    Optional decibel scaling parameters\n",
+                "dtype : str, optional\n",
+                "    Output precision: \"float64\" (default) or \"float32\". The\n",
+                "    spectrogram is computed natively at this precision.\n\n",
                 "Returns\n",
                 "-------\n",
                 "Spectrogram\n",
@@ -154,30 +194,39 @@ macro_rules! impl_filterbank_compute_fns {
                 samples: "numpy.typing.NDArray[numpy.float64]",
                 params: "SpectrogramParams",
                 filter_params,
-                db: "typing.Optional[LogParams]" = None
-            ), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, filter_params: FilterParams, db: typing.Optional[LogParams] = None)")]
+                db: "typing.Optional[LogParams]" = None,
+                dtype: "str" = None
+            ), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, filter_params: FilterParams, db: typing.Optional[LogParams] = None, dtype: str = \"float64\")")]
             fn $fn_name(
                 py: Python,
-                samples: PyReadonlyArray1<f64>,
+                samples: &Bound<'_, PyAny>,
                 params: &PySpectrogramParams,
                 filter_params: &$py_filter_ty,
                 db: Option<&PyLogParams>,
+                dtype: Option<&str>,
             ) -> PyResult<PySpectrogram> {
-                let samples = samples.as_slice()?;
-                let samples = NonEmptySlice::new(samples).ok_or_else(|| {
-                    pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-                })?;
-                let spec = py.detach(|| {
-                    Spectrogram::<$freq_scale, $amp_scale>::compute(
-                        samples,
-                        &params.inner,
-                        &filter_params.inner,
-                        db.map(|d| &d.inner),
-                    )
-                })?;
-
-                // Create PySpectrogram with Python-allocated data
-                Ok(PySpectrogram::from_spectrogram(py, spec))
+                match parse_dtype(dtype)? {
+                    Dtype::F32 => compute_typed::<$freq_scale, $amp_scale, f32, _>(py, samples, |s| {
+                        py.detach(|| {
+                            Spectrogram::<$freq_scale, $amp_scale, f32>::compute(
+                                s,
+                                &params.inner,
+                                &filter_params.inner,
+                                db.map(|d| &d.inner),
+                            )
+                        })
+                    }),
+                    Dtype::F64 => compute_typed::<$freq_scale, $amp_scale, f64, _>(py, samples, |s| {
+                        py.detach(|| {
+                            Spectrogram::<$freq_scale, $amp_scale, f64>::compute(
+                                s,
+                                &params.inner,
+                                &filter_params.inner,
+                                db.map(|d| &d.inner),
+                            )
+                        })
+                    }),
+                }
             }
         )+
     };
@@ -292,6 +341,8 @@ impl_filterbank_compute_fns! {
 ///     CQT parameters
 /// db : typing.Optional[`LogParams`], optional
 ///     Optional decibel scaling parameters
+/// dtype : str, optional
+///     Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
@@ -302,28 +353,39 @@ impl_filterbank_compute_fns! {
     samples: "numpy.typing.NDArray[numpy.float64]",
     params: "SpectrogramParams",
     cqt: "CqtParams",
-    db: "typing.Optional[LogParams]" = None
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, cqt: CqtParams, db: typing.Optional[LogParams] = None)")]
+    db: "typing.Optional[LogParams]" = None,
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, cqt: CqtParams, db: typing.Optional[LogParams] = None, dtype: str = \"float64\")")]
 pub fn compute_cqt_power_spectrogram(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     params: &PySpectrogramParams,
     cqt: &PyCqtParams,
     db: Option<&PyLogParams>,
+    dtype: Option<&str>,
 ) -> PyResult<PySpectrogram> {
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-    let spec = py.detach(|| {
-        Spectrogram::<Cqt, Power>::compute(
-            samples_slice,
-            &params.inner,
-            &cqt.inner,
-            db.map(|d| &d.inner),
-        )
-    })?;
-    Ok(PySpectrogram::from_spectrogram(py, spec))
+    match parse_dtype(dtype)? {
+        Dtype::F32 => compute_typed::<Cqt, Power, f32, _>(py, samples, |s| {
+            py.detach(|| {
+                Spectrogram::<Cqt, Power, f32>::compute(
+                    s,
+                    &params.inner,
+                    &cqt.inner,
+                    db.map(|d| &d.inner),
+                )
+            })
+        }),
+        Dtype::F64 => compute_typed::<Cqt, Power, f64, _>(py, samples, |s| {
+            py.detach(|| {
+                Spectrogram::<Cqt, Power, f64>::compute(
+                    s,
+                    &params.inner,
+                    &cqt.inner,
+                    db.map(|d| &d.inner),
+                )
+            })
+        }),
+    }
 }
 
 /// Compute a Constant-Q Transform magnitude spectrogram.
@@ -338,6 +400,8 @@ pub fn compute_cqt_power_spectrogram(
 ///     CQT parameters
 /// db : typing.Optional[`LogParams`], optional
 ///     Optional decibel scaling parameters
+/// dtype : str, optional
+///     Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
@@ -348,28 +412,39 @@ pub fn compute_cqt_power_spectrogram(
     samples: "numpy.typing.NDArray[numpy.float64]",
     params: "SpectrogramParams",
     cqt: "CqtParams",
-    db: "typing.Optional[LogParams]" = None
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, cqt: CqtParams, db: typing.Optional[LogParams] = None)")]
+    db: "typing.Optional[LogParams]" = None,
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, cqt: CqtParams, db: typing.Optional[LogParams] = None, dtype: str = \"float64\")")]
 pub fn compute_cqt_magnitude_spectrogram(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     params: &PySpectrogramParams,
     cqt: &PyCqtParams,
     db: Option<&PyLogParams>,
+    dtype: Option<&str>,
 ) -> PyResult<PySpectrogram> {
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-    let spec = py.detach(|| {
-        Spectrogram::<Cqt, Magnitude>::compute(
-            samples_slice,
-            &params.inner,
-            &cqt.inner,
-            db.map(|d| &d.inner),
-        )
-    })?;
-    Ok(PySpectrogram::from_spectrogram(py, spec))
+    match parse_dtype(dtype)? {
+        Dtype::F32 => compute_typed::<Cqt, Magnitude, f32, _>(py, samples, |s| {
+            py.detach(|| {
+                Spectrogram::<Cqt, Magnitude, f32>::compute(
+                    s,
+                    &params.inner,
+                    &cqt.inner,
+                    db.map(|d| &d.inner),
+                )
+            })
+        }),
+        Dtype::F64 => compute_typed::<Cqt, Magnitude, f64, _>(py, samples, |s| {
+            py.detach(|| {
+                Spectrogram::<Cqt, Magnitude, f64>::compute(
+                    s,
+                    &params.inner,
+                    &cqt.inner,
+                    db.map(|d| &d.inner),
+                )
+            })
+        }),
+    }
 }
 
 /// Compute a Constant-Q Transform decibel spectrogram.
@@ -384,6 +459,8 @@ pub fn compute_cqt_magnitude_spectrogram(
 ///     CQT parameters
 /// db : typing.Optional[`LogParams`], optional
 ///     Optional decibel scaling parameters
+/// dtype : str, optional
+///     Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
@@ -394,28 +471,53 @@ pub fn compute_cqt_magnitude_spectrogram(
     samples: "numpy.typing.NDArray[numpy.float64]",
     params: "SpectrogramParams",
     cqt: "CqtParams",
-    db: "typing.Optional[LogParams]" = None
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, cqt: CqtParams, db: typing.Optional[LogParams] = None)")]
+    db: "typing.Optional[LogParams]" = None,
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, cqt: CqtParams, db: typing.Optional[LogParams] = None, dtype: str = \"float64\")")]
 pub fn compute_cqt_db_spectrogram(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     params: &PySpectrogramParams,
     cqt: &PyCqtParams,
     db: Option<&PyLogParams>,
+    dtype: Option<&str>,
 ) -> PyResult<PySpectrogram> {
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-    let spec = py.detach(|| {
-        Spectrogram::<Cqt, Decibels>::compute(
-            samples_slice,
-            &params.inner,
-            &cqt.inner,
-            db.map(|d| &d.inner),
-        )
-    })?;
-    Ok(PySpectrogram::from_spectrogram(py, spec))
+    match parse_dtype(dtype)? {
+        Dtype::F32 => compute_typed::<Cqt, Decibels, f32, _>(py, samples, |s| {
+            py.detach(|| {
+                Spectrogram::<Cqt, Decibels, f32>::compute(
+                    s,
+                    &params.inner,
+                    &cqt.inner,
+                    db.map(|d| &d.inner),
+                )
+            })
+        }),
+        Dtype::F64 => compute_typed::<Cqt, Decibels, f64, _>(py, samples, |s| {
+            py.detach(|| {
+                Spectrogram::<Cqt, Decibels, f64>::compute(
+                    s,
+                    &params.inner,
+                    &cqt.inner,
+                    db.map(|d| &d.inner),
+                )
+            })
+        }),
+    }
+}
+
+/// dtype-aware body for [`compute_chromagram`].
+fn chromagram_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    stft_params: &crate::StftParams,
+    sample_rate: f64,
+    chroma_params: &crate::ChromaParams,
+) -> PyResult<PyChromagram> {
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let result = py.detach(|| chromagram::<T>(s, stft_params, sample_rate, chroma_params))?;
+        Ok(PyChromagram::from_chromagram(py, result))
+    })
 }
 
 /// Compute a chromagram (pitch class profile).
@@ -430,40 +532,53 @@ pub fn compute_cqt_db_spectrogram(
 ///     Sample rate in Hz
 /// `chroma_params` : `ChromaParams`
 ///     Chromagram parameters
+/// `dtype` : str
+///     Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
-/// numpy.ndarray
-///     Chromagram as a 2D `NumPy` array (12 x `n_frames`)
+/// Chromagram
+///     Chromagram result whose `.data` is a 2D `NumPy` array (12 x `n_frames`),
+///     float64 or float32 depending on `dtype`
 #[pyfunction]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     stft_params: "StftParams",
     sample_rate: "float",
-    chroma_params: "ChromaParams"
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], stft_params: StftParams, sample_rate: float, chroma_params: ChromaParams)")]
+    chroma_params: "ChromaParams",
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], stft_params: StftParams, sample_rate: float, chroma_params: ChromaParams, dtype: str = \"float64\")")]
 pub fn compute_chromagram(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     stft_params: &PyStftParams,
     sample_rate: f64,
     chroma_params: &PyChromaParams,
-) -> PyResult<Py<PyArray2<f64>>> {
-    let samples = samples.as_slice()?;
+    dtype: Option<&str>,
+) -> PyResult<PyChromagram> {
+    match parse_dtype(dtype)? {
+        Dtype::F32 => {
+            chromagram_typed::<f32>(py, samples, &stft_params.inner, sample_rate, &chroma_params.inner)
+        }
+        Dtype::F64 => {
+            chromagram_typed::<f64>(py, samples, &stft_params.inner, sample_rate, &chroma_params.inner)
+        }
+    }
+}
 
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-
-    let result = py.detach(|| {
-        chromagram(
-            samples_slice,
-            &stft_params.inner,
-            sample_rate,
-            &chroma_params.inner,
-        )
-    })?;
-    Ok(PyArray2::from_owned_array(py, result.data).unbind())
+/// dtype-aware body for [`compute_mfcc`].
+fn mfcc_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    stft_params: &crate::StftParams,
+    sample_rate: f64,
+    n_mels: NonZeroUsize,
+    mfcc_params: &crate::MfccParams,
+) -> PyResult<PyMfcc> {
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let result = py.detach(|| mfcc::<T>(s, stft_params, sample_rate, n_mels, mfcc_params))?;
+        Ok(PyMfcc::from_mfcc(py, result))
+    })
 }
 
 /// Compute MFCCs (Mel-Frequency Cepstral Coefficients).
@@ -480,45 +595,145 @@ pub fn compute_chromagram(
 ///     Number of mel bands
 /// `mfcc_params` : `MfccParams`
 ///     MFCC parameters
+/// `dtype` : str
+///     Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
-/// numpy.ndarray
-///     MFCCs as a 2D `NumPy` array (`n_mfcc` x `n_frames`)
+/// Mfcc
+///     MFCC result whose `.data` is a 2D `NumPy` array (`n_mfcc` x `n_frames`),
+///     float64 or float32 depending on `dtype`
 #[pyfunction]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     stft_params: "StftParams",
     sample_rate: "float",
     n_mels: "int",
-    mfcc_params: "MfccParams"
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], stft_params: StftParams, sample_rate: float, n_mels: int, mfcc_params: MfccParams)")]
+    mfcc_params: "MfccParams",
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], stft_params: StftParams, sample_rate: float, n_mels: int, mfcc_params: MfccParams, dtype: str = \"float64\")")]
 pub fn compute_mfcc(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     stft_params: &PyStftParams,
     sample_rate: f64,
     n_mels: usize,
     mfcc_params: &PyMfccParams,
-) -> PyResult<Py<PyArray2<f64>>> {
+    dtype: Option<&str>,
+) -> PyResult<PyMfcc> {
     let n_mels = NonZeroUsize::new(n_mels).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_mels must be a positive integer")
     })?;
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-    let result = py.detach(|| {
-        mfcc(
-            samples_slice,
-            &stft_params.inner,
-            sample_rate,
-            n_mels,
-            &mfcc_params.inner,
-        )
-    })?;
+    match parse_dtype(dtype)? {
+        Dtype::F32 => {
+            mfcc_typed::<f32>(py, samples, &stft_params.inner, sample_rate, n_mels, &mfcc_params.inner)
+        }
+        Dtype::F64 => {
+            mfcc_typed::<f64>(py, samples, &stft_params.inner, sample_rate, n_mels, &mfcc_params.inner)
+        }
+    }
+}
 
-    Ok(PyArray2::from_owned_array(py, result.data).unbind())
+// ---------------------------------------------------------------------------
+// dtype-aware generic bodies for the 1D transforms.
+//
+// Each public `#[pyfunction]` below parses the `dtype` string and dispatches to
+// one of these monomorphic helpers. The result array carries the requested
+// precision (`float32` -> f32/complex64, `float64` -> f64/complex128).
+// ---------------------------------------------------------------------------
+
+fn stft_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    params: &crate::SpectrogramParams,
+) -> PyResult<PyStftResult>
+where
+    num_complex::Complex<T>: numpy::Element,
+{
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let planner = SpectrogramPlanner::new();
+        let result = py.detach(|| planner.compute_stft::<T>(s, params))?;
+        Ok(PyStftResult::from_stft_result(py, result))
+    })
+}
+
+fn fft_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    n_fft: NonZeroUsize,
+) -> PyResult<Py<PyAny>>
+where
+    num_complex::Complex<T>: numpy::Element,
+{
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let result = py.detach(|| fft::<T>(s, n_fft))?;
+        Ok(array1_to_py(py, result))
+    })
+}
+
+fn rfft_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    n_fft: NonZeroUsize,
+) -> PyResult<Py<PyAny>> {
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let result = py.detach(|| rfft::<T>(s, n_fft))?;
+        Ok(array1_to_py(py, result))
+    })
+}
+
+fn power_spectrum_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    n_fft: NonZeroUsize,
+    window: Option<crate::WindowType>,
+) -> PyResult<Py<PyAny>> {
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let result = py.detach(|| power_spectrum::<T>(s, n_fft, window))?;
+        Ok(vec1_to_py(py, result.to_vec()))
+    })
+}
+
+fn magnitude_spectrum_typed<T: PyScalar>(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
+    n_fft: NonZeroUsize,
+    window: Option<crate::WindowType>,
+) -> PyResult<Py<PyAny>> {
+    with_real_1d::<T, _, _>(py, samples, |s| {
+        let result = py.detach(|| magnitude_spectrum::<T>(s, n_fft, window))?;
+        Ok(vec1_to_py(py, result.to_vec()))
+    })
+}
+
+fn irfft_typed<T: PyScalar>(
+    py: Python<'_>,
+    spectrum: &Bound<'_, PyAny>,
+    n_fft: NonZeroUsize,
+) -> PyResult<Py<PyAny>>
+where
+    num_complex::Complex<T>: numpy::Element,
+{
+    with_complex_1d::<T, _, _>(py, spectrum, |s| {
+        let result = py.detach(|| irfft::<T>(s, n_fft))?;
+        Ok(vec1_to_py(py, result.to_vec()))
+    })
+}
+
+fn istft_typed<T: PyScalar>(
+    py: Python<'_>,
+    stft_matrix: &Bound<'_, PyAny>,
+    n_fft: NonZeroUsize,
+    hop_size: NonZeroUsize,
+    window: crate::WindowType,
+    center: bool,
+) -> PyResult<Py<PyAny>>
+where
+    num_complex::Complex<T>: numpy::Element,
+{
+    let matrix = complex_2d_owned::<T>(py, stft_matrix)?;
+    let result = py.detach(|| istft::<T>(&matrix, n_fft, hop_size, window, center))?;
+    Ok(vec1_to_py(py, result.to_vec()))
 }
 
 /// Compute the raw STFT (Short-Time Fourier Transform).
@@ -530,29 +745,31 @@ pub fn compute_mfcc(
 ///
 /// :param `samples` - Audio samples as a 1D `NumPy` array
 /// :param `params` - Spectrogram parameters
+/// :param `dtype` - Output precision: "float64" (default) or "float32". The
+///     returned complex array is complex128 or complex64 to match.
 ///
 /// Returns
 /// -------
 ///
-/// Complex STFT as a 2D `NumPy` array of complex128 (`n_fft/2+1` x `n_frames`)
+/// StftResult
+///     STFT result whose `.data` is a complex 2D `NumPy` array
+///     (`n_fft/2+1` x `n_frames`), complex128 or complex64 depending on `dtype`
 #[pyfunction]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
-    params: "SpectrogramParams"
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams)")]
+    params: "SpectrogramParams",
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: SpectrogramParams, dtype: str = \"float64\")")]
 pub fn compute_stft(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     params: &PySpectrogramParams,
-) -> PyResult<Py<PyArray2<num_complex::Complex64>>> {
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-    let planner = crate::SpectrogramPlanner::new();
-    let result = py.detach(|| planner.compute_stft(samples_slice, &params.inner))?;
-
-    Ok(PyArray2::from_owned_array(py, result.data).unbind())
+    dtype: Option<&str>,
+) -> PyResult<PyStftResult> {
+    match parse_dtype(dtype)? {
+        Dtype::F32 => stft_typed::<f32>(py, samples, &params.inner),
+        Dtype::F64 => stft_typed::<f64>(py, samples, &params.inner),
+    }
 }
 
 /// Compute the real-to-complex FFT of a signal.
@@ -565,58 +782,67 @@ pub fn compute_stft(
 ///
 /// :param `samples` - Audio samples as a 1D `NumPy` array (length must equal `n_fft`)
 /// :param `n_fft` - FFT size
+/// :param `dtype` - Output precision: "float64" (default) or "float32". The
+///     returned complex array is complex128 or complex64 to match.
 ///
 /// Returns
 /// -------
 ///
-/// Complex FFT as a 1D `NumPy` array of complex128 with length `n_fft/2+1`
+/// Complex FFT as a 1D `NumPy` array with length `n_fft/2+1`, complex128 or complex64
 #[pyfunction]
 #[inline]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "Optional[int]" = None,
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: Optional[int]=None)")]
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: Optional[int]=None, dtype: str = \"float64\")")]
 pub fn compute_fft(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     n_fft: Option<usize>,
-) -> PyResult<Py<PyArray1<Complex64>>> {
-    let n_fft = n_fft.unwrap_or_else(|| samples.len());
-
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
+    let n_fft = match n_fft {
+        Some(n) => n,
+        None => samples.len()?,
+    };
     let n_fft = NonZeroUsize::new(n_fft).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_fft must be non-zero positive integer")
     })?;
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-
-    let result = py.detach(|| fft(samples_slice, n_fft))?;
-
-    Ok(numpy::PyArray1::from_owned_array(py, result).unbind())
+    match parse_dtype(dtype)? {
+        Dtype::F32 => fft_typed::<f32>(py, samples, n_fft),
+        Dtype::F64 => fft_typed::<f64>(py, samples, n_fft),
+    }
 }
 
 /// Compute the real FFT of a signal.
+///
+/// Parameters
+/// -----------
+///
+/// :param `samples` - Audio samples as a 1D `NumPy` array
+/// :param `n_fft` - FFT size
+/// :param `dtype` - Output precision: "float64" (default) or "float32".
 #[pyfunction]
 #[inline]
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
-    n_fft: "int"
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: int) -> numpy.typing.NDArray[numpy.float64]")]
+    n_fft: "int",
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: int, dtype: str = \"float64\") -> numpy.typing.NDArray[numpy.float64]")]
 pub fn compute_rfft(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     n_fft: usize,
-) -> PyResult<Py<PyArray1<f64>>> {
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
     let n_fft = NonZeroUsize::new(n_fft).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_fft must be non-zero positive integer")
     })?;
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
-    let result = py.detach(|| rfft(samples_slice, n_fft))?;
-    Ok(PyArray1::from_owned_array(py, result).unbind())
+    match parse_dtype(dtype)? {
+        Dtype::F32 => rfft_typed::<f32>(py, samples, n_fft),
+        Dtype::F64 => rfft_typed::<f64>(py, samples, n_fft),
+    }
 }
 
 /// Compute the power spectrum of a signal (|X|²).
@@ -630,6 +856,7 @@ pub fn compute_rfft(
 /// :param `samples` - Audio samples as a 1D `NumPy` array (length must equal `n_fft`)
 /// :param `n_fft` - FFT size
 /// :param `window` - Optional window function (None for rectangular window)
+/// :param `dtype` - Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
@@ -644,26 +871,24 @@ pub fn compute_rfft(
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "int",
-    window: "typing.Optional[WindowType]" = None
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: int, window: typing.Optional[WindowType] = None)")]
+    window: "typing.Optional[WindowType]" = None,
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: int, window: typing.Optional[WindowType] = None, dtype: str = \"float64\")")]
 pub fn compute_power_spectrum(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     n_fft: usize,
     window: Option<PyWindowType>,
-) -> PyResult<Py<PyArray1<f64>>> {
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
     let n_fft = NonZeroUsize::new(n_fft).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_fft must be non-zero positive integer")
     })?;
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
     let window_type = window.map(|w| w.inner);
-
-    let result = py.detach(|| power_spectrum(samples_slice, n_fft, window_type))?;
-
-    Ok(PyArray1::from_vec(py, result.to_vec()).unbind())
+    match parse_dtype(dtype)? {
+        Dtype::F32 => power_spectrum_typed::<f32>(py, samples, n_fft, window_type),
+        Dtype::F64 => power_spectrum_typed::<f64>(py, samples, n_fft, window_type),
+    }
 }
 
 /// Compute the magnitude spectrum of a signal (|X|).
@@ -677,6 +902,7 @@ pub fn compute_power_spectrum(
 /// :param `samples` - Audio samples as a 1D `NumPy` array (length must equal `n_fft`)
 /// :param `n_fft` - FFT size
 /// :param `window` - Optional window function (None for rectangular window)
+/// :param `dtype` - Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
@@ -692,26 +918,24 @@ pub fn compute_power_spectrum(
 #[pyo3(signature = (
     samples: "numpy.typing.NDArray[numpy.float64]",
     n_fft: "int",
-    window: "typing.Optional[WindowType]" = None
-), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: int, window: typing.Optional[WindowType] = None)")]
+    window: "typing.Optional[WindowType]" = None,
+    dtype: "str" = None
+), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], n_fft: int, window: typing.Optional[WindowType] = None, dtype: str = \"float64\")")]
 pub fn compute_magnitude_spectrum(
     py: Python,
-    samples: PyReadonlyArray1<f64>,
+    samples: &Bound<'_, PyAny>,
     n_fft: usize,
     window: Option<PyWindowType>,
-) -> PyResult<Py<PyArray1<f64>>> {
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
     let n_fft = NonZeroUsize::new(n_fft).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_fft must be non-zero positive integer")
     })?;
-    let samples = samples.as_slice()?;
-    let samples_slice = NonEmptySlice::new(samples).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("samples array must not be empty")
-    })?;
     let window_type = window.map(|w| w.inner);
-
-    let result = py.detach(|| magnitude_spectrum(samples_slice, n_fft, window_type))?;
-
-    Ok(PyArray1::from_vec(py, result.to_vec()).unbind())
+    match parse_dtype(dtype)? {
+        Dtype::F32 => magnitude_spectrum_typed::<f32>(py, samples, n_fft, window_type),
+        Dtype::F64 => magnitude_spectrum_typed::<f64>(py, samples, n_fft, window_type),
+    }
 }
 
 /// Compute the inverse real FFT (complex to real).
@@ -724,6 +948,8 @@ pub fn compute_magnitude_spectrum(
 ///
 /// :param `spectrum` - Complex frequency spectrum as a 1D `NumPy` array (length must equal `n_fft/2+1`)
 /// :param `n_fft` - FFT size (determines output length)
+/// :param `dtype` - Output precision: "float64" (default) or "float32". The
+///     input is read as complex128 or complex64 to match.
 ///
 /// Returns
 /// -------
@@ -738,23 +964,22 @@ pub fn compute_magnitude_spectrum(
 #[inline]
 #[pyo3(signature = (
     spectrum: "numpy.typing.NDArray[numpy.complex128]",
-    n_fft: "int"
-))]
+    n_fft: "int",
+    dtype: "str" = None
+), text_signature = "(spectrum: numpy.typing.NDArray[numpy.complex128], n_fft: int, dtype: str = \"float64\")")]
 pub fn compute_irfft(
     py: Python,
-    spectrum: numpy::PyReadonlyArray1<num_complex::Complex64>,
+    spectrum: &Bound<'_, PyAny>,
     n_fft: usize,
-) -> PyResult<Py<PyArray1<f64>>> {
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
     let n_fft = NonZeroUsize::new(n_fft).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_fft must be non-zero positive integer")
     })?;
-    let spectrum = spectrum.as_slice()?;
-    let spectrum_slice = NonEmptySlice::new(spectrum).ok_or_else(|| {
-        pyo3::exceptions::PyValueError::new_err("spectrum array must not be empty")
-    })?;
-    let result = py.detach(|| irfft(spectrum_slice, n_fft))?;
-
-    Ok(PyArray1::from_vec(py, result.to_vec()).unbind())
+    match parse_dtype(dtype)? {
+        Dtype::F32 => irfft_typed::<f32>(py, spectrum, n_fft),
+        Dtype::F64 => irfft_typed::<f64>(py, spectrum, n_fft),
+    }
 }
 
 /// Compute the inverse STFT (Short-Time Fourier Transform).
@@ -768,6 +993,8 @@ pub fn compute_irfft(
 /// :param `hop_size` - Number of samples between successive frames (must match forward STFT)
 /// :param `window` - Window function to apply (should match forward STFT window)
 /// :param `center` - If true, assume the forward STFT was centered (must match forward STFT)
+/// :param `dtype` - Output precision: "float64" (default) or "float32". The
+///     input is read as complex128 or complex64 to match.
 ///
 /// Returns
 /// -------
@@ -785,27 +1012,29 @@ pub fn compute_irfft(
     n_fft: "int",
     hop_size: "int",
     window: "WindowType",
-    center: "bool" = true
-), text_signature = "(stft_matrix: numpy.typing.NDArray[numpy.complex64], n_fft: int, hop_size: int, window: WindowType, center: bool = True)")]
+    center: "bool" = true,
+    dtype: "str" = None
+), text_signature = "(stft_matrix: numpy.typing.NDArray[numpy.complex64], n_fft: int, hop_size: int, window: WindowType, center: bool = True, dtype: str = \"float64\")")]
 pub fn compute_istft(
     py: Python,
-    stft_matrix: numpy::PyReadonlyArray2<num_complex::Complex64>,
+    stft_matrix: &Bound<'_, PyAny>,
     n_fft: usize,
     hop_size: usize,
     window: PyWindowType,
     center: bool,
-) -> PyResult<Py<PyArray1<f64>>> {
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
     let n_fft = NonZeroUsize::new(n_fft).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("n_fft must be non-zero positive integer")
     })?;
     let hop_size = NonZeroUsize::new(hop_size).ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err("hop_size must be non-zero positive integer")
     })?;
-    let stft_array = stft_matrix.as_array().to_owned();
-
-    let result = py.detach(|| istft(&stft_array, n_fft, hop_size, window.inner, center))?;
-
-    Ok(PyArray1::from_vec(py, result.to_vec()).unbind())
+    let window = window.inner;
+    match parse_dtype(dtype)? {
+        Dtype::F32 => istft_typed::<f32>(py, stft_matrix, n_fft, hop_size, window, center),
+        Dtype::F64 => istft_typed::<f64>(py, stft_matrix, n_fft, hop_size, window, center),
+    }
 }
 
 /// Register all convenience functions with the Python module.

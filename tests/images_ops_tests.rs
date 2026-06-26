@@ -35,7 +35,7 @@ fn test_gaussian_kernel_normalized() {
     for &size in &[3, 5, 7, 9, 11, 15] {
         let size = NonZeroUsize::new(size).unwrap();
         for &sigma in &[0.5, 1.0, 2.0, 3.0] {
-            let kernel = gaussian_kernel_2d(size, sigma).unwrap();
+            let kernel = gaussian_kernel_2d::<f64>(size, sigma).unwrap();
 
             // Sum should be very close to 1.0
             let sum: f64 = kernel.iter().sum();
@@ -54,7 +54,7 @@ fn test_gaussian_kernel_normalized() {
 fn test_gaussian_kernel_symmetric() {
     let size = nzu!(7);
     let sigma = 2.0;
-    let kernel = gaussian_kernel_2d(size, sigma).unwrap();
+    let kernel = gaussian_kernel_2d::<f64>(size, sigma).unwrap();
 
     let center = size.get() / 2;
 
@@ -87,8 +87,8 @@ fn test_gaussian_kernel_symmetric() {
 fn test_gaussian_kernel_sigma_effect() {
     let size = nzu!(9);
 
-    let narrow = gaussian_kernel_2d(size, 0.5).unwrap();
-    let wide = gaussian_kernel_2d(size, 3.0).unwrap();
+    let narrow = gaussian_kernel_2d::<f64>(size, 0.5).unwrap();
+    let wide = gaussian_kernel_2d::<f64>(size, 3.0).unwrap();
 
     let center = size.get() / 2;
 
@@ -111,7 +111,7 @@ fn test_gaussian_kernel_odd_sizes() {
     // All odd sizes should work
     for &size in &[1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21] {
         let size = NonZeroUsize::new(size).unwrap();
-        let kernel = gaussian_kernel_2d(size, 1.0);
+        let kernel = gaussian_kernel_2d::<f64>(size, 1.0);
         assert!(kernel.is_ok(), "Failed for odd size {}", size);
         let k = kernel.unwrap();
         assert_eq!(k.shape(), &[size.get(), size.get()]);
@@ -123,7 +123,7 @@ fn test_gaussian_kernel_even_sizes() {
     // Even sizes should return an error (kernels must have odd size for clear center)
     for &size in &[2, 4, 6, 8, 10, 12, 14] {
         let size = NonZeroUsize::new(size).unwrap();
-        let kernel = gaussian_kernel_2d(size, 1.0);
+        let kernel = gaussian_kernel_2d::<f64>(size, 1.0);
         assert!(kernel.is_err(), "Should fail for even size {}", size);
     }
 }
@@ -133,12 +133,12 @@ fn test_gaussian_kernel_extreme_sigma() {
     let size = nzu!(11);
 
     // Very small sigma (sharp peak)
-    let sharp = gaussian_kernel_2d(size, 0.1).unwrap();
+    let sharp = gaussian_kernel_2d::<f64>(size, 0.1).unwrap();
     let center = size.get() / 2;
     assert!(sharp[[center, center]] > 0.9); // Most weight at center
 
     // Very large sigma (flat)
-    let flat = gaussian_kernel_2d(size, 10.0).unwrap();
+    let flat = gaussian_kernel_2d::<f64>(size, 10.0).unwrap();
     // Should be more uniform
     let min_val = flat.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_val = flat.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -205,7 +205,7 @@ fn test_convolve_separability() {
     // Gaussian convolution should be separable
     let image = Array2::<f64>::from_shape_fn((32, 32), |(i, j)| i as f64 + j as f64);
 
-    let kernel_2d = gaussian_kernel_2d(nzu!(5), 1.0).unwrap();
+    let kernel_2d = gaussian_kernel_2d::<f64>(nzu!(5), 1.0).unwrap();
     let result_2d = convolve_fft(&image.view(), &kernel_2d.view()).unwrap();
 
     // Result should be reasonable
@@ -219,7 +219,7 @@ fn test_convolve_preserves_energy() {
     });
 
     // Normalized kernel (sum = 1)
-    let kernel = gaussian_kernel_2d(nzu!(5), 1.0).unwrap();
+    let kernel = gaussian_kernel_2d::<f64>(nzu!(5), 1.0).unwrap();
 
     let result = convolve_fft(&image.view(), &kernel.view()).unwrap();
 
@@ -241,7 +241,7 @@ fn test_convolve_different_kernel_sizes() {
 
     for &kernel_size in &[3, 5, 7, 9, 11, 15] {
         let kernel_size = NonZeroUsize::new(kernel_size).unwrap();
-        let kernel = gaussian_kernel_2d(kernel_size, 1.0).unwrap();
+        let kernel = gaussian_kernel_2d::<f64>(kernel_size, 1.0).unwrap();
         let result = convolve_fft(&image.view(), &kernel.view()).unwrap();
         assert_eq!(result.shape(), &[64, 64]);
     }
@@ -254,7 +254,7 @@ fn test_convolve_large_kernel() {
         ((i as f64 - 64.0).powi(2) + (j as f64 - 64.0).powi(2)).sqrt()
     });
 
-    let kernel = gaussian_kernel_2d(nzu!(31), 5.0).unwrap();
+    let kernel = gaussian_kernel_2d::<f64>(nzu!(31), 5.0).unwrap();
     let result = convolve_fft(&image.view(), &kernel.view()).unwrap();
 
     assert_eq!(result.shape(), &[128, 128]);
@@ -620,7 +620,7 @@ fn test_complete_pipeline() {
     assert_eq!(sharpened.shape(), &[128, 128]);
 
     // Step 4: Apply Gaussian blur
-    let kernel = gaussian_kernel_2d(nzu!(9), 2.0).unwrap();
+    let kernel = gaussian_kernel_2d::<f64>(nzu!(9), 2.0).unwrap();
     let blurred = convolve_fft(&original.view(), &kernel.view()).unwrap();
     assert_eq!(blurred.shape(), &[128, 128]);
 
@@ -678,6 +678,6 @@ fn test_error_handling_invalid_inputs() {
     assert!(bandpass_filter(&image.view(), 0.2, 1.5).is_err());
 
     // Invalid Gaussian kernel parameters
-    assert!(gaussian_kernel_2d(nzu!(5), 0.0).is_err()); // Sigma 0
-    assert!(gaussian_kernel_2d(nzu!(5), -1.0).is_err()); // Negative sigma
+    assert!(gaussian_kernel_2d::<f64>(nzu!(5), 0.0).is_err()); // Sigma 0
+    assert!(gaussian_kernel_2d::<f64>(nzu!(5), -1.0).is_err()); // Negative sigma
 }

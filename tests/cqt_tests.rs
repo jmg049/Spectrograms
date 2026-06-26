@@ -28,7 +28,7 @@ fn test_cqt_integration_basic() {
     // Create CQT spectrogram plan
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .cqt_plan::<Power>(&params, &cqt_params, None)
+        .cqt_plan::<Power, _>(&params, &cqt_params, None)
         .unwrap();
 
     // Compute CQT spectrogram
@@ -128,7 +128,7 @@ fn test_cqt_with_power_amplitude() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .cqt_plan::<Power>(&params, &cqt_params, None)
+        .cqt_plan::<Power, _>(&params, &cqt_params, None)
         .unwrap();
     let spec = plan.compute(&samples).unwrap();
 
@@ -149,7 +149,7 @@ fn test_cqt_with_magnitude_amplitude() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .cqt_plan::<Magnitude>(&params, &cqt_params, None)
+        .cqt_plan::<Magnitude, _>(&params, &cqt_params, None)
         .unwrap();
     let spec = plan.compute(&samples).unwrap();
 
@@ -171,7 +171,7 @@ fn test_cqt_with_decibel_amplitude() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .cqt_plan::<Decibels>(&params, &cqt_params, Some(&log_params))
+        .cqt_plan::<Decibels, _>(&params, &cqt_params, Some(&log_params))
         .unwrap();
     let spec = plan.compute(&samples).unwrap();
 
@@ -192,7 +192,7 @@ fn test_cqt_frame_computation() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .cqt_plan::<Power>(&params, &cqt_params, None)
+        .cqt_plan::<Power, _>(&params, &cqt_params, None)
         .unwrap();
 
     // Compute single frame
@@ -216,7 +216,7 @@ fn test_cqt_output_shape() {
 
     let planner = SpectrogramPlanner::new();
     let plan = planner
-        .cqt_plan::<Power>(&params, &cqt_params, None)
+        .cqt_plan::<Power, f64>(&params, &cqt_params, None)
         .unwrap();
 
     let (n_bins, _) = plan.output_shape(signal_length).unwrap();

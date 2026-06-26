@@ -28,7 +28,7 @@ fn bench_gaussian_kernel(c: &mut Criterion) {
             &(size, sigma),
             |b, &(s, sig)| {
                 b.iter(|| {
-                    let result = gaussian_kernel_2d(black_box(s), black_box(sig)).unwrap();
+                    let result = gaussian_kernel_2d::<f64>(black_box(s), black_box(sig)).unwrap();
                     black_box(result);
                 });
             },
@@ -58,7 +58,7 @@ fn bench_convolve_fft_kernel_sizes(c: &mut Criterion) {
     ];
 
     for (kernel_size, label) in kernel_sizes {
-        let kernel = gaussian_kernel_2d(kernel_size, 2.0).unwrap();
+        let kernel = gaussian_kernel_2d::<f64>(kernel_size, 2.0).unwrap();
 
         group.throughput(Throughput::Elements((image_size * image_size) as u64));
 
@@ -82,7 +82,7 @@ fn bench_convolve_fft_kernel_sizes(c: &mut Criterion) {
 fn bench_convolve_fft_image_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("convolve_fft_image_sizes");
 
-    let kernel = gaussian_kernel_2d(nzu!(9), 2.0).unwrap();
+    let kernel = gaussian_kernel_2d::<f64>(nzu!(9), 2.0).unwrap();
 
     let sizes = vec![
         (64, "64x64"),

@@ -8,7 +8,7 @@ use non_empty_slice::{NonEmptySlice, NonEmptyVec, non_empty_vec};
 /// and represents critical bandwidths at different frequencies.
 use num_complex::Complex;
 
-use crate::{SpectrogramError, SpectrogramResult, nzu};
+use crate::{Sample, SpectrogramError, SpectrogramResult, nzu};
 
 /// Center-frequency spacing strategy for the ERB filterbank.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -368,19 +368,22 @@ impl ErbFilterbank {
     ///
     /// # Returns
     ///
-    /// `SpectrogramResult<NonEmptyVec<f64>>` - Filterbank output values
+    /// `SpectrogramResult<NonEmptyVec<T>>` - Filterbank output values
     ///
     /// # Errors
     ///
     /// Returns `SpectrogramError::DimensionMismatch` if the length of
     #[inline]
-    pub fn apply_to_power_spectrum(
+    pub fn apply_to_power_spectrum<T: Sample>(
         &self,
-        power_spectrum: &NonEmptySlice<f64>,
-    ) -> SpectrogramResult<NonEmptyVec<f64>> {
+        power_spectrum: &NonEmptySlice<T>,
+    ) -> SpectrogramResult<NonEmptyVec<T>> {
         let n_bins = power_spectrum.len();
-        let mut output = non_empty_vec![0.0; self.response_matrix.len()];
+        let mut output = non_empty_vec![T::zero(); self.response_matrix.len()];
 
+        // The pre-computed |H(f)|^2 responses are stored in f64 (construction math
+        // unchanged) and converted to `T` here, at apply time, where they multiply
+        // the `T` power spectrum.
         for (filter_idx, filter_response) in self.response_matrix.iter().enumerate() {
             if filter_response.len() != n_bins {
                 return Err(SpectrogramError::dimension_mismatch(
@@ -390,9 +393,9 @@ impl ErbFilterbank {
             }
 
             // Compute weighted sum: output[i] = sum_k (|H_i(f_k)|^2 * |X(f_k)|^2)
-            let mut sum = 0.0;
+            let mut sum = T::zero();
             for (bin_idx, &response_power) in filter_response.iter().enumerate() {
-                sum += response_power * power_spectrum[bin_idx];
+                sum += T::from_f64(response_power) * power_spectrum[bin_idx];
             }
 
             output[filter_idx] = sum;
@@ -559,7 +562,7 @@ fn hann_window(size: usize) -> Vec<f64> {
 ///
 /// # Arguments
 ///
-/// * `samples` – Mono, f64 audio samples.
+/// * `samples` – Mono audio samples (`f32` or `f64`).
 /// * `sample_rate` – Sample rate in Hz.
 /// * `frame_size` – Frame length in samples (e.g. 3840 for 48 kHz audio mode).
 /// * `hop_size` – Hop in samples (e.g. 960 for 25 % hop).
@@ -575,13 +578,13 @@ fn hann_window(size: usize) -> Vec<f64> {
 ///
 /// Returns `SpectrogramError::InvalidInput` if `sample_rate ≤ 0` or if the
 /// signal is shorter than `frame_size`.
-pub fn gammatone_iir_spectrogram(
-    samples: &[f64],
+pub fn gammatone_iir_spectrogram<T: Sample>(
+    samples: &[T],
     sample_rate: f64,
     frame_size: NonZeroUsize,
     hop_size: NonZeroUsize,
     erb_params: &ErbParams,
-) -> SpectrogramResult<(Array2<f64>, Vec<f64>)> {
+) -> SpectrogramResult<(Array2<T>, Vec<f64>)> {
     if sample_rate <= 0.0 {
         return Err(SpectrogramError::invalid_input("sample_rate must be > 0"));
     }
@@ -615,25 +618,28 @@ pub fn gammatone_iir_spectrogram(
     let window = hann_window(frame_size);
 
     let n_frames = 1 + (samples.len() - frame_size) / hop_size;
-    let mut out = Array2::<f64>::zeros((n_bands, n_frames));
+    let mut out = Array2::<T>::zeros((n_bands, n_frames));
 
     for frame_idx in 0..n_frames {
         let start = frame_idx * hop_size;
         let end = start + frame_size;
+        // The gammatone IIR coefficients and Hann window are derived in f64; run
+        // the filter math in f64 and convert back to `T` at the RMS boundary.
         let windowed: Vec<f64> = samples[start..end]
             .iter()
             .zip(window.iter())
-            .map(|(&s, &w)| s * w)
+            .map(|(&s, &w)| s.to_f64().unwrap_or(0.0) * w)
             .collect();
 
         for (band, coeffs) in filter_bank.iter().enumerate() {
-            out[(band, frame_idx)] = iir4_rms(coeffs, &windowed);
+            out[(band, frame_idx)] = T::from_f64(iir4_rms(coeffs, &windowed));
         }
     }
 
     if let Some(floor_db) = erb_params.db_floor {
-        let eps = 10.0_f64.powf(floor_db / 10.0);
-        out.mapv_inplace(|x| 10.0 * x.max(eps).log10());
+        let eps = T::from_f64(10.0_f64.powf(floor_db / 10.0));
+        let ten = T::from_f64(10.0);
+        out.mapv_inplace(|x| ten * x.max(eps).log10());
     }
 
     Ok((out, center_freqs))

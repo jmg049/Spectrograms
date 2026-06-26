@@ -2,13 +2,12 @@
 
 use std::num::NonZeroUsize;
 
-use ndarray::Array2;
-use numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2};
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 
+use super::dtype::{Dtype, array2_to_py, parse_dtype, real_2d_owned, vec1_to_py, with_real_1d};
 use super::params::PyWindowType;
-use non_empty_slice::NonEmptySlice;
+use super::spectrogram::PyScalar;
 
 use crate::mdct::{MdctParams, imdct, mdct};
 
@@ -114,6 +113,9 @@ impl PyMdctParams {
 /// params : MdctParams
 ///     MDCT parameters.
 ///
+/// dtype : str, optional
+///     Output precision: "float64" (default) or "float32".
+///
 /// Returns
 /// -------
 /// numpy.typing.NDArray[numpy.float64]
@@ -124,25 +126,29 @@ impl PyMdctParams {
 /// ValueError
 ///     If samples is too short or parameters are invalid.
 #[pyfunction(name = "mdct")]
-#[pyo3(signature = (samples, params), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: MdctParams) -> numpy.typing.NDArray[numpy.float64]")]
-pub fn py_compute_mdct<'py>(
-    py: Python<'py>,
-    samples: &Bound<'py, PyAny>,
+#[pyo3(signature = (samples, params, dtype=None), text_signature = "(samples: numpy.typing.NDArray[numpy.float64], params: MdctParams, dtype: str = \"float64\") -> numpy.typing.NDArray[numpy.float64]")]
+pub fn py_compute_mdct(
+    py: Python<'_>,
+    samples: &Bound<'_, PyAny>,
     params: &PyMdctParams,
-) -> PyResult<Bound<'py, PyArray2<f64>>> {
-    let np = py.import("numpy")?;
-    let arr = np.call_method1("ascontiguousarray", (samples, "float64"))?;
-    let arr = arr.cast::<numpy::PyArray1<f64>>()?;
-    let ro = arr.try_readonly()?;
-    let slice = ro.as_slice()?;
-
-    let samples_ne = NonEmptySlice::new(slice)
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("samples must not be empty"))?;
-
-    let result = py
-        .detach(|| mdct(samples_ne, &params.inner))
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{e}")))?;
-    Ok(PyArray2::from_owned_array(py, result))
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
+    fn run<T: PyScalar>(
+        py: Python<'_>,
+        samples: &Bound<'_, PyAny>,
+        params: &PyMdctParams,
+    ) -> PyResult<Py<PyAny>> {
+        with_real_1d::<T, _, _>(py, samples, |s| {
+            let result = py
+                .detach(|| mdct::<T>(s, &params.inner))
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{e}")))?;
+            Ok(array2_to_py(py, result))
+        })
+    }
+    match parse_dtype(dtype)? {
+        Dtype::F32 => run::<f32>(py, samples, params),
+        Dtype::F64 => run::<f64>(py, samples, params),
+    }
 }
 
 /// Compute the IMDCT (inverse MDCT) from MDCT coefficients.
@@ -155,6 +161,8 @@ pub fn py_compute_mdct<'py>(
 ///     MDCT parameters (must match those used for analysis).
 /// original_length : int, optional
 ///     If provided, output is truncated to this length.
+/// dtype : str, optional
+///     Output precision: "float64" (default) or "float32".
 ///
 /// Returns
 /// -------
@@ -166,18 +174,30 @@ pub fn py_compute_mdct<'py>(
 /// ValueError
 ///     If coefficients shape doesn't match params.
 #[pyfunction(name = "imdct")]
-#[pyo3(signature = (coefficients, params, original_length=None), text_signature = "(coefficients: numpy.typing.NDArray[numpy.float64], params: MdctParams, original_length: int | None = None) -> numpy.typing.NDArray[numpy.float64]")]
-pub fn py_compute_imdct<'py>(
-    py: Python<'py>,
-    coefficients: PyReadonlyArray2<f64>,
+#[pyo3(signature = (coefficients, params, original_length=None, dtype=None), text_signature = "(coefficients: numpy.typing.NDArray[numpy.float64], params: MdctParams, original_length: int | None = None, dtype: str = \"float64\") -> numpy.typing.NDArray[numpy.float64]")]
+pub fn py_compute_imdct(
+    py: Python<'_>,
+    coefficients: &Bound<'_, PyAny>,
     params: &PyMdctParams,
     original_length: Option<usize>,
-) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let coeffs_arr: Array2<f64> = coefficients.as_array().to_owned();
-    let result = py
-        .detach(|| imdct(&coeffs_arr, &params.inner, original_length))
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{e}")))?;
-    Ok(PyArray1::from_vec(py, result))
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
+    fn run<T: PyScalar>(
+        py: Python<'_>,
+        coefficients: &Bound<'_, PyAny>,
+        params: &PyMdctParams,
+        original_length: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        let coeffs = real_2d_owned::<T>(py, coefficients)?;
+        let result = py
+            .detach(|| imdct::<T>(&coeffs, &params.inner, original_length))
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{e}")))?;
+        Ok(vec1_to_py(py, result))
+    }
+    match parse_dtype(dtype)? {
+        Dtype::F32 => run::<f32>(py, coefficients, params, original_length),
+        Dtype::F64 => run::<f64>(py, coefficients, params, original_length),
+    }
 }
 
 pub fn register(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {

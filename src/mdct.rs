@@ -37,86 +37,7 @@ use std::num::NonZeroUsize;
 use ndarray::Array2;
 use num_complex::Complex;
 
-use crate::{C2cPlan, C2cPlanF32, SpectrogramError, SpectrogramResult, WindowType, make_window};
-
-mod private_seal {
-    pub trait Seal {}
-    impl Seal for f32 {}
-    impl Seal for f64 {}
-}
-
-/// Sealed marker trait for float types usable in MDCT computation (f32 or f64).
-trait MdctNum:
-    private_seal::Seal
-    + Copy
-    + Default
-    + Send
-    + Sync
-    + 'static
-    + std::ops::Add<Output = Self>
-    + std::ops::Sub<Output = Self>
-    + std::ops::Mul<Output = Self>
-    + std::ops::Neg<Output = Self>
-    + std::ops::AddAssign
-    + std::ops::MulAssign
-{
-    fn zero() -> Self;
-    fn from_f64(x: f64) -> Self;
-    fn scale(n: usize) -> Self; // = 2.0 / n as Self
-}
-
-impl MdctNum for f32 {
-    #[inline]
-    fn zero() -> Self {
-        0.0f32
-    }
-    #[inline]
-    fn from_f64(x: f64) -> Self {
-        x as Self
-    }
-    #[inline]
-    fn scale(n: usize) -> Self {
-        2.0f32 / n as Self
-    }
-}
-
-impl MdctNum for f64 {
-    #[inline]
-    fn zero() -> Self {
-        0.0f64
-    }
-    #[inline]
-    fn from_f64(x: f64) -> Self {
-        x
-    }
-    #[inline]
-    fn scale(n: usize) -> Self {
-        2.0f64 / n as Self
-    }
-}
-
-/// Private in-place complex-to-complex FFT trait for MDCT/IMDCT, generic over float type.
-trait MdctC2cFft<T: MdctNum>: Send {
-    fn forward(&mut self, buf: &mut [Complex<T>]) -> SpectrogramResult<()>;
-}
-
-struct C2cWrapper<P: C2cPlan + Send>(P);
-
-impl<P: C2cPlan + Send> MdctC2cFft<f64> for C2cWrapper<P> {
-    #[inline]
-    fn forward(&mut self, buf: &mut [Complex<f64>]) -> SpectrogramResult<()> {
-        self.0.forward(buf)
-    }
-}
-
-struct C2cF32Wrapper<P: C2cPlanF32 + Send>(P);
-
-impl<P: C2cPlanF32 + Send> MdctC2cFft<f32> for C2cF32Wrapper<P> {
-    #[inline]
-    fn forward(&mut self, buf: &mut [Complex<f32>]) -> SpectrogramResult<()> {
-        self.0.forward(buf)
-    }
-}
+use crate::{C2cPlan, Sample, SpectrogramError, SpectrogramResult, WindowType, make_window};
 
 /// Parameters for MDCT computation.
 ///
@@ -227,7 +148,7 @@ impl MdctParams {
 ///   Odd  k: F[k] = Z[N-k]*
 ///
 /// This halves the FFT count compared to the 2×R2c(N) approach.
-struct MdctFwdPlan<T: MdctNum> {
+struct MdctFwdPlan<T: Sample> {
     /// Fold+twiddle: analysis_re[m] = w[m]·cos(πm/2N) for m=0..2N-1
     analysis_re: Vec<T>,
     /// Fold+twiddle: analysis_im[m] = -w[m]·sin(πm/2N) for m=0..2N-1
@@ -236,24 +157,24 @@ struct MdctFwdPlan<T: MdctNum> {
     mdct_post_re: Vec<T>,
     mdct_post_im: Vec<T>,
     /// C2c FFT of size N
-    c2c: Box<dyn MdctC2cFft<T>>,
+    c2c: T::C2cPlan,
     /// Packed complex input/output buffer (size N, in-place)
     fwd_z: Vec<Complex<T>>,
     n: usize,
 }
 
-impl<T: MdctNum> MdctFwdPlan<T> {
-    fn new(params: &MdctParams, c2c: Box<dyn MdctC2cFft<T>>) -> Self {
+impl<T: Sample> MdctFwdPlan<T> {
+    fn new(params: &MdctParams, c2c: T::C2cPlan) -> Self {
         let two_n = params.window_size.get();
         let n = two_n / 2;
 
-        let window_f64 = make_window(params.window.clone(), params.window_size);
+        let window = make_window::<T>(params.window.clone(), params.window_size);
 
         let analysis_re: Vec<T> = (0..two_n)
-            .map(|m| T::from_f64(window_f64[m] * (PI * m as f64 / two_n as f64).cos()))
+            .map(|m| window[m] * T::from_f64((PI * m as f64 / two_n as f64).cos()))
             .collect();
         let analysis_im: Vec<T> = (0..two_n)
-            .map(|m| T::from_f64(-window_f64[m] * (PI * m as f64 / two_n as f64).sin()))
+            .map(|m| window[m] * T::from_f64(-(PI * m as f64 / two_n as f64).sin()))
             .collect();
 
         let (mdct_post_re, mdct_post_im): (Vec<T>, Vec<T>) = (0..n)
@@ -269,13 +190,7 @@ impl<T: MdctNum> MdctFwdPlan<T> {
             mdct_post_re,
             mdct_post_im,
             c2c,
-            fwd_z: vec![
-                Complex {
-                    re: T::zero(),
-                    im: T::zero()
-                };
-                n
-            ],
+            fwd_z: vec![Complex::new(T::from_f64(0.0), T::from_f64(0.0)); n],
             n,
         }
     }
@@ -342,7 +257,7 @@ impl<T: MdctNum> MdctFwdPlan<T> {
 /// Both C2c(N) transforms reuse the same plan object sequentially.
 /// This halves the FFT length (N vs 2N) and halves scratch buffer sizes
 /// compared to the 2×R2c(2N) approach.
-struct MdctInvPlan<T: MdctNum> {
+struct MdctInvPlan<T: Sample> {
     window_samples: Vec<T>,
     /// Post-twiddle: (cos, -sin) of π(2m+1+N)/4N for m=0..2N-1
     imdct_post_re: Vec<T>,
@@ -352,20 +267,20 @@ struct MdctInvPlan<T: MdctNum> {
     /// Pre-twiddle for odd positions: pre_z[k]·exp(−jπk/N), size N
     pre_zprime: Vec<Complex<T>>,
     /// C2c FFT of size N (reused for both transforms)
-    c2c: Box<dyn MdctC2cFft<T>>,
+    c2c: T::C2cPlan,
     /// Working buffers for the two C2c transforms (size N each, in-place)
     z: Vec<Complex<T>>,
     zprime: Vec<Complex<T>>,
     n: usize,
 }
 
-impl<T: MdctNum> MdctInvPlan<T> {
-    fn new(params: &MdctParams, c2c: Box<dyn MdctC2cFft<T>>) -> Self {
+impl<T: Sample> MdctInvPlan<T> {
+    fn new(params: &MdctParams, c2c: T::C2cPlan) -> Self {
         let two_n = params.window_size.get();
         let n = two_n / 2;
 
-        let window_f64 = make_window(params.window.clone(), params.window_size);
-        let window_samples: Vec<T> = window_f64.iter().map(|&w| T::from_f64(w)).collect();
+        let window = make_window::<T>(params.window.clone(), params.window_size);
+        let window_samples: Vec<T> = window.iter().copied().collect();
 
         // pre_z[k] = exp(−jπk(N+1)/2N)
         let pre_z: Vec<Complex<T>> = (0..n)
@@ -404,27 +319,15 @@ impl<T: MdctNum> MdctInvPlan<T> {
             pre_z,
             pre_zprime,
             c2c,
-            z: vec![
-                Complex {
-                    re: T::zero(),
-                    im: T::zero()
-                };
-                n
-            ],
-            zprime: vec![
-                Complex {
-                    re: T::zero(),
-                    im: T::zero()
-                };
-                n
-            ],
+            z: vec![Complex::new(T::from_f64(0.0), T::from_f64(0.0)); n],
+            zprime: vec![Complex::new(T::from_f64(0.0), T::from_f64(0.0)); n],
             n,
         }
     }
 
     fn imdct_frame(&mut self, coeffs: &[T], out: &mut [T]) -> SpectrogramResult<()> {
         let n = self.n;
-        let scale = T::scale(n);
+        let scale = T::from_f64(2.0) / T::from_usize(n);
 
         // Build pre-twiddled inputs for even and odd DFT positions.
         for (k, &c) in coeffs.iter().enumerate() {
@@ -481,10 +384,10 @@ impl<T: MdctNum> MdctInvPlan<T> {
 ///
 /// Returns `InvalidInput` if samples is shorter than `window_size`.
 #[inline]
-pub fn mdct(
-    samples: &non_empty_slice::NonEmptySlice<f64>,
+pub fn mdct<T: Sample>(
+    samples: &non_empty_slice::NonEmptySlice<T>,
     params: &MdctParams,
-) -> SpectrogramResult<Array2<f64>> {
+) -> SpectrogramResult<Array2<T>> {
     let samples = samples.as_slice();
     let two_n = params.window_size.get();
     let hop = params.hop_size.get();
@@ -500,22 +403,10 @@ pub fn mdct(
 
     let n_frames = (samples.len() - two_n) / hop + 1;
 
-    #[cfg(feature = "realfft")]
-    let c2c: Box<dyn MdctC2cFft<f64>> = {
-        Box::new(C2cWrapper(
-            crate::fft_backend::realfft_backend::RealFftC2cPlan::new(n),
-        ))
-    };
-
-    #[cfg(feature = "fftw")]
-    let c2c: Box<dyn MdctC2cFft<f64>> = {
-        let mut planner = crate::FftwPlanner::new();
-        Box::new(C2cWrapper(planner.plan_c2c(n)?))
-    };
-
-    let mut plan = MdctFwdPlan::<f64>::new(params, c2c);
-    let mut output = Array2::<f64>::zeros((n, n_frames));
-    let mut coef_buf = vec![0.0f64; n];
+    let c2c = T::plan_c2c(n)?;
+    let mut plan = MdctFwdPlan::<T>::new(params, c2c);
+    let mut output = Array2::<T>::zeros((n, n_frames));
+    let mut coef_buf = vec![T::from_f64(0.0); n];
 
     for f in 0..n_frames {
         let start = f * hop;
@@ -548,11 +439,11 @@ pub fn mdct(
 ///
 /// Returns `InvalidInput` if the coefficient array shape doesn't match `params`.
 #[inline]
-pub fn imdct(
-    coefficients: &Array2<f64>,
+pub fn imdct<T: Sample>(
+    coefficients: &Array2<T>,
     params: &MdctParams,
     original_length: Option<usize>,
-) -> SpectrogramResult<Vec<f64>> {
+) -> SpectrogramResult<Vec<T>> {
     let n = params.n_coefficients();
     let two_n = params.window_size.get();
     let hop = params.hop_size.get();
@@ -570,177 +461,13 @@ pub fn imdct(
         return Ok(Vec::new());
     }
 
-    #[cfg(feature = "realfft")]
-    let c2c: Box<dyn MdctC2cFft<f64>> = {
-        Box::new(C2cWrapper(
-            crate::fft_backend::realfft_backend::RealFftC2cPlan::new(n),
-        ))
-    };
-
-    #[cfg(feature = "fftw")]
-    let c2c: Box<dyn MdctC2cFft<f64>> = {
-        let mut planner = crate::FftwPlanner::new();
-        Box::new(C2cWrapper(planner.plan_c2c(n)?))
-    };
-
-    let mut plan = MdctInvPlan::<f64>::new(params, c2c);
+    let c2c = T::plan_c2c(n)?;
+    let mut plan = MdctInvPlan::<T>::new(params, c2c);
 
     let out_len = hop * n_frames + two_n - hop;
-    let mut output = vec![0.0f64; out_len];
-    let mut frame_out = vec![0.0f64; two_n];
-    let mut col_buf = vec![0.0f64; n];
-
-    for f in 0..n_frames {
-        let col = coefficients.column(f);
-        for (i, &v) in col.iter().enumerate() {
-            col_buf[i] = v;
-        }
-
-        plan.imdct_frame(&col_buf, &mut frame_out)?;
-
-        // Apply synthesis window and overlap-add
-        let start = f * hop;
-        for m in 0..two_n {
-            output[start + m] += frame_out[m] * plan.window_samples[m];
-        }
-    }
-
-    if let Some(len) = original_length {
-        output.truncate(len);
-    }
-
-    Ok(output)
-}
-
-/// Compute the MDCT of an audio signal using f32 arithmetic.
-///
-/// Identical semantics to [`mdct`] but uses single-precision arithmetic
-/// throughout. f32 is adequate for audio processing and is roughly 2× faster
-/// due to halved memory bandwidth and wider SIMD (8-wide AVX vs 4-wide).
-///
-/// # Arguments
-///
-/// * `samples` - Non-empty real audio samples (f32). Length must be >= `window_size`.
-/// * `params` - MDCT parameters.
-///
-/// # Returns
-///
-/// A 2D array of shape `(N, n_frames)` where `N = window_size / 2`.
-///
-/// # Errors
-///
-/// Returns `InvalidInput` if samples is shorter than `window_size`.
-#[inline]
-pub fn mdct_f32(
-    samples: &non_empty_slice::NonEmptySlice<f32>,
-    params: &MdctParams,
-) -> SpectrogramResult<Array2<f32>> {
-    let samples = samples.as_slice();
-    let two_n = params.window_size.get();
-    let hop = params.hop_size.get();
-    let n = params.n_coefficients();
-
-    if samples.len() < two_n {
-        return Err(SpectrogramError::invalid_input(format!(
-            "samples length ({}) must be >= window_size ({})",
-            samples.len(),
-            two_n
-        )));
-    }
-
-    let n_frames = (samples.len() - two_n) / hop + 1;
-
-    #[cfg(feature = "realfft")]
-    let c2c: Box<dyn MdctC2cFft<f32>> = {
-        Box::new(C2cF32Wrapper(
-            crate::fft_backend::realfft_backend::RealFftC2cPlanF32::new(n),
-        ))
-    };
-
-    #[cfg(feature = "fftw")]
-    let c2c: Box<dyn MdctC2cFft<f32>> = {
-        return Err(SpectrogramError::invalid_input(
-            "mdct_f32 is not yet implemented for the fftw backend; use --features realfft",
-        ));
-    };
-
-    let mut plan = MdctFwdPlan::<f32>::new(params, c2c);
-    let mut output = Array2::<f32>::zeros((n, n_frames));
-    let mut coef_buf = vec![0.0f32; n];
-
-    for f in 0..n_frames {
-        let start = f * hop;
-        let frame = &samples[start..start + two_n];
-        plan.mdct_frame(frame, &mut coef_buf)?;
-        for (i, &v) in coef_buf.iter().enumerate() {
-            output[(i, f)] = v;
-        }
-    }
-
-    Ok(output)
-}
-
-/// Compute the IMDCT from MDCT coefficients using f32 arithmetic.
-///
-/// Identical semantics to [`imdct`] but uses single-precision arithmetic.
-/// See [`mdct_f32`] for performance notes.
-///
-/// # Arguments
-///
-/// * `coefficients` - 2D array of shape `(N, n_frames)` as returned by [`mdct_f32`].
-/// * `params` - MDCT parameters (must match those used for analysis).
-/// * `original_length` - If provided, output is truncated to this length.
-///
-/// # Returns
-///
-/// Reconstructed signal via overlap-add.
-///
-/// # Errors
-///
-/// Returns `InvalidInput` if the coefficient array shape doesn't match `params`.
-#[inline]
-pub fn imdct_f32(
-    coefficients: &Array2<f32>,
-    params: &MdctParams,
-    original_length: Option<usize>,
-) -> SpectrogramResult<Vec<f32>> {
-    let n = params.n_coefficients();
-    let two_n = params.window_size.get();
-    let hop = params.hop_size.get();
-
-    if coefficients.nrows() != n {
-        return Err(SpectrogramError::invalid_input(format!(
-            "coefficients has {} rows but params.n_coefficients() = {}",
-            coefficients.nrows(),
-            n
-        )));
-    }
-
-    let n_frames = coefficients.ncols();
-    if n_frames == 0 {
-        return Ok(Vec::new());
-    }
-
-    #[cfg(feature = "realfft")]
-    let c2c: Box<dyn MdctC2cFft<f32>> = {
-        Box::new(C2cF32Wrapper(
-            crate::fft_backend::realfft_backend::RealFftC2cPlanF32::new(n),
-        ))
-    };
-
-    #[cfg(feature = "fftw")]
-    let c2c: Box<dyn MdctC2cFft<f32>> = {
-        return Err(SpectrogramError::invalid_input(
-            "imdct_f32 is not yet implemented for the fftw backend; use --features realfft",
-        ));
-    };
-
-    let mut plan = MdctInvPlan::<f32>::new(params, c2c);
-
-    let out_len = hop * n_frames + two_n - hop;
-    let mut output = vec![0.0f32; out_len];
-    let mut frame_out = vec![0.0f32; two_n];
-    let mut col_buf = vec![0.0f32; n];
+    let mut output = vec![T::from_f64(0.0); out_len];
+    let mut frame_out = vec![T::from_f64(0.0); two_n];
+    let mut col_buf = vec![T::from_f64(0.0); n];
 
     for f in 0..n_frames {
         let col = coefficients.column(f);
@@ -862,7 +589,7 @@ mod tests {
         eprintln!("A[0..4] = {:?}", &out_a);
         eprintln!("B[0..4] = {:?}", &out_b);
         // C2c of z = a + ib
-        let mut c2c_plan = crate::fft_backend::realfft_backend::RealFftC2cPlan::new(n);
+        let mut c2c_plan = crate::fft_backend::realfft_backend::RealFftC2cPlan::<f64>::new(n);
         let mut z: Vec<Complex<f64>> = (0..n).map(|m| Complex { re: a[m], im: b[m] }).collect();
         c2c_plan.forward(&mut z).unwrap();
         eprintln!("Z[0..8] = {:?}", &z);
@@ -913,8 +640,8 @@ mod tests {
             .collect();
         let x_ne = non_empty_slice::NonEmptyVec::new(x.clone()).unwrap();
 
-        let coefs = mdct_f32(x_ne.as_non_empty_slice(), &params).unwrap();
-        let x_rec = imdct_f32(&coefs, &params, Some(n)).unwrap();
+        let coefs = mdct::<f32>(x_ne.as_non_empty_slice(), &params).unwrap();
+        let x_rec = imdct::<f32>(&coefs, &params, Some(n)).unwrap();
 
         let margin = 256;
         for i in margin..(n - margin) {

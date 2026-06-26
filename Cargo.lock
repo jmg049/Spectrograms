@@ -1106,7 +1106,7 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "spectrograms"
-version = "1.4.4"
+version = "2.0.0"
 dependencies = [
  "bincode2",
  "criterion",
@@ -1115,6 +1115,7 @@ dependencies = [
  "non-empty-slice",
  "num-complex",
  "num-format",
+ "num-traits",
  "numpy",
  "once_cell",
  "pkg-config",

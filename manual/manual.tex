@@ -57,6 +57,83 @@ The manual is organized into major thematic sections:
     Precision, normalization, dynamic range
 \end{enumerate}
 
+\subsection{Numeric Precision: Generic over f32 and f64}\label{subsec:precision}
+
+The library is \termdef{precision-generic}: each core computation is
+written once and instantiated at either single (\code{f32}) or double
+(\code{f64}) precision. This genericity is mediated by a single sealed
+trait, \code{Sample}, which serves as the dispatch seam between the
+precision-agnostic algorithms and the concrete floating-point type and
+its FFT backend.
+
+\begin{concept}{The Sample Trait as a Dispatch Seam}
+  \code{Sample} is a \emph{sealed} trait, implemented only for
+  \code{f32} and \code{f64}. It bundles the numeric capabilities the
+  algorithms require (\code{Float}, \code{FloatConst}, \code{NumAssign},
+  \code{Copy}, \code{Send}, \code{Sync}, and \code{'static}) together
+  with the scalar conversions \code{from\_f64} and \code{from\_usize}
+  (used to lift literal constants and index or length values into the
+  chosen precision) and the FFT-plan constructors (\code{plan\_r2c},
+    \code{plan\_c2r}, \code{plan\_c2c}, and their two-dimensional
+  counterparts). The realfft and FFTW backend plan traits
+  (\code{R2cPlan}, \code{C2cPlan}, \code{C2rPlan}, and their 2D
+  variants) are themselves generic over the scalar type, so a single
+  generic code path drives both precisions without duplication.
+\end{concept}
+
+\textbf{Default to f64 for backward compatibility.} The scalar type
+parameter \emph{defaults} to \code{f64}. Consequently every \code{f64}
+signature and example in this manual remains valid and unchanged in
+meaning: double precision is selected automatically when the inputs are
+\code{f64}, or when no type is specified. Single precision is strictly
+opt-in---it is inferred from \code{f32} inputs, or requested explicitly
+with turbofish syntax:
+
+\begin{lstlisting}[caption={The same call at the default (f64) and at f32}]
+
+// Double precision (default): T is inferred as f64
+let s = stft(&sig_f64, n_fft, hop, WindowType::Hanning, true)?;
+
+// Single precision: inferred from f32 inputs ...
+let s = stft(&sig_f32, n_fft, hop, WindowType::Hanning, true)?;
+
+// ... or requested explicitly via turbofish
+let s = stft::<f32>(&sig_f32, n_fft, hop, WindowType::Hanning, true)?;
+\end{lstlisting}
+
+Precision genericity spans the full feature set: the STFT, the mel,
+ERB, and CQT perceptual transforms, MFCCs, chroma, the MDCT, FFT
+convolution, minimum-phase reconstruction, the binaural features, and
+the 2D FFT and image operations all operate at both precisions. The
+legacy \code{mdct\_f32} and \code{imdct\_f32} entry points are retained
+as thin wrappers over the generic \code{mdct} and \code{imdct}
+instantiated at \code{f32}.
+
+\begin{concept}{Caveat: f64-Returning Convenience Constructors}
+  A few high-level convenience constructors that accept \code{f64}
+  samples---\code{chromagram}, \code{mfcc}, and
+  \code{gaussian\_kernel\_2d}---deliberately return \code{f64} results.
+  They are ergonomic entry points for the common double-precision case
+  and are \emph{not} generic. Single precision for these features is
+  reached instead through the input-generic variants
+  (\code{chromagram\_from\_spectrogram} and \code{mfcc\_from\_log\_mel})
+  or through the low-level primitives, all of which are generic over
+  the scalar type.
+\end{concept}
+
+\textbf{Motivation.} Supporting \code{f32} alongside \code{f64} serves
+three concrete goals. First, many spectrogram workloads are
+\emph{memory-bound}: halving the width of every sample and spectral
+coefficient improves cache utilisation and memory bandwidth. Second,
+machine-learning pipelines frequently train in single precision, so
+producing features directly in \code{f32} avoids a wasteful conversion
+at the boundary. Third, a planned \code{no\_std}/embedded build targets
+devices whose floating-point units are single-precision, where
+\code{f64} arithmetic is emulated and therefore costly. Double
+precision nonetheless remains the default, as it is the right choice
+for offline analysis where numerical headroom matters
+(\cref{subsec:precision-f64}).
+
 \subsection{Notation Conventions}\label{subsec:notation}
 
 Throughout this manual:
@@ -315,7 +392,7 @@ ensures contiguous memory:
 
 \begin{lstlisting}[]
 
-pub fn fft2d(data: &Array2<f64>) -> SpectrogramResult<Array2<Complex<f64>>> {
+pub fn fft2d<T: Sample>(data: &ArrayView2<T>) -> SpectrogramResult<Array2<Complex<T>>> {
     let (nrows, ncols) = (data.nrows(), data.ncols());
 
     if !data.is_standard_layout() {
@@ -410,6 +487,21 @@ The rectangular window is simply:
 
 Its frequency response has the narrowest main lobe but highest
 sidelobes ($\approx$-13~dB), causing severe spectral leakage.
+
+\textbf{Generic over precision.} The window constructors are generic
+over the scalar type. The match-arm listings throughout this section
+show the \code{f64} instantiation, whereas the public entry point has
+the generic signature
+
+\begin{lstlisting}[]
+
+pub fn make_window<T: Sample>(window: WindowType,
+                              n_fft: NonZeroUsize) -> NonEmptyVec<T>
+\end{lstlisting}
+
+\noindent and the numeric literals (e.g.\ \code{0.5}, \code{0.54}) are
+lifted to the chosen precision through \code{T::from\_f64} in the
+generic code.
 
 \begin{lstlisting}[caption={Rectangular window implementation}]
 
@@ -2241,25 +2333,34 @@ can provide better performance than ESTIMATE.
 
 \section{Numerical Considerations}\label{sec:numerical}
 
-\subsection{Floating-Point Precision}\label{subsec:precision}
+\subsection{Floating-Point Precision}\label{subsec:precision-f64}
 
-The library uses \code{f64} (double precision) throughout:
+The library defaults to \code{f64} (double precision), and double
+precision is the recommended choice for offline analysis:
 
 \begin{itemize}
   \item 53 bits of precision ($\approx$16 decimal digits)
   \item Dynamic range: $\approx 10^{-308}$ to $10^{308}$
-  \item Sufficient for all audio processing needs
+  \item Ample headroom for all audio processing needs
 \end{itemize}
 
-\textbf{Why not f32?} While f32 has lower memory requirements, audio
-processing requires:
+As described in \cref{subsec:precision}, the core algorithms are
+generic over the scalar type and may also be instantiated at \code{f32}.
+
+\textbf{When to prefer f64.} Double precision is advantageous when
+audio processing requires:
 \begin{itemize}
   \item Accurate accumulation over many samples (STFT frames)
   \item Stable recursive filters (if implemented)
   \item Wide dynamic range for decibel conversions
 \end{itemize}
 
-f64 ensures numerical stability without performance concerns on modern CPUs.
+\textbf{When to prefer f32.} Single precision halves memory traffic for
+memory-bound workloads, matches machine-learning pipelines that train
+in single precision, and suits embedded or \code{no\_std} targets with
+single-precision floating-point units. \code{f64} remains the default
+because it ensures numerical stability without performance concerns on
+modern CPUs.
 
 \subsection{Normalization Conventions}\label{subsec:normalization}
 

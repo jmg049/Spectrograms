@@ -3,150 +3,119 @@
 //! This module provides PyO3-based Python bindings that expose the full
 //! functionality of the spectrograms library to Python users.
 
-use std::num::NonZeroUsize;
-
-use numpy::PyArray2;
 use pyo3::prelude::*;
 
 mod binaural;
 mod dlpack;
+mod dtype;
 mod error;
 mod fft2d;
 mod functions;
 mod mdct;
+mod mfcc;
 mod params;
 mod planner;
 mod spectrogram;
 
-use crate::Chromagram;
+use crate::{ChromaParams, Chromagram};
+use spectrogram::{PyArrayData, PyScalar, real_dlpack};
+
 pub use error::*;
+pub use mfcc::PyMfcc;
 pub use params::*;
-/// Chromagram representation with 12 pitch classes.
+
+/// Chromagram (pitch class profile) result.
 ///
-/// Can act as an numpy array via the `__array__` protocol.
+/// Carries the chroma feature matrix as a native-precision NumPy array
+/// (`float32` or `float64`, see :attr:`dtype`) plus the parameters used to
+/// compute it. The data lives on the Python heap so it can be shared zero-copy
+/// with array libraries via ``__array__`` / ``__dlpack__``.
 #[pyclass(name = "Chromagram", skip_from_py_object)]
-#[derive(Debug)]
 pub struct PyChromagram {
-    pub(crate) inner: Chromagram,
+    data: PyArrayData,
+    params: ChromaParams,
+    n_bins: usize,
+    n_frames: usize,
 }
 
-impl From<Chromagram> for PyChromagram {
-    #[inline]
-    fn from(inner: Chromagram) -> Self {
-        Self { inner }
-    }
-}
-
-impl From<PyChromagram> for Chromagram {
-    #[inline]
-    fn from(val: PyChromagram) -> Self {
-        val.inner
+impl PyChromagram {
+    /// Build a `PyChromagram` from a computed Rust [`Chromagram`], moving its
+    /// data onto the Python heap (no copy).
+    pub(crate) fn from_chromagram<T: PyScalar>(py: Python<'_>, chroma: Chromagram<T>) -> Self {
+        let n_bins = chroma.data.nrows();
+        let n_frames = chroma.data.ncols();
+        let params = *chroma.params();
+        let data = T::into_array_data(py, chroma.data);
+        Self {
+            data,
+            params,
+            n_bins,
+            n_frames,
+        }
     }
 }
 
 #[pymethods]
 impl PyChromagram {
+    /// Chroma feature matrix as a NumPy array with shape (`n_bins`, `n_frames`).
     #[getter]
-    fn n_frames(&self) -> NonZeroUsize {
-        self.inner.n_frames()
+    fn data<'py>(&self, py: Python<'py>) -> Bound<'py, PyAny> {
+        self.data.bind(py)
+    }
+
+    /// NumPy dtype name of the stored data (`"float32"` / `"float64"`).
+    #[getter]
+    const fn dtype(&self) -> &'static str {
+        self.data.dtype()
     }
 
     #[getter]
-    fn n_bins(&self) -> NonZeroUsize {
-        self.inner.n_bins()
+    const fn n_frames(&self) -> usize {
+        self.n_frames
+    }
+
+    #[getter]
+    const fn n_bins(&self) -> usize {
+        self.n_bins
+    }
+
+    /// Shape of the chroma matrix as (`n_bins`, `n_frames`).
+    #[getter]
+    const fn shape(&self) -> (usize, usize) {
+        (self.n_bins, self.n_frames)
     }
 
     #[getter]
     fn params(&self) -> PyChromaParams {
-        PyChromaParams::from(*self.inner.params())
+        PyChromaParams::from(self.params)
     }
 
     #[classattr]
-    const fn labels() -> [&'static str; 12] {
-        Chromagram::labels()
+    fn labels() -> [&'static str; 12] {
+        Chromagram::<f64>::labels()
     }
 
+    #[pyo3(signature = (dtype=None))]
     fn __array__<'py>(
         &self,
         py: Python<'py>,
         dtype: Option<&Bound<'py, PyAny>>,
-    ) -> PyResult<Py<PyAny>> {
-        let arr = PyArray2::from_array(py, &self.inner.data);
-        if let Some(dtype) = dtype {
-            let casted: Bound<'py, PyAny> = arr.call_method1("astype", (dtype,))?;
-            Ok(casted.unbind())
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let arr = self.data.bind(py);
+        if let Some(dt) = dtype {
+            arr.call_method1("astype", (dt,))
         } else {
-            Ok(arr.into_any().unbind())
+            Ok(arr)
         }
     }
 
     /// Return the device type and device ID for DLPack protocol.
-    ///
-    /// Returns
-    /// -------
-    /// tuple[int, int]
-    ///     A tuple of (device_type, device_id). Always returns (1, 0) for CPU.
-    ///
-    /// Notes
-    /// -----
-    /// This method is part of the DLPack protocol for tensor exchange.
-    /// Device type 1 indicates CPU. This library only supports CPU tensors.
     #[staticmethod]
     const fn __dlpack_device__() -> (i32, i32) {
         (1, 0) // (kDLCPU, device_id=0)
     }
 
     /// Export the chromagram data as a DLPack capsule for tensor exchange.
-    ///
-    /// This method implements the DLPack protocol, enabling efficient data sharing with
-    /// deep learning frameworks like PyTorch, JAX, and TensorFlow without copying data.
-    ///
-    /// Parameters
-    /// ----------
-    /// stream : int, optional
-    ///     Must be None for CPU tensors. Provided for protocol compatibility.
-    /// max_version : tuple[int, int], optional
-    ///     Maximum DLPack version supported by the consumer. Must be >= (1, 0).
-    /// dl_device : tuple[int, int], optional
-    ///     Target device (device_type, device_id). If specified, must be (1, 0) for CPU.
-    /// copy : bool, optional
-    ///     If True, create a copy of the data. If False or None (default), return
-    ///     a view when possible.
-    ///
-    /// Returns
-    /// -------
-    /// PyCapsule
-    ///     A DLPack capsule named "dltensor" containing the tensor data.
-    ///
-    /// Raises
-    /// ------
-    /// BufferError
-    ///     If stream is not None, if the requested device is not CPU, or if the
-    ///     requested DLPack version is not supported.
-    ///
-    /// Examples
-    /// --------
-    /// >>> import spectrograms as sg
-    /// >>> import torch
-    /// >>> import numpy as np
-    /// >>>
-    /// >>> samples = np.random.randn(16000)
-    /// >>> stft = sg.StftParams(n_fft=512, hop_size=256, window= sg.WindowType.hanning)
-    /// >>> params = sg.SpectrogramParams(stft, sample_rate=16000.0)
-    /// >>> spec = sg.compute_cqt_power_spectrogram(samples, params)
-    /// >>> chroma = sg.compute_chromagram(spec)
-    /// >>>
-    /// >>> # conversion to PyTorch
-    /// >>> tensor = torch.from_dlpack(chroma)
-    /// >>> print(tensor.shape, tensor.dtype)
-    ///
-    /// Notes
-    /// -----
-    /// The DLPack protocol enables data exchange between Python array libraries.
-    /// The returned capsule can be consumed by frameworks supporting DLPack (PyTorch, JAX,
-    /// TensorFlow, etc.) using their respective `from_dlpack()` functions.
-    ///
-    /// The data remains owned by the Python array until all consumers release it.
     #[pyo3(signature = (*, stream=None, max_version=None, dl_device=None, copy=None))]
     fn __dlpack__<'py>(
         &self,
@@ -156,43 +125,16 @@ impl PyChromagram {
         dl_device: Option<(i32, i32)>,
         copy: Option<bool>,
     ) -> PyResult<Bound<'py, pyo3::types::PyCapsule>> {
-        use crate::python::dlpack::{DLPACK_FLAG_BITMASK_IS_COPIED, create_dlpack_capsule};
+        real_dlpack(py, &self.data, stream, max_version, dl_device, copy)
+    }
 
-        // Validate: stream must be None for CPU
-        if stream.is_some() {
-            return Err(pyo3::exceptions::PyBufferError::new_err(
-                "stream must be None for CPU tensors",
-            ));
-        }
-
-        // Validate: version must be >= 1.0
-        if let Some((major, minor)) = max_version {
-            if major < 1 {
-                return Err(pyo3::exceptions::PyBufferError::new_err(format!(
-                    "Unsupported DLPack version: {major}.{minor}"
-                )));
-            }
-        }
-
-        // Validate: only CPU device supported
-        if let Some((dev_type, dev_id)) = dl_device {
-            if dev_type != 1 || dev_id != 0 {
-                return Err(pyo3::exceptions::PyBufferError::new_err(
-                    "Only CPU device (1, 0) is supported",
-                ));
-            }
-        }
-
-        // Handle copy parameter
-        let mut flags = 0u64;
-        if copy == Some(true) {
-            flags |= DLPACK_FLAG_BITMASK_IS_COPIED;
-        }
-
-        // Get the data and create array
-        let arr = PyArray2::from_array(py, &self.inner.data);
-
-        create_dlpack_capsule(py, &arr, flags)
+    fn __repr__(&self) -> String {
+        format!(
+            "Chromagram(shape=({}, {}), dtype={})",
+            self.n_bins,
+            self.n_frames,
+            self.dtype()
+        )
     }
 }
 
@@ -214,6 +156,10 @@ pub fn register_module(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Register spectrogram result class
     spectrogram::register(py, m)?;
+
+    // Register the chromagram and MFCC result classes
+    m.add_class::<PyChromagram>()?;
+    m.add_class::<PyMfcc>()?;
 
     // Register planner and plan classes
     planner::register(py, m)?;

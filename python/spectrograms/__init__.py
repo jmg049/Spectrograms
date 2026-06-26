@@ -73,6 +73,8 @@ __all__ = [
     "WindowType",
     # Results
     "Spectrogram",
+    "Chromagram",
+    "Mfcc",
     # Planner
     "SpectrogramPlanner",
     "LinearPowerPlan",
@@ -101,13 +103,17 @@ __all__ = [
     "compute_itd_spectrogram",
     "compute_itd_spectrogram_diff",
     "ITDSpectrogramParams",
+    "ItdSpectrogram",
     "compute_ipd_spectrogram",
     "IPDSpectrogramParams",
+    "IpdSpectrogram",
     "compute_ild_spectrogram",
     "ILDSpectrogramParams",
+    "IldSpectrogram",
     "compute_ilr_spectrogram",
     "compute_ilr_spectrogram_diff",
     "ILRSpectrogramParams",
+    "IlrSpectrogram",
     # 2D FFT Functions
     "fft2d",
     "ifft2d",

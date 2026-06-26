@@ -36,3 +36,5 @@ manual/build/
 python/examples/benchmark_results/
 python/examples/audio/
 python/examples/example_audio.zip
+.claude/
+.venv/

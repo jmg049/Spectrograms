@@ -51,7 +51,7 @@ fn test_cqt_stft_window_independence() {
 
         let planner = SpectrogramPlanner::new();
         let mut plan = planner
-            .cqt_plan::<Power>(&params, &cqt_params, None)
+            .cqt_plan::<Power, _>(&params, &cqt_params, None)
             .unwrap();
 
         let spec = plan.compute(&samples).unwrap();
@@ -127,7 +127,7 @@ fn test_cqt_energy_preservation() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .cqt_plan::<Power>(&params, &cqt_params, None)
+        .cqt_plan::<Power, _>(&params, &cqt_params, None)
         .unwrap();
 
     let spec = plan.compute(&samples).unwrap();

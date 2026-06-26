@@ -50,7 +50,7 @@ fn main() -> SpectrogramResult<()> {
 
         // Create Gaussian kernel
         let kernel_size = NonZeroUsize::new(kernel_size).unwrap();
-        let kernel = gaussian_kernel_2d(kernel_size, sigma)?;
+        let kernel = gaussian_kernel_2d::<f64>(kernel_size, sigma)?;
 
         // Verify kernel is normalized
         let kernel_sum: f64 = kernel.iter().sum();
@@ -78,7 +78,7 @@ fn main() -> SpectrogramResult<()> {
     // Compare with edge statistics
     println!("\n=== Edge Analysis ===\n");
 
-    let light_kernel = gaussian_kernel_2d(nzu!(5), 1.0)?;
+    let light_kernel = gaussian_kernel_2d::<f64>(nzu!(5), 1.0)?;
     let blurred = convolve_fft(&image.view(), &light_kernel.view())?;
 
     // Sample values at center and edge

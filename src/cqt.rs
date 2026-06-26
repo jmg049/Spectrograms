@@ -8,7 +8,7 @@ use ndarray::Array2;
 use non_empty_slice::{NonEmptySlice, NonEmptyVec};
 use num_complex::Complex;
 
-use crate::{SpectrogramError, SpectrogramResult, WindowType, nzu};
+use crate::{Sample, SpectrogramError, SpectrogramResult, WindowType, nzu};
 
 /// CQT parameters
 #[derive(Debug, Clone, PartialEq)]
@@ -385,7 +385,7 @@ impl CqtKernel {
         let mut kernel = Vec::with_capacity(kernel_length.get());
 
         // Generate window coefficients
-        let window = crate::spectrogram::make_window(window_type, kernel_length);
+        let window = crate::spectrogram::make_window::<f64>(window_type, kernel_length);
 
         // Generate complex exponential kernel
         for (n, w) in window.iter().enumerate().take(kernel_length.get()) {
@@ -472,36 +472,41 @@ impl CqtKernel {
     ///
     /// # Returns
     ///
-    /// `SpectrogramResult<NonEmptyVec<Complex<f64>>>` - CQT coefficients for each bin
+    /// `SpectrogramResult<NonEmptyVec<Complex<T>>>` - CQT coefficients for each bin
     ///
     /// # Errors
     ///
     /// Returns `SpectrogramError` if input is invalid.
     #[inline]
-    pub fn apply(
+    pub fn apply<T: Sample>(
         &self,
-        samples: &NonEmptySlice<f64>,
-    ) -> SpectrogramResult<NonEmptyVec<Complex<f64>>> {
+        samples: &NonEmptySlice<T>,
+    ) -> SpectrogramResult<NonEmptyVec<Complex<T>>> {
         let mut cqt_result = Vec::with_capacity(self.kernels.len().get());
 
         // For each frequency bin
         for (bin_idx, kernel) in self.kernels.iter().enumerate() {
             let kernel_length = self.kernel_lengths[bin_idx];
 
-            // Time-domain correlation (more efficient for sparse kernels)
-            let mut correlation = Complex::new(0.0, 0.0);
+            // Time-domain correlation (more efficient for sparse kernels).
+            // The kernel is generated in f64; coefficients are converted to T
+            // on the fly so the input frame is processed natively in T.
+            let mut corr_re = T::zero();
+            let mut corr_im = T::zero();
             let start_idx = samples.len().get().saturating_sub(kernel_length.get());
 
             for (k_idx, &k) in kernel.iter().enumerate() {
                 let sample_idx = start_idx + k_idx;
                 if sample_idx < samples.len().get() {
                     let sample = samples[sample_idx];
-                    // Conjugate multiplication for correlation
-                    correlation += k.conj() * sample;
+                    // Conjugate multiplication for correlation: conj(k) * sample
+                    // = (k.re, -k.im) * sample.
+                    corr_re += T::from_f64(k.re) * sample;
+                    corr_im += T::from_f64(-k.im) * sample;
                 }
             }
 
-            cqt_result.push(correlation);
+            cqt_result.push(Complex::new(corr_re, corr_im));
         }
 
         // safety: cqt_result is non-empty since self.kernels is non-empty and samples is non-empty
@@ -513,9 +518,9 @@ impl CqtKernel {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
-pub struct CqtResult {
+pub struct CqtResult<T = f64> {
     /// Complex CQT coefficients with shape (`frequency_bins`, `time_frames`)
-    pub data: Array2<Complex<f64>>,
+    pub data: Array2<Complex<T>>,
     /// Center frequency for each bin in Hz
     pub frequencies: NonEmptyVec<f64>,
     /// Sample rate in Hz
@@ -524,15 +529,15 @@ pub struct CqtResult {
     pub hop_size: NonZeroUsize,
 }
 
-impl AsRef<Array2<Complex<f64>>> for CqtResult {
+impl<T> AsRef<Array2<Complex<T>>> for CqtResult<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<Complex<f64>> {
+    fn as_ref(&self) -> &Array2<Complex<T>> {
         &self.data
     }
 }
 
-impl Deref for CqtResult {
-    type Target = Array2<Complex<f64>>;
+impl<T> Deref for CqtResult<T> {
+    type Target = Array2<Complex<T>>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -540,7 +545,7 @@ impl Deref for CqtResult {
     }
 }
 
-impl CqtResult {
+impl<T: Sample> CqtResult<T> {
     /// Get the number of frequency bins.
     ///
     /// # Returns
@@ -580,13 +585,13 @@ impl CqtResult {
     ///
     /// # Returns
     ///
-    /// `Array2<f64>` - Magnitude spectrogram
+    /// `Array2<T>` - Magnitude spectrogram
     #[inline]
     #[must_use]
-    pub fn to_magnitude(&self) -> Array2<f64> {
-        let mut magnitude = Array2::<f64>::zeros(self.data.dim());
+    pub fn to_magnitude(&self) -> Array2<T> {
+        let mut magnitude = Array2::<T>::from_elem(self.data.dim(), T::zero());
         for ((i, j), val) in self.data.indexed_iter() {
-            magnitude[[i, j]] = val.norm();
+            magnitude[[i, j]] = (val.re * val.re + val.im * val.im).sqrt();
         }
         magnitude
     }
@@ -595,13 +600,13 @@ impl CqtResult {
     ///
     /// # Returns
     ///
-    /// `Array2<f64>` - Power spectrogram (squared magnitude)
+    /// `Array2<T>` - Power spectrogram (squared magnitude)
     #[inline]
     #[must_use]
-    pub fn to_power(&self) -> Array2<f64> {
-        let mut power = Array2::<f64>::zeros(self.data.dim());
+    pub fn to_power(&self) -> Array2<T> {
+        let mut power = Array2::<T>::from_elem(self.data.dim(), T::zero());
         for ((i, j), val) in self.data.indexed_iter() {
-            power[[i, j]] = val.norm_sqr();
+            power[[i, j]] = val.re * val.re + val.im * val.im;
         }
         power
     }
@@ -648,12 +653,12 @@ impl CqtResult {
 /// # }
 /// ```
 #[inline]
-pub fn cqt(
-    samples: &NonEmptySlice<f64>,
+pub fn cqt<T: Sample>(
+    samples: &NonEmptySlice<T>,
     sample_rate: f64,
     params: &CqtParams,
     hop_size: NonZeroUsize,
-) -> SpectrogramResult<CqtResult> {
+) -> SpectrogramResult<CqtResult<T>> {
     // Generate CQT kernels
     // Use a reasonable signal length for kernel generation (we'll apply to frames)
     let kernel_length = samples.len().min(nzu!(16384));
@@ -670,7 +675,8 @@ pub fn cqt(
     };
 
     // Allocate output matrix
-    let mut cqt_data = Array2::<Complex<f64>>::zeros((n_bins.get(), n_frames));
+    let mut cqt_data =
+        Array2::from_elem((n_bins.get(), n_frames), Complex::new(T::zero(), T::zero()));
 
     // Process each frame
     for frame_idx in 0..n_frames {

@@ -133,7 +133,7 @@ fn efficient_batch_processing() -> SpectrogramResult<()> {
 
     // Create plan once
     let planner = SpectrogramPlanner::new();
-    let mut plan = planner.mel_plan::<Decibels>(&params, &mel, Some(&db))?;
+    let mut plan = planner.mel_plan::<Decibels, _>(&params, &mel, Some(&db))?;
 
     // Reuse for all signals (much faster!)
     for signal in signals {
@@ -160,7 +160,7 @@ fn _2d_fft_and_image_processing() -> SpectrogramResult<()> {
     // Output: [256, 129] due to Hermitian symmetry
 
     // Apply Gaussian blur via FFT
-    let kernel = gaussian_kernel_2d(spectrograms::nzu!(9), 2.0)?;
+    let kernel = gaussian_kernel_2d::<f64>(spectrograms::nzu!(9), 2.0)?;
 
     let _blurred = convolve_fft(&image.view(), &kernel.view())?;
 
@@ -359,8 +359,8 @@ fn window_functions() -> SpectrogramResult<()> {
     let gauss = WindowType::Gaussian { std: 0.4 };
 
     // Generate windows
-    let hann_window = make_window(WindowType::Hanning, nzu!(512));
-    let kaiser_window = make_window(WindowType::Kaiser { beta: 8.0 }, nzu!(512));
+    let hann_window = make_window::<f64>(WindowType::Hanning, nzu!(512));
+    let kaiser_window = make_window::<f64>(WindowType::Kaiser { beta: 8.0 }, nzu!(512));
     // etc.
 
     Ok(())

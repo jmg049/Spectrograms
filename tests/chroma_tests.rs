@@ -221,7 +221,7 @@ fn test_chroma_normalization_max() {
 #[test]
 fn test_chroma_silence() {
     let sample_rate = 16000.0;
-    let samples = vec![0.0; 16000];
+    let samples = vec![0.0f64; 16000];
     let samples = NonEmptyVec::new(samples).unwrap();
 
     let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true).unwrap();

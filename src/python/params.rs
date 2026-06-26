@@ -2,15 +2,17 @@
 
 use std::num::NonZeroUsize;
 
-use num_complex::Complex;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1};
+use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
 
 use crate::{
     ChromaNorm, ChromaParams, CqtParams, ErbParams, LogHzParams, LogParams, MelNorm, MelParams,
-    MfccParams, SpectrogramParams, StftParams, StftResult, WindowType,
+    MfccParams, SpectrogramParams, StftParams, StftResult, WindowType, make_window,
 };
+
+use super::dtype::{Dtype, parse_dtype, vec1_to_py};
+use super::spectrogram::{PyComplexArrayData, PyScalar, complex_dlpack};
 
 /// Python wrapper for `WindowType`.
 ///
@@ -192,10 +194,12 @@ impl PyWindowType {
     /// numpy.ndarray
     ///     Hanning window of length `n`
     #[staticmethod]
-    #[pyo3(signature = (n: "int"), text_signature = "(n: int) -> numpy.ndarray")]
-    fn make_hanning(py: Python<'_>, n: NonZeroUsize) -> Bound<'_, PyArray1<f64>> {
-        let window_vec = crate::window::hanning_window(n);
-        PyArray1::from_vec(py, window_vec.into_vec())
+    #[pyo3(signature = (n: "int", dtype: "str" = None), text_signature = "(n: int, dtype: str = 'float64') -> numpy.ndarray")]
+    fn make_hanning(py: Python<'_>, n: NonZeroUsize, dtype: Option<&str>) -> PyResult<Py<PyAny>> {
+        Ok(match parse_dtype(dtype)? {
+            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Hanning, n).into_vec()),
+            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Hanning, n).into_vec()),
+        })
     }
 
     /// Create a Hamming window of length `n`.
@@ -211,10 +215,12 @@ impl PyWindowType {
     /// numpy.ndarray
     ///    Hamming window of length `n`
     #[staticmethod]
-    #[pyo3(signature = (n: "int"), text_signature = "(n: int) -> numpy.ndarray")]
-    fn make_hamming(py: Python<'_>, n: NonZeroUsize) -> Bound<'_, PyArray1<f64>> {
-        let window_vec = crate::window::hamming_window(n);
-        PyArray1::from_vec(py, window_vec.into_vec())
+    #[pyo3(signature = (n: "int", dtype: "str" = None), text_signature = "(n: int, dtype: str = 'float64') -> numpy.ndarray")]
+    fn make_hamming(py: Python<'_>, n: NonZeroUsize, dtype: Option<&str>) -> PyResult<Py<PyAny>> {
+        Ok(match parse_dtype(dtype)? {
+            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Hamming, n).into_vec()),
+            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Hamming, n).into_vec()),
+        })
     }
 
     /// Create a Blackman window of length `n`.
@@ -230,10 +236,12 @@ impl PyWindowType {
     /// numpy.ndarray
     ///     Blackman window of length `n`
     #[staticmethod]
-    #[pyo3(signature = (n: "int"), text_signature = "(n: int) -> numpy.ndarray")]
-    fn make_blackman(py: Python<'_>, n: NonZeroUsize) -> Bound<'_, PyArray1<f64>> {
-        let window_vec = crate::window::blackman_window(n);
-        PyArray1::from_vec(py, window_vec.into_vec())
+    #[pyo3(signature = (n: "int", dtype: "str" = None), text_signature = "(n: int, dtype: str = 'float64') -> numpy.ndarray")]
+    fn make_blackman(py: Python<'_>, n: NonZeroUsize, dtype: Option<&str>) -> PyResult<Py<PyAny>> {
+        Ok(match parse_dtype(dtype)? {
+            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Blackman, n).into_vec()),
+            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Blackman, n).into_vec()),
+        })
     }
 
     /// Create a Kaiser window of length `n` with parameter `beta`.
@@ -250,10 +258,17 @@ impl PyWindowType {
     /// numpy.ndarray
     ///     Kaiser window of length `n`
     #[staticmethod]
-    #[pyo3(signature = (n: "int", beta: "float"), text_signature = "(n: int, beta: float) -> numpy.ndarray")]
-    fn make_kaiser(py: Python<'_>, n: NonZeroUsize, beta: f64) -> Bound<'_, PyArray1<f64>> {
-        let window_vec = crate::window::kaiser_window(n, beta);
-        PyArray1::from_vec(py, window_vec.into_vec())
+    #[pyo3(signature = (n: "int", beta: "float", dtype: "str" = None), text_signature = "(n: int, beta: float, dtype: str = 'float64') -> numpy.ndarray")]
+    fn make_kaiser(
+        py: Python<'_>,
+        n: NonZeroUsize,
+        beta: f64,
+        dtype: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        Ok(match parse_dtype(dtype)? {
+            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Kaiser { beta }, n).into_vec()),
+            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Kaiser { beta }, n).into_vec()),
+        })
     }
 
     /// Create a Gaussian window of length `n` with standard deviation `std`.
@@ -270,10 +285,17 @@ impl PyWindowType {
     /// numpy.ndarray
     ///     Gaussian window of length `n`
     #[staticmethod]
-    #[pyo3(signature = (n: "int", std: "float"), text_signature = "(n: int, std: float) -> numpy.ndarray")]
-    fn make_gaussian(py: Python<'_>, n: NonZeroUsize, std: f64) -> Bound<'_, PyArray1<f64>> {
-        let window_vec = crate::window::gaussian_window(n, std);
-        PyArray1::from_vec(py, window_vec.into_vec())
+    #[pyo3(signature = (n: "int", std: "float", dtype: "str" = None), text_signature = "(n: int, std: float, dtype: str = 'float64') -> numpy.ndarray")]
+    fn make_gaussian(
+        py: Python<'_>,
+        n: NonZeroUsize,
+        std: f64,
+        dtype: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        Ok(match parse_dtype(dtype)? {
+            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Gaussian { std }, n).into_vec()),
+            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Gaussian { std }, n).into_vec()),
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -287,77 +309,152 @@ impl From<WindowType> for PyWindowType {
     }
 }
 
-#[pyclass(name = "StftResult", from_py_object)]
-#[derive(Clone, Debug)]
+/// Raw STFT computation result.
+///
+/// Carries the complex STFT matrix as a native-precision NumPy array
+/// (`complex64` or `complex128`, paired with the real :attr:`dtype`
+/// `"float32"`/`"float64"`) plus the frequency axis, sample rate and the STFT
+/// parameters used. The data lives on the Python heap so it can be shared
+/// zero-copy with array libraries via ``__array__`` / ``__dlpack__``.
+#[pyclass(name = "StftResult", skip_from_py_object)]
 pub struct PyStftResult {
-    pub(crate) inner: StftResult,
-}
-
-impl From<StftResult> for PyStftResult {
-    fn from(inner: StftResult) -> Self {
-        Self { inner }
-    }
-}
-
-impl From<PyStftResult> for StftResult {
-    #[inline]
-    fn from(val: PyStftResult) -> Self {
-        val.inner
-    }
+    data: PyComplexArrayData,
+    frequencies: Vec<f64>,
+    sample_rate: f64,
+    params: StftParams,
+    n_bins: usize,
+    n_frames: usize,
 }
 
 impl PyStftResult {
-    #[must_use]
-    pub const fn from_inner(inner: StftResult) -> Self {
-        Self { inner }
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> StftResult {
-        self.inner
+    /// Build a `PyStftResult` from a computed Rust [`StftResult`], moving its
+    /// complex data onto the Python heap (no copy).
+    pub(crate) fn from_stft_result<T: PyScalar>(py: Python<'_>, result: StftResult<T>) -> Self {
+        let n_bins = result.data.nrows();
+        let n_frames = result.data.ncols();
+        let frequencies = result.frequencies.to_vec();
+        let sample_rate = result.sample_rate;
+        let params = result.params.clone();
+        let data = T::into_complex_array_data(py, result.data);
+        Self {
+            data,
+            frequencies,
+            sample_rate,
+            params,
+            n_bins,
+            n_frames,
+        }
     }
 }
 
 #[pymethods]
 impl PyStftResult {
+    /// Complex STFT matrix as a NumPy array (`complex64`/`complex128`) with
+    /// shape (`n_bins`, `n_frames`).
     #[getter]
-    fn n_bins(&self) -> usize {
-        self.inner.n_bins().get()
+    fn data<'py>(&self, py: Python<'py>) -> Bound<'py, PyAny> {
+        self.data.bind(py)
+    }
+
+    /// Real-precision dtype name of the stored data (`"float32"` /
+    /// `"float64"`). The numpy array itself is `complex64`/`complex128`.
+    #[getter]
+    const fn dtype(&self) -> &'static str {
+        self.data.dtype()
     }
 
     #[getter]
-    fn n_frames(&self) -> usize {
-        self.inner.n_frames().get()
+    const fn n_bins(&self) -> usize {
+        self.n_bins
+    }
+
+    #[getter]
+    const fn n_frames(&self) -> usize {
+        self.n_frames
+    }
+
+    /// Shape of the STFT matrix as (`n_bins`, `n_frames`).
+    #[getter]
+    const fn shape(&self) -> (usize, usize) {
+        (self.n_bins, self.n_frames)
+    }
+
+    /// Frequency axis values in Hz.
+    #[getter]
+    fn frequencies(&self) -> Vec<f64> {
+        self.frequencies.clone()
     }
 
     #[getter]
     fn frequency_resolution(&self) -> f64 {
-        self.inner.frequency_resolution()
+        self.sample_rate / self.params.n_fft().get() as f64
     }
 
     #[getter]
     fn time_resolution(&self) -> f64 {
-        self.inner.time_resolution()
+        self.params.hop_size().get() as f64 / self.sample_rate
     }
 
     #[getter]
     fn params(&self) -> PyStftParams {
         PyStftParams {
-            inner: self.inner.params.clone(),
+            inner: self.params.clone(),
         }
     }
 
     #[getter]
     const fn sample_rate(&self) -> f64 {
-        self.inner.sample_rate
+        self.sample_rate
     }
 
-    fn norm<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<f64>> {
-        PyArray2::from_owned_array(py, self.inner.norm())
+    /// Real magnitude (`|X|`) of the STFT as a NumPy array. The element type
+    /// follows :attr:`dtype` (`float32`/`float64`).
+    fn norm<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let np = py.import("numpy")?;
+        np.call_method1("abs", (self.data.bind(py),))
     }
 
-    fn data<'py>(&'py self, py: Python<'py>) -> Bound<'py, PyArray2<Complex<f64>>> {
-        PyArray2::from_owned_array(py, self.inner.data.clone())
+    #[pyo3(signature = (dtype=None))]
+    fn __array__<'py>(
+        &self,
+        py: Python<'py>,
+        dtype: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let arr = self.data.bind(py);
+        if let Some(dt) = dtype {
+            arr.call_method1("astype", (dt,))
+        } else {
+            Ok(arr)
+        }
+    }
+
+    /// Return the device type and device ID for DLPack protocol.
+    #[staticmethod]
+    const fn __dlpack_device__() -> (i32, i32) {
+        (1, 0) // (kDLCPU, device_id=0)
+    }
+
+    /// Export the complex STFT data as a DLPack capsule for tensor exchange.
+    #[pyo3(signature = (*, stream=None, max_version=None, dl_device=None, copy=None))]
+    fn __dlpack__<'py>(
+        &self,
+        py: Python<'py>,
+        stream: Option<&Bound<'py, PyAny>>,
+        max_version: Option<(u32, u32)>,
+        dl_device: Option<(i32, i32)>,
+        copy: Option<bool>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyCapsule>> {
+        complex_dlpack(py, &self.data, stream, max_version, dl_device, copy)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "StftResult(shape=({}, {}), dtype={}, sample_rate={})",
+            self.n_bins,
+            self.n_frames,
+            self.dtype(),
+            self.sample_rate,
+        )
     }
 }
 

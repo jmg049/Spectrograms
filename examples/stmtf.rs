@@ -78,7 +78,7 @@ fn main() -> SpectrogramResult<()> {
     let time_frames = spectrogram.n_frames().get();
 
     // Spectral modulation frequencies (cycles per bin)
-    let spectral_mod_freqs = fftfreq(freq_bins, 1.0);
+    let spectral_mod_freqs = fftfreq::<f64>(freq_bins, 1.0);
 
     // Temporal modulation frequencies (Hz)
     // Use actual time step from spectrogram
@@ -88,7 +88,7 @@ fn main() -> SpectrogramResult<()> {
     } else {
         params.frame_period_seconds()
     };
-    let temporal_mod_freqs = fftfreq(time_frames, time_step);
+    let temporal_mod_freqs = fftfreq::<f64>(time_frames, time_step);
 
     println!("Modulation frequency ranges:");
     println!(

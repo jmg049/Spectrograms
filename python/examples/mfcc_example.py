@@ -84,7 +84,9 @@ def main():
     print(f"  Number of mel bands: {n_mels}")
 
     print("\nComputing MFCCs...")
-    mfccs = sg.compute_mfcc(signal, stft, sample_rate, n_mels, mfcc_params)
+    # compute_mfcc returns an Mfcc result object; take .data for direct
+    # NumPy indexing below.
+    mfccs = sg.compute_mfcc(signal, stft, sample_rate, n_mels, mfcc_params).data
 
     print(f"\nMFCCs computed:")
     print(f"  Shape: {mfccs.shape} (n_mfcc x n_frames)")
@@ -118,7 +120,7 @@ def main():
 
     mfccs_standard = sg.compute_mfcc(
         signal, stft, sample_rate, n_mels, standard_mfcc_params
-    )
+    ).data
     print(f"\nStandard MFCCs computed: {mfccs_standard.shape}")
 
     # Verify they're the same (both use 13 coefficients)
@@ -137,7 +139,7 @@ def main():
 
     for n_coeff in coefficient_counts:
         params = sg.MfccParams(n_mfcc=n_coeff)
-        result = sg.compute_mfcc(signal, stft, sample_rate, n_mels, params)
+        result = sg.compute_mfcc(signal, stft, sample_rate, n_mels, params).data
         print(f"\n{n_coeff} coefficients:")
         print(f"  Shape: {result.shape}")
         print(f"  Data range: [{np.min(result):.2f}, {np.max(result):.2f}]")

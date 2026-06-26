@@ -12,7 +12,7 @@ use pyo3::prelude::*;
 use crate::cqt::CqtKernel;
 use crate::erb::ErbFilterbank;
 use crate::{
-    CqtParams, ErbParams, R2cPlan, SpectrogramError, SpectrogramResult, WindowType,
+    CqtParams, ErbParams, R2cPlan, Sample, SpectrogramError, SpectrogramResult, WindowType,
     min_max_single_pass, nzu,
 };
 const EPS: f64 = 1e-12;
@@ -99,16 +99,18 @@ impl SparseMatrix {
     /// Perform sparse matrix-vector multiplication: out = self * input
     /// This is much faster than dense multiplication when the matrix is sparse.
     #[inline]
-    fn multiply_vec(&self, input: &[f64], out: &mut [f64]) {
+    fn multiply_vec<T: Sample>(&self, input: &[T], out: &mut [T]) {
         debug_assert_eq!(input.len(), self.ncols);
         debug_assert_eq!(out.len(), self.nrows);
 
+        // Filterbank coefficients are constructed in f64 (unchanged math) and
+        // converted to `T` at apply time, where they multiply the `T` data.
         for (row_idx, (row_values, row_indices)) in
             self.values.iter().zip(&self.indices).enumerate()
         {
-            let mut acc = 0.0;
+            let mut acc = T::zero();
             for (&value, &col_idx) in row_values.iter().zip(row_indices) {
-                acc += value * input[col_idx];
+                acc += T::from_f64(value) * input[col_idx];
             }
             out[row_idx] = acc;
         }
@@ -167,27 +169,28 @@ use crate::fft_backend::r2c_output_size;
 ///
 /// - `FreqScale`: Frequency scale type (e.g. `LinearHz`, `LogHz`, `Mel`, etc.)
 /// - `AmpScale`: Amplitude scaling type (e.g. `Power`, `Magnitude`, `Decibels`, etc.)
-pub struct SpectrogramPlan<FreqScale, AmpScale>
+pub struct SpectrogramPlan<FreqScale, AmpScale, T = f64>
 where
     AmpScale: AmpScaleSpec + 'static,
     FreqScale: Copy + Clone + 'static,
 {
     params: SpectrogramParams,
 
-    stft: StftPlan,
+    stft: StftPlan<T>,
     mapping: FrequencyMapping<FreqScale>,
     scaling: AmplitudeScaling<AmpScale>,
 
     freq_axis: FrequencyAxis<FreqScale>,
-    workspace: Workspace,
+    workspace: Workspace<T>,
 
     _amp: PhantomData<AmpScale>,
 }
 
-impl<FreqScale, AmpScale> SpectrogramPlan<FreqScale, AmpScale>
+impl<FreqScale, AmpScale, T> SpectrogramPlan<FreqScale, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
     FreqScale: Copy + Clone + 'static,
+    T: Sample,
 {
     /// Get the spectrogram parameters used to create this plan.
     ///
@@ -236,13 +239,13 @@ where
     #[inline]
     pub fn compute(
         &mut self,
-        samples: &NonEmptySlice<f64>,
-    ) -> SpectrogramResult<Spectrogram<FreqScale, AmpScale>> {
+        samples: &NonEmptySlice<T>,
+    ) -> SpectrogramResult<Spectrogram<FreqScale, AmpScale, T>> {
         let n_frames = self.stft.frame_count(samples.len())?;
         let n_bins = self.mapping.output_bins();
 
         // Create output matrix: (n_bins, n_frames)
-        let mut data = Array2::<f64>::zeros((n_bins.get(), n_frames.get()));
+        let mut data = Array2::<T>::zeros((n_bins.get(), n_frames.get()));
 
         // Ensure workspace is correctly sized
         self.workspace
@@ -320,7 +323,7 @@ where
     /// let params = SpectrogramParams::new(stft, 16000.0)?;
     ///
     /// let planner = SpectrogramPlanner::new();
-    /// let mut plan = planner.linear_plan::<Power>(&params, None)?;
+    /// let mut plan = planner.linear_plan::<Power, _>(&params, None)?;
     ///
     /// // Compute just the first frame
     /// let frame = plan.compute_frame(&samples, 0)?;
@@ -331,9 +334,9 @@ where
     #[inline]
     pub fn compute_frame(
         &mut self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         frame_idx: usize,
-    ) -> SpectrogramResult<NonEmptyVec<f64>> {
+    ) -> SpectrogramResult<NonEmptyVec<T>> {
         let n_bins = self.mapping.output_bins();
 
         // Ensure workspace is correctly sized
@@ -399,7 +402,7 @@ where
     /// let params = SpectrogramParams::new(stft, 16000.0)?;
     ///
     /// let planner = SpectrogramPlanner::new();
-    /// let mut plan = planner.linear_plan::<Power>(&params, None)?;
+    /// let mut plan = planner.linear_plan::<Power, _>(&params, None)?;
     ///
     /// // Pre-allocate output buffer
     /// let mut output = Array2::<f64>::zeros((257, 63));
@@ -410,8 +413,8 @@ where
     #[inline]
     pub fn compute_into(
         &mut self,
-        samples: &NonEmptySlice<f64>,
-        output: &mut Array2<f64>,
+        samples: &NonEmptySlice<T>,
+        output: &mut Array2<T>,
     ) -> SpectrogramResult<()> {
         let n_frames = self.stft.frame_count(samples.len())?;
         let n_bins = self.mapping.output_bins();
@@ -497,7 +500,7 @@ where
     /// let params = SpectrogramParams::new(stft, 16000.0)?;
     ///
     /// let planner = SpectrogramPlanner::new();
-    /// let plan = planner.linear_plan::<Power>(&params, None)?;
+    /// let plan = planner.linear_plan::<Power, f64>(&params, None)?;
     ///
     /// let (n_bins, n_frames) = plan.output_shape(nzu!(16000))?;
     /// assert_eq!(n_bins, nzu!(257));
@@ -528,9 +531,9 @@ where
 /// - `params`: STFT computation parameters
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct StftResult {
+pub struct StftResult<T = f64> {
     /// Complex STFT matrix with shape (`frequency_bins`, `time_frames`)
-    pub data: Array2<Complex<f64>>,
+    pub data: Array2<Complex<T>>,
     /// Frequency axis in Hz
     pub frequencies: NonEmptyVec<f64>,
     /// Sample rate in Hz
@@ -538,7 +541,7 @@ pub struct StftResult {
     pub params: StftParams,
 }
 
-impl StftResult {
+impl<T: Sample> StftResult<T> {
     /// Get the number of frequency bins.
     ///
     /// # Returns
@@ -591,27 +594,27 @@ impl StftResult {
     ///
     /// An Array2\<f64\> containing the norms of each complex number in self.data.
     #[inline]
-    pub fn norm(&self) -> Array2<f64> {
+    pub fn norm(&self) -> Array2<T> {
         self.as_ref().mapv(Complex::norm)
     }
 }
 
-impl AsRef<Array2<Complex<f64>>> for StftResult {
+impl<T: Sample> AsRef<Array2<Complex<T>>> for StftResult<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<Complex<f64>> {
+    fn as_ref(&self) -> &Array2<Complex<T>> {
         &self.data
     }
 }
 
-impl AsMut<Array2<Complex<f64>>> for StftResult {
+impl<T: Sample> AsMut<Array2<Complex<T>>> for StftResult<T> {
     #[inline]
-    fn as_mut(&mut self) -> &mut Array2<Complex<f64>> {
+    fn as_mut(&mut self) -> &mut Array2<Complex<T>> {
         &mut self.data
     }
 }
 
-impl Deref for StftResult {
-    type Target = Array2<Complex<f64>>;
+impl<T: Sample> Deref for StftResult<T> {
+    type Target = Array2<Complex<T>>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -619,7 +622,7 @@ impl Deref for StftResult {
     }
 }
 
-impl DerefMut for StftResult {
+impl<T: Sample> DerefMut for StftResult<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
@@ -716,12 +719,12 @@ impl SpectrogramPlanner {
     /// # }
     /// ```
     #[inline]
-    pub fn compute_stft(
+    pub fn compute_stft<T: Sample>(
         &self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
-    ) -> SpectrogramResult<StftResult> {
-        let mut plan = StftPlan::new(params)?;
+    ) -> SpectrogramResult<StftResult<T>> {
+        let mut plan = StftPlan::<T>::new(params)?;
         plan.compute(samples, params)
     }
 
@@ -779,7 +782,7 @@ impl SpectrogramPlanner {
             )));
         }
 
-        let window_samples = make_window(window, n_fft);
+        let window_samples = make_window::<f64>(window, n_fft);
         let out_len = r2c_output_size(n_fft.get());
 
         // Create FFT plan
@@ -887,20 +890,20 @@ impl SpectrogramPlanner {
     ///
     /// Returns an error if the plan cannot be created due to invalid parameters.
     #[inline]
-    pub fn linear_plan<AmpScale>(
+    pub fn linear_plan<AmpScale, T: Sample>(
         &self,
         params: &SpectrogramParams,
         db: Option<&LogParams>, // only used when AmpScale = Decibels
-    ) -> SpectrogramResult<SpectrogramPlan<LinearHz, AmpScale>>
+    ) -> SpectrogramResult<SpectrogramPlan<LinearHz, AmpScale, T>>
     where
         AmpScale: AmpScaleSpec + 'static,
     {
-        let stft = StftPlan::new(params)?;
+        let stft = StftPlan::<T>::new(params)?;
         let mapping = FrequencyMapping::<LinearHz>::new(params)?;
         let scaling = AmplitudeScaling::<AmpScale>::new(db);
         let freq_axis = build_frequency_axis::<LinearHz>(params, &mapping);
 
-        let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
+        let workspace = Workspace::<T>::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
             params: params.clone(),
@@ -938,12 +941,12 @@ impl SpectrogramPlanner {
     ///
     /// Returns an error if the plan cannot be created due to invalid parameters.
     #[inline]
-    pub fn mel_plan<AmpScale>(
+    pub fn mel_plan<AmpScale, T: Sample>(
         &self,
         params: &SpectrogramParams,
         mel: &MelParams,
         db: Option<&LogParams>, // only used when AmpScale = Decibels
-    ) -> SpectrogramResult<SpectrogramPlan<Mel, AmpScale>>
+    ) -> SpectrogramResult<SpectrogramPlan<Mel, AmpScale, T>>
     where
         AmpScale: AmpScaleSpec + 'static,
     {
@@ -955,12 +958,12 @@ impl SpectrogramPlanner {
             ));
         }
 
-        let stft = StftPlan::new(params)?;
+        let stft = StftPlan::<T>::new(params)?;
         let mapping = FrequencyMapping::<Mel>::new_mel(params, mel)?;
         let scaling = AmplitudeScaling::<AmpScale>::new(db);
         let freq_axis = build_frequency_axis::<Mel>(params, &mapping);
 
-        let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
+        let workspace = Workspace::<T>::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
             params: params.clone(),
@@ -999,12 +1002,12 @@ impl SpectrogramPlanner {
     ///
     /// Returns an error if the plan cannot be created due to invalid parameters.
     #[inline]
-    pub fn erb_plan<AmpScale>(
+    pub fn erb_plan<AmpScale, T: Sample>(
         &self,
         params: &SpectrogramParams,
         erb: &ErbParams,
         db: Option<&LogParams>,
-    ) -> SpectrogramResult<SpectrogramPlan<Erb, AmpScale>>
+    ) -> SpectrogramResult<SpectrogramPlan<Erb, AmpScale, T>>
     where
         AmpScale: AmpScaleSpec + 'static,
     {
@@ -1018,12 +1021,12 @@ impl SpectrogramPlanner {
             )));
         }
 
-        let stft = StftPlan::new(params)?;
+        let stft = StftPlan::<T>::new(params)?;
         let mapping = FrequencyMapping::<Erb>::new_erb(params, erb)?;
         let scaling = AmplitudeScaling::<AmpScale>::new(db);
         let freq_axis = build_frequency_axis::<Erb>(params, &mapping);
 
-        let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
+        let workspace = Workspace::<T>::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
             params: params.clone(),
@@ -1061,12 +1064,12 @@ impl SpectrogramPlanner {
     ///
     /// Returns an error if the plan cannot be created due to invalid parameters.
     #[inline]
-    pub fn log_hz_plan<AmpScale>(
+    pub fn log_hz_plan<AmpScale, T: Sample>(
         &self,
         params: &SpectrogramParams,
         loghz: &LogHzParams,
         db: Option<&LogParams>,
-    ) -> SpectrogramResult<SpectrogramPlan<LogHz, AmpScale>>
+    ) -> SpectrogramResult<SpectrogramPlan<LogHz, AmpScale, T>>
     where
         AmpScale: AmpScaleSpec + 'static,
     {
@@ -1080,12 +1083,12 @@ impl SpectrogramPlanner {
             )));
         }
 
-        let stft = StftPlan::new(params)?;
+        let stft = StftPlan::<T>::new(params)?;
         let mapping = FrequencyMapping::<LogHz>::new_loghz(params, loghz)?;
         let scaling = AmplitudeScaling::<AmpScale>::new(db);
         let freq_axis = build_frequency_axis::<LogHz>(params, &mapping);
 
-        let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
+        let workspace = Workspace::<T>::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
             params: params.clone(),
@@ -1121,21 +1124,21 @@ impl SpectrogramPlanner {
     ///
     /// Returns an error if the plan cannot be created due to invalid parameters.
     #[inline]
-    pub fn cqt_plan<AmpScale>(
+    pub fn cqt_plan<AmpScale, T: Sample>(
         &self,
         params: &SpectrogramParams,
         cqt: &CqtParams,
         db: Option<&LogParams>, // only used when AmpScale = Decibels
-    ) -> SpectrogramResult<SpectrogramPlan<Cqt, AmpScale>>
+    ) -> SpectrogramResult<SpectrogramPlan<Cqt, AmpScale, T>>
     where
         AmpScale: AmpScaleSpec + 'static,
     {
-        let stft = StftPlan::new(params)?;
+        let stft = StftPlan::<T>::new(params)?;
         let mapping = FrequencyMapping::<Cqt>::new(params, cqt)?;
         let scaling = AmplitudeScaling::<AmpScale>::new(db);
         let freq_axis = build_frequency_axis::<Cqt>(params, &mapping);
 
-        let workspace = Workspace::new(stft.n_fft, stft.out_len, mapping.output_bins());
+        let workspace = Workspace::<T>::new(stft.n_fft, stft.out_len, mapping.output_bins());
 
         Ok(SpectrogramPlan {
             params: params.clone(),
@@ -1167,23 +1170,23 @@ impl SpectrogramPlanner {
 /// - `fft`: Boxed FFT plan for real-to-complex transformation.
 /// - `fft_out`: Internal buffer for FFT output.
 /// - `frame`: Internal buffer for windowed audio frames.
-pub struct StftPlan {
+pub struct StftPlan<T = f64> {
     n_fft: NonZeroUsize,
     hop_size: NonZeroUsize,
-    window: NonEmptyVec<f64>,
+    window: NonEmptyVec<T>,
     centre: bool,
 
     out_len: NonZeroUsize,
 
     // FFT plan (reused for all frames)
-    fft: Box<dyn R2cPlan>,
+    fft: Box<dyn R2cPlan<T>>,
 
     // internal scratch
-    fft_out: NonEmptyVec<Complex<f64>>,
-    frame: NonEmptyVec<f64>,
+    fft_out: NonEmptyVec<Complex<T>>,
+    frame: NonEmptyVec<T>,
 }
 
-impl StftPlan {
+impl<T: Sample> StftPlan<T> {
     /// Create a new STFT plan from parameters.
     ///
     /// # Arguments
@@ -1210,20 +1213,7 @@ impl StftPlan {
         let out_len = NonZeroUsize::new(out_len)
             .ok_or_else(|| SpectrogramError::invalid_input("FFT output length must be non-zero"))?;
 
-        #[cfg(feature = "realfft")]
-        let fft = {
-            let mut planner = crate::RealFftPlanner::new();
-            let plan = planner.get_or_create(n_fft.get());
-            let plan = crate::RealFftPlan::new(n_fft.get(), plan);
-            Box::new(plan)
-        };
-
-        #[cfg(feature = "fftw")]
-        let fft = {
-            use std::sync::Arc;
-            let plan = crate::FftwPlanner::build_plan(n_fft.get())?;
-            Box::new(crate::FftwPlan::new(Arc::new(plan)))
-        };
+        let fft: Box<dyn R2cPlan<T>> = Box::new(T::plan_r2c(n_fft.get())?);
 
         Ok(Self {
             n_fft,
@@ -1232,8 +1222,8 @@ impl StftPlan {
             centre,
             out_len,
             fft,
-            fft_out: non_empty_vec![Complex::new(0.0, 0.0); out_len],
-            frame: non_empty_vec![0.0; n_fft],
+            fft_out: non_empty_vec![Complex::new(T::zero(), T::zero()); out_len],
+            frame: non_empty_vec![T::zero(); n_fft],
         })
     }
 
@@ -1262,7 +1252,7 @@ impl StftPlan {
     /// Compute one frame FFT using internal buffers only.
     fn compute_frame_fft_simple(
         &mut self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         frame_idx: usize,
     ) -> SpectrogramResult<()> {
         let out = self.frame.as_mut_slice();
@@ -1279,7 +1269,7 @@ impl StftPlan {
             let s_idx = v_idx as isize - pad as isize;
 
             let sample_val = if s_idx < 0 || (s_idx as usize) >= samples.len().get() {
-                0.0
+                T::zero()
             } else {
                 samples[s_idx as usize]
             };
@@ -1299,9 +1289,9 @@ impl StftPlan {
     /// - converts to magnitude/power based on `AmpScale` later
     fn compute_frame_spectrum(
         &mut self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         frame_idx: usize,
-        workspace: &mut Workspace,
+        workspace: &mut Workspace<T>,
     ) -> SpectrogramResult<()> {
         let out = workspace.frame.as_mut_slice();
 
@@ -1321,7 +1311,7 @@ impl StftPlan {
             let s_idx = v_idx as isize - pad as isize;
 
             let sample_val = if s_idx < 0 || (s_idx as usize) >= samples.len().get() {
-                0.0
+                T::zero()
             } else {
                 samples[s_idx as usize]
             };
@@ -1363,9 +1353,9 @@ impl StftPlan {
     /// Returns an error if frame index is out of bounds.
     fn fill_frame_unwindowed(
         &self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         frame_idx: usize,
-        workspace: &mut Workspace,
+        workspace: &mut Workspace<T>,
     ) -> SpectrogramResult<()> {
         let out = workspace.frame.as_mut_slice();
         debug_assert_eq!(out.len(), self.n_fft.get());
@@ -1381,7 +1371,7 @@ impl StftPlan {
             let s_idx = v_idx as isize - pad as isize;
 
             let sample_val = if s_idx < 0 || (s_idx as usize) >= samples.len().get() {
-                0.0
+                T::zero()
             } else {
                 samples[s_idx as usize]
             };
@@ -1433,14 +1423,14 @@ impl StftPlan {
     #[inline]
     pub fn compute(
         &mut self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
-    ) -> SpectrogramResult<StftResult> {
+    ) -> SpectrogramResult<StftResult<T>> {
         let n_frames = self.frame_count(samples.len())?;
         let n_bins = self.out_len;
 
         // Allocate output matrix (frequency_bins x time_frames)
-        let mut data = Array2::<Complex<f64>>::zeros((n_bins.get(), n_frames.get()));
+        let mut data = Array2::<Complex<T>>::zeros((n_bins.get(), n_frames.get()));
 
         // Compute each frame
         for frame_idx in 0..n_frames.get() {
@@ -1509,9 +1499,9 @@ impl StftPlan {
     #[inline]
     pub fn compute_frame_simple(
         &mut self,
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         frame_idx: usize,
-    ) -> SpectrogramResult<NonEmptyVec<Complex<f64>>> {
+    ) -> SpectrogramResult<NonEmptyVec<Complex<T>>> {
         self.compute_frame_fft_simple(samples, frame_idx)?;
         Ok(self.fft_out.clone())
     }
@@ -1557,8 +1547,8 @@ impl StftPlan {
     #[inline]
     pub fn compute_into(
         &mut self,
-        samples: &NonEmptySlice<f64>,
-        output: &mut Array2<Complex<f64>>,
+        samples: &NonEmptySlice<T>,
+        output: &mut Array2<Complex<T>>,
     ) -> SpectrogramResult<()> {
         let n_frames = self.frame_count(samples.len())?;
         let n_bins = self.out_len;
@@ -1829,11 +1819,11 @@ impl<FreqScale> FrequencyMapping<FreqScale> {
         }
     }
 
-    fn apply(
+    fn apply<T: Sample>(
         &self,
-        spectrum: &NonEmptySlice<f64>,
-        frame: &NonEmptySlice<f64>,
-        out: &mut NonEmptySlice<f64>,
+        spectrum: &NonEmptySlice<T>,
+        frame: &NonEmptySlice<T>,
+        out: &mut NonEmptySlice<T>,
     ) -> SpectrogramResult<()> {
         match &self.kind {
             MappingKind::Identity { out_len } => {
@@ -1893,6 +1883,9 @@ impl<FreqScale> FrequencyMapping<FreqScale> {
                 // CQT works on time-domain unwindowed frame (not FFT spectrum).
                 // The CQT kernels contain windowing applied during kernel generation,
                 // so the input frame should be unwindowed to avoid double-windowing.
+                // The kernel coefficients are stored in f64 and converted to `T` at
+                // apply time inside `CqtKernel::apply`, which already operates on a
+                // `T` frame and yields `Complex<T>` coefficients.
                 let cqt_complex = kernel.apply(frame)?;
 
                 if out.len().get() != cqt_complex.len().get() {
@@ -1969,7 +1962,7 @@ pub trait AmpScaleSpec: Sized + Send + Sync {
     /// # Returns
     ///
     /// Converted amplitude value.
-    fn apply_from_power(power: f64) -> f64;
+    fn apply_from_power<T: Sample>(power: T) -> T;
 
     /// Apply dB conversion in-place on a power-domain vector.
     ///
@@ -1987,42 +1980,42 @@ pub trait AmpScaleSpec: Sized + Send + Sync {
     /// # Errors
     ///
     /// - If `floor_db` is not finite.
-    fn apply_db_in_place(x: &mut [f64], floor_db: f64) -> SpectrogramResult<()>;
+    fn apply_db_in_place<T: Sample>(x: &mut [T], floor_db: f64) -> SpectrogramResult<()>;
 }
 
 impl AmpScaleSpec for Power {
     #[inline]
-    fn apply_from_power(power: f64) -> f64 {
+    fn apply_from_power<T: Sample>(power: T) -> T {
         power
     }
 
     #[inline]
-    fn apply_db_in_place(_x: &mut [f64], _floor_db: f64) -> SpectrogramResult<()> {
+    fn apply_db_in_place<T: Sample>(_x: &mut [T], _floor_db: f64) -> SpectrogramResult<()> {
         Ok(())
     }
 }
 
 impl AmpScaleSpec for Magnitude {
     #[inline]
-    fn apply_from_power(power: f64) -> f64 {
+    fn apply_from_power<T: Sample>(power: T) -> T {
         power.sqrt()
     }
 
     #[inline]
-    fn apply_db_in_place(_x: &mut [f64], _floor_db: f64) -> SpectrogramResult<()> {
+    fn apply_db_in_place<T: Sample>(_x: &mut [T], _floor_db: f64) -> SpectrogramResult<()> {
         Ok(())
     }
 }
 
 impl AmpScaleSpec for Decibels {
     #[inline]
-    fn apply_from_power(power: f64) -> f64 {
+    fn apply_from_power<T: Sample>(power: T) -> T {
         // dB conversion is applied in batch, not here.
         power
     }
 
     #[inline]
-    fn apply_db_in_place(x: &mut [f64], floor_db: f64) -> SpectrogramResult<()> {
+    fn apply_db_in_place<T: Sample>(x: &mut [T], floor_db: f64) -> SpectrogramResult<()> {
         // Convert power -> dB: 10*log10(max(power, eps))
         // where eps is derived from floor_db to ensure consistency
         if !floor_db.is_finite() {
@@ -2031,11 +2024,13 @@ impl AmpScaleSpec for Decibels {
 
         // Convert floor_db to linear scale to get epsilon
         // e.g., floor_db = -80 dB -> eps = 10^(-80/10) = 1e-8
-        let eps = 10.0_f64.powf(floor_db / 10.0);
+        // The dB constants are evaluated in f64 (unchanged) and converted to `T`.
+        let eps = T::from_f64(10.0_f64.powf(floor_db / 10.0));
+        let ten = T::from_f64(10.0);
 
         for v in x.iter_mut() {
             // Clamp power to epsilon before log to avoid log(0) and ensure floor
-            *v = 10.0 * v.max(eps).log10();
+            *v = ten * v.max(eps).log10();
         }
         Ok(())
     }
@@ -2070,7 +2065,7 @@ where
     /// - Power: leaves values unchanged.
     /// - Magnitude: sqrt(power).
     /// - Decibels: converts power -> dB and floors at `db_floor`.
-    pub fn apply_in_place(&self, x: &mut [f64]) -> SpectrogramResult<()> {
+    pub fn apply_in_place<T: Sample>(&self, x: &mut [T]) -> SpectrogramResult<()> {
         // Convert from canonical power-domain intermediate into the requested linear domain.
         for v in x.iter_mut() {
             *v = AmpScale::apply_from_power(*v);
@@ -2086,35 +2081,35 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct Workspace {
-    spectrum: NonEmptyVec<f64>,         // out_len (power spectrum)
-    mapped: NonEmptyVec<f64>,           // n_bins (after mapping)
-    frame: NonEmptyVec<f64>,            // n_fft (windowed frame for FFT)
-    fft_out: NonEmptyVec<Complex<f64>>, // out_len (FFT output)
+struct Workspace<T = f64> {
+    spectrum: NonEmptyVec<T>,         // out_len (power spectrum, native T)
+    mapped: NonEmptyVec<T>,           // n_bins (after mapping, native T)
+    frame: NonEmptyVec<T>,            // n_fft (windowed frame for FFT)
+    fft_out: NonEmptyVec<Complex<T>>, // out_len (FFT output)
 }
 
-impl Workspace {
+impl<T: Sample> Workspace<T> {
     fn new(n_fft: NonZeroUsize, out_len: NonZeroUsize, n_bins: NonZeroUsize) -> Self {
         Self {
-            spectrum: non_empty_vec![0.0; out_len],
-            mapped: non_empty_vec![0.0; n_bins],
-            frame: non_empty_vec![0.0; n_fft],
-            fft_out: non_empty_vec![Complex::new(0.0, 0.0); out_len],
+            spectrum: non_empty_vec![T::zero(); out_len],
+            mapped: non_empty_vec![T::zero(); n_bins],
+            frame: non_empty_vec![T::zero(); n_fft],
+            fft_out: non_empty_vec![Complex::new(T::zero(), T::zero()); out_len],
         }
     }
 
     fn ensure_sizes(&mut self, n_fft: NonZeroUsize, out_len: NonZeroUsize, n_bins: NonZeroUsize) {
         if self.spectrum.len() != out_len {
-            self.spectrum.resize(out_len, 0.0);
+            self.spectrum.resize(out_len, T::zero());
         }
         if self.mapped.len() != n_bins {
-            self.mapped.resize(n_bins, 0.0);
+            self.mapped.resize(n_bins, T::zero());
         }
         if self.frame.len() != n_fft {
-            self.frame.resize(n_fft, 0.0);
+            self.frame.resize(n_fft, T::zero());
         }
         if self.fft_out.len() != out_len {
-            self.fft_out.resize(out_len, Complex::new(0.0, 0.0));
+            self.fft_out.resize(out_len, Complex::new(T::zero(), T::zero()));
         }
     }
 }
@@ -2161,7 +2156,7 @@ fn build_time_axis_seconds(params: &SpectrogramParams, n_frames: NonZeroUsize) -
 /// Panics if a custom window is provided with a size that does not match `n_fft`.
 #[inline]
 #[must_use]
-pub fn make_window(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<f64> {
+pub fn make_window<T: Sample>(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<T> {
     let n_fft = n_fft.get();
     let mut w = vec![0.0; n_fft];
 
@@ -2233,6 +2228,8 @@ pub fn make_window(window: WindowType, n_fft: NonZeroUsize) -> NonEmptyVec<f64> 
         }
     }
 
+    // Coefficients are computed in f64 above, then mapped to the requested scalar.
+    let w: Vec<T> = w.into_iter().map(T::from_f64).collect();
     // safety: window is guaranteed non-empty since n_fft > 0
     unsafe { NonEmptyVec::new_unchecked(w) }
 }
@@ -2547,22 +2544,23 @@ fn mel_band_centres_hz(
 /// * `_amp`: A phantom data marker for the amplitude scale type.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Spectrogram<FreqScale, AmpScale>
+pub struct Spectrogram<FreqScale, AmpScale, T = f64>
 where
     AmpScale: AmpScaleSpec + 'static,
     FreqScale: Copy + Clone + 'static,
 {
-    data: Array2<f64>,
+    data: Array2<T>,
     axes: Axes<FreqScale>,
     params: SpectrogramParams,
     #[cfg_attr(feature = "serde", serde(skip))]
     _amp: PhantomData<AmpScale>,
 }
 
-impl<FreqScale, AmpScale> Spectrogram<FreqScale, AmpScale>
+impl<FreqScale, AmpScale, T> Spectrogram<FreqScale, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
     FreqScale: Copy + Clone + 'static,
+    T: Sample,
 {
     /// Get the X-axis label.
     ///
@@ -2596,7 +2594,7 @@ where
     /// Internal constructor. Only callable inside the crate.
     ///
     /// All inputs must already be validated and consistent.
-    pub(crate) fn new(data: Array2<f64>, axes: Axes<FreqScale>, params: SpectrogramParams) -> Self {
+    pub(crate) fn new(data: Array2<T>, axes: Axes<FreqScale>, params: SpectrogramParams) -> Self {
         debug_assert_eq!(data.nrows(), axes.frequencies().len().get());
         debug_assert_eq!(data.ncols(), axes.times().len().get());
 
@@ -2614,7 +2612,7 @@ where
     ///
     /// * `data` - The new spectrogram data matrix.
     #[inline]
-    pub fn set_data(&mut self, data: Array2<f64>) {
+    pub fn set_data(&mut self, data: Array2<T>) {
         self.data = data;
     }
 
@@ -2625,7 +2623,7 @@ where
     /// A reference to the spectrogram data matrix.
     #[inline]
     #[must_use]
-    pub const fn data(&self) -> &Array2<f64> {
+    pub const fn data(&self) -> &Array2<T> {
         &self.data
     }
 
@@ -2639,7 +2637,7 @@ where
     /// The owned spectrogram data matrix.
     #[inline]
     #[must_use]
-    pub fn into_data(self) -> Array2<f64> {
+    pub fn into_data(self) -> Array2<T> {
         self.data
     }
 
@@ -2720,14 +2718,24 @@ where
         let type_self = std::any::TypeId::of::<AmpScale>();
 
         if type_self == std::any::TypeId::of::<Decibels>() {
-            let (min, max) = min_max_single_pass(self.data.as_slice()?);
+            let mut min = f64::INFINITY;
+            let mut max = f64::NEG_INFINITY;
+            for &v in &self.data {
+                let v = v.to_f64().unwrap_or(0.0);
+                if v < min {
+                    min = v;
+                }
+                if v > max {
+                    max = v;
+                }
+            }
             Some((min, max))
         } else if type_self == std::any::TypeId::of::<Power>() {
             // Not a dB spectrogram; compute dB range from power values
             let mut min_db = f64::INFINITY;
             let mut max_db = f64::NEG_INFINITY;
             for &v in &self.data {
-                let db = 10.0 * (v + EPS).log10();
+                let db = 10.0 * (v.to_f64().unwrap_or(0.0) + EPS).log10();
                 if db < min_db {
                     min_db = db;
                 }
@@ -2742,6 +2750,7 @@ where
             let mut max_db = f64::NEG_INFINITY;
 
             for &v in &self.data {
+                let v = v.to_f64().unwrap_or(0.0);
                 let power = v * v;
                 let db = 10.0 * (power + EPS).log10();
                 if db < min_db {
@@ -2784,23 +2793,25 @@ where
     }
 }
 
-impl<FreqScale, AmpScale> AsRef<Array2<f64>> for Spectrogram<FreqScale, AmpScale>
+impl<FreqScale, AmpScale, T> AsRef<Array2<T>> for Spectrogram<FreqScale, AmpScale, T>
 where
     FreqScale: Copy + Clone + 'static,
     AmpScale: AmpScaleSpec + 'static,
+    T: Sample,
 {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl<FreqScale, AmpScale> Deref for Spectrogram<FreqScale, AmpScale>
+impl<FreqScale, AmpScale, T> Deref for Spectrogram<FreqScale, AmpScale, T>
 where
     FreqScale: Copy + Clone + 'static,
     AmpScale: AmpScaleSpec + 'static,
+    T: Sample,
 {
-    type Target = Array2<f64>;
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -2808,10 +2819,11 @@ where
     }
 }
 
-impl<FreqScale, AmpScale> DerefMut for Spectrogram<FreqScale, AmpScale>
+impl<FreqScale, AmpScale, T> DerefMut for Spectrogram<FreqScale, AmpScale, T>
 where
     FreqScale: Copy + Clone + 'static,
     AmpScale: AmpScaleSpec + 'static,
+    T: Sample,
 {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -2819,7 +2831,7 @@ where
     }
 }
 
-impl<AmpScale> Spectrogram<LinearHz, AmpScale>
+impl<AmpScale, T: Sample> Spectrogram<LinearHz, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
 {
@@ -2873,7 +2885,7 @@ where
     /// ```
     #[inline]
     pub fn compute(
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
         db: Option<&LogParams>,
     ) -> SpectrogramResult<Self> {
@@ -2883,7 +2895,7 @@ where
     }
 }
 
-impl<AmpScale> Spectrogram<Mel, AmpScale>
+impl<AmpScale, T: Sample> Spectrogram<Mel, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
 {
@@ -2941,7 +2953,7 @@ where
     /// ```
     #[inline]
     pub fn compute(
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
         mel: &MelParams,
         db: Option<&LogParams>,
@@ -2952,7 +2964,7 @@ where
     }
 }
 
-impl<AmpScale> Spectrogram<Erb, AmpScale>
+impl<AmpScale, T: Sample> Spectrogram<Erb, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
 {
@@ -2999,7 +3011,7 @@ where
     /// ```
     #[inline]
     pub fn compute(
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
         erb: &ErbParams,
         db: Option<&LogParams>,
@@ -3010,7 +3022,7 @@ where
     }
 }
 
-impl<AmpScale> Spectrogram<LogHz, AmpScale>
+impl<AmpScale, T: Sample> Spectrogram<LogHz, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
 {
@@ -3057,7 +3069,7 @@ where
     /// ```
     #[inline]
     pub fn compute(
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
         loghz: &LogHzParams,
         db: Option<&LogParams>,
@@ -3068,7 +3080,7 @@ where
     }
 }
 
-impl<AmpScale> Spectrogram<Cqt, AmpScale>
+impl<AmpScale, T: Sample> Spectrogram<Cqt, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
 {
@@ -3091,7 +3103,7 @@ where
     ///
     #[inline]
     pub fn compute(
-        samples: &NonEmptySlice<f64>,
+        samples: &NonEmptySlice<T>,
         params: &SpectrogramParams,
         cqt: &CqtParams,
         db: Option<&LogParams>,
@@ -3134,10 +3146,11 @@ where
     }
 }
 
-impl<FreqScale, AmpScale> core::fmt::Display for Spectrogram<FreqScale, AmpScale>
+impl<FreqScale, AmpScale, T> core::fmt::Display for Spectrogram<FreqScale, AmpScale, T>
 where
     AmpScale: AmpScaleSpec + 'static,
     FreqScale: Copy + Clone + 'static,
+    T: Sample,
 {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -3164,10 +3177,16 @@ where
             writeln!(f, "    Centered: {}", self.params.stft().centre())?;
             writeln!(f)?;
 
-            // Display data statistics
-            let data_slice = self.data.as_slice().unwrap_or(&[]);
+            // Display data statistics (converted to f64 for formatting)
+            let data_slice: Vec<f64> = self
+                .data
+                .as_slice()
+                .unwrap_or(&[])
+                .iter()
+                .map(|&v| v.to_f64().unwrap_or(0.0))
+                .collect();
             if !data_slice.is_empty() {
-                let (min_val, max_val) = min_max_single_pass(data_slice);
+                let (min_val, max_val) = min_max_single_pass(&data_slice);
                 let mean = data_slice.iter().sum::<f64>() / data_slice.len() as f64;
                 writeln!(f, "  Data Statistics:")?;
                 writeln!(f, "    Min: {min_val:.6}")?;
@@ -3187,7 +3206,7 @@ where
                     if j > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{:9.4}", self.data[[i, j]])?;
+                    write!(f, "{:9.4}", self.data[[i, j]].to_f64().unwrap_or(0.0))?;
                 }
                 if cols > max_cols_to_display {
                     write!(f, ", ... ({} more)", cols - max_cols_to_display)?;
@@ -4468,10 +4487,10 @@ impl SpectrogramParamsBuilder {
 /// # }
 /// ```
 #[inline]
-pub fn fft(
-    samples: &NonEmptySlice<f64>,
+pub fn fft<T: Sample>(
+    samples: &NonEmptySlice<T>,
     n_fft: NonZeroUsize,
-) -> SpectrogramResult<Array1<Complex<f64>>> {
+) -> SpectrogramResult<Array1<Complex<T>>> {
     if samples.len() > n_fft {
         return Err(SpectrogramError::invalid_input(format!(
             "Input length ({}) exceeds FFT size ({})",
@@ -4482,25 +4501,10 @@ pub fn fft(
 
     let out_len = r2c_output_size(n_fft.get());
 
-    // Get FFT plan from global cache (or create if first use)
-    #[cfg(feature = "realfft")]
-    let mut fft = {
-        use crate::fft_backend::get_or_create_r2c_plan;
-        let plan = get_or_create_r2c_plan(n_fft.get())?;
-        // Clone the plan to get our own mutable copy with independent scratch buffer
-        // This is cheap - only clones the scratch buffer, not the expensive twiddle factors
-        (*plan).clone()
-    };
-
-    #[cfg(feature = "fftw")]
-    let mut fft = {
-        use std::sync::Arc;
-        let plan = crate::FftwPlanner::build_plan(n_fft.get())?;
-        crate::FftwPlan::new(Arc::new(plan))
-    };
+    let mut fft = T::plan_r2c(n_fft.get())?;
 
     let input = if samples.len() < n_fft {
-        let mut padded = vec![0.0; n_fft.get()];
+        let mut padded = vec![T::zero(); n_fft.get()];
         padded[..samples.len().get()].copy_from_slice(samples);
         // safety: samples.len() < n_fft checked above and n_fft > 0
 
@@ -4509,7 +4513,7 @@ pub fn fft(
         samples.to_non_empty_vec()
     };
 
-    let mut output = vec![Complex::new(0.0, 0.0); out_len];
+    let mut output = vec![Complex::new(T::zero(), T::zero()); out_len];
     fft.process(&input, &mut output)?;
     let output = Array1::from_vec(output);
     Ok(output)
@@ -4545,7 +4549,10 @@ pub fn fft(
 /// # Ok(())
 /// # }
 ///
-pub fn rfft(samples: &NonEmptySlice<f64>, n_fft: NonZeroUsize) -> SpectrogramResult<Array1<f64>> {
+pub fn rfft<T: Sample>(
+    samples: &NonEmptySlice<T>,
+    n_fft: NonZeroUsize,
+) -> SpectrogramResult<Array1<T>> {
     Ok(fft(samples, n_fft)?.mapv(Complex::norm))
 }
 
@@ -4601,11 +4608,11 @@ pub fn rfft(samples: &NonEmptySlice<f64>, n_fft: NonZeroUsize) -> SpectrogramRes
 /// # }
 /// ```
 #[inline]
-pub fn power_spectrum(
-    samples: &NonEmptySlice<f64>,
+pub fn power_spectrum<T: Sample>(
+    samples: &NonEmptySlice<T>,
     n_fft: NonZeroUsize,
     window: Option<WindowType>,
-) -> SpectrogramResult<NonEmptyVec<f64>> {
+) -> SpectrogramResult<NonEmptyVec<T>> {
     if samples.len() > n_fft {
         return Err(SpectrogramError::invalid_input(format!(
             "Input length ({}) exceeds FFT size ({})",
@@ -4614,11 +4621,11 @@ pub fn power_spectrum(
         )));
     }
 
-    let mut windowed = vec![0.0; n_fft.get()];
+    let mut windowed = vec![T::zero(); n_fft.get()];
     windowed[..samples.len().get()].copy_from_slice(samples);
 
     if let Some(win_type) = window {
-        let window_samples = make_window(win_type, n_fft);
+        let window_samples = make_window::<T>(win_type, n_fft);
         for i in 0..n_fft.get() {
             windowed[i] *= window_samples[i];
         }
@@ -4627,7 +4634,7 @@ pub fn power_spectrum(
     // safety: windowed is non-empty since n_fft > 0
     let windowed = unsafe { NonEmptySlice::new_unchecked(&windowed) };
     let fft_result = fft(windowed, n_fft)?;
-    let fft_result = fft_result
+    let fft_result: Vec<T> = fft_result
         .iter()
         .map(num_complex::Complex::norm_sqr)
         .collect();
@@ -4674,13 +4681,13 @@ pub fn power_spectrum(
 /// # }
 /// ```
 #[inline]
-pub fn magnitude_spectrum(
-    samples: &NonEmptySlice<f64>,
+pub fn magnitude_spectrum<T: Sample>(
+    samples: &NonEmptySlice<T>,
     n_fft: NonZeroUsize,
     window: Option<WindowType>,
-) -> SpectrogramResult<NonEmptyVec<f64>> {
+) -> SpectrogramResult<NonEmptyVec<T>> {
     let power = power_spectrum(samples, n_fft, window)?;
-    let power = power.iter().map(|&p| p.sqrt()).collect();
+    let power: Vec<T> = power.iter().map(|&p| p.sqrt()).collect();
     // safety: power is non-empty since power_spectrum returned successfully
     Ok(unsafe { NonEmptyVec::new_unchecked(power) })
 }
@@ -4723,18 +4730,18 @@ pub fn magnitude_spectrum(
 /// # }
 /// ```
 #[inline]
-pub fn stft(
-    samples: &NonEmptySlice<f64>,
+pub fn stft<T: Sample>(
+    samples: &NonEmptySlice<T>,
     n_fft: NonZeroUsize,
     hop_size: NonZeroUsize,
     window: WindowType,
     center: bool,
-) -> SpectrogramResult<Array2<Complex<f64>>> {
+) -> SpectrogramResult<Array2<Complex<T>>> {
     let stft_params = StftParams::new(n_fft, hop_size, window, center)?;
     let params = SpectrogramParams::new(stft_params, 1.0)?; // dummy sample rate
 
-    let planner = SpectrogramPlanner::new();
-    let result = planner.compute_stft(samples, &params)?;
+    let mut plan = StftPlan::<T>::new(&params)?;
+    let result = plan.compute(samples, &params)?;
 
     Ok(result.data)
 }
@@ -4779,10 +4786,10 @@ pub fn stft(
 /// # }
 /// ```
 #[inline]
-pub fn irfft(
-    spectrum: &NonEmptySlice<Complex<f64>>,
+pub fn irfft<T: Sample>(
+    spectrum: &NonEmptySlice<Complex<T>>,
     n_fft: NonZeroUsize,
-) -> SpectrogramResult<NonEmptyVec<f64>> {
+) -> SpectrogramResult<NonEmptyVec<T>> {
     use crate::fft_backend::{C2rPlan, r2c_output_size};
 
     let n_fft = n_fft.get();
@@ -4794,23 +4801,9 @@ pub fn irfft(
         ));
     }
 
-    // Get inverse FFT plan from global cache (or create if first use)
-    #[cfg(feature = "realfft")]
-    let mut ifft = {
-        use crate::fft_backend::get_or_create_c2r_plan;
-        let plan = get_or_create_c2r_plan(n_fft)?;
-        // Clone to get our own mutable copy with independent scratch buffer
-        (*plan).clone()
-    };
+    let mut ifft = T::plan_c2r(n_fft)?;
 
-    #[cfg(feature = "fftw")]
-    let mut ifft = {
-        use crate::fft_backend::C2rPlanner;
-        let mut planner = crate::FftwPlanner::new();
-        planner.plan_c2r(n_fft)?
-    };
-
-    let mut output = vec![0.0; n_fft];
+    let mut output = vec![T::zero(); n_fft];
     ifft.process(spectrum.as_slice(), &mut output)?;
 
     // Safety: output is non-empty since n_fft > 0
@@ -4864,14 +4857,14 @@ pub fn irfft(
 /// # }
 /// ```
 #[inline]
-pub fn istft(
-    stft_matrix: &Array2<Complex<f64>>,
+pub fn istft<T: Sample>(
+    stft_matrix: &Array2<Complex<T>>,
     n_fft: NonZeroUsize,
     hop_size: NonZeroUsize,
     window: WindowType,
     center: bool,
-) -> SpectrogramResult<NonEmptyVec<f64>> {
-    use crate::fft_backend::{C2rPlan, C2rPlanner, r2c_output_size};
+) -> SpectrogramResult<NonEmptyVec<T>> {
+    use crate::fft_backend::{C2rPlan, r2c_output_size};
 
     let n_bins = stft_matrix.nrows();
     let n_frames = stft_matrix.ncols();
@@ -4884,20 +4877,10 @@ pub fn istft(
         return Err(SpectrogramError::invalid_input("hop_size must be <= n_fft"));
     }
     // Create inverse FFT plan
-    #[cfg(feature = "realfft")]
-    let mut ifft = {
-        let mut planner = crate::RealFftPlanner::new();
-        planner.plan_c2r(n_fft.get())?
-    };
-
-    #[cfg(feature = "fftw")]
-    let mut ifft = {
-        let mut planner = crate::FftwPlanner::new();
-        planner.plan_c2r(n_fft.get())?
-    };
+    let mut ifft = T::plan_c2r(n_fft.get())?;
 
     // Generate window
-    let window_samples = make_window(window, n_fft);
+    let window_samples = make_window::<T>(window, n_fft);
     let n_fft = n_fft.get();
     let hop_size = hop_size.get();
     // Calculate output length
@@ -4908,12 +4891,12 @@ pub fn istft(
     let unpadded_len = output_len.get().saturating_sub(2 * pad);
 
     // Allocate output buffer and normalization buffer
-    let mut output = non_empty_vec![0.0; output_len];
-    let mut norm = non_empty_vec![0.0; output_len];
+    let mut output = non_empty_vec![T::zero(); output_len];
+    let mut norm = non_empty_vec![T::zero(); output_len];
 
     // Overlap-add synthesis
-    let mut frame_buffer = vec![Complex::new(0.0, 0.0); n_bins];
-    let mut time_frame = vec![0.0; n_fft];
+    let mut frame_buffer = vec![Complex::new(T::zero(), T::zero()); n_bins];
+    let mut time_frame = vec![T::zero(); n_fft];
 
     for frame_idx in 0..n_frames {
         // Extract complex frame from STFT matrix
@@ -4941,8 +4924,9 @@ pub fn istft(
     }
 
     // Normalize by window energy
+    let norm_eps = T::from_f64(1e-10);
     for i in 0..output_len.get() {
-        if norm[i] > 1e-10 {
+        if norm[i] > norm_eps {
             output[i] /= norm[i];
         }
     }
@@ -5193,7 +5177,7 @@ impl FftPlanner {
         let mut windowed = vec![0.0; n_fft.get()];
         windowed[..samples.len().get()].copy_from_slice(samples);
         if let Some(win_type) = window {
-            let window_samples = make_window(win_type, n_fft);
+            let window_samples = make_window::<f64>(win_type, n_fft);
             for i in 0..n_fft.get() {
                 windowed[i] *= window_samples[i];
             }
@@ -5290,6 +5274,92 @@ mod tests {
         assert_eq!(output[0], 4.0);
         assert_eq!(output[1], 7.5);
         assert_eq!(output[2], 8.0);
+    }
+
+    /// Build a Mel power-spectrogram plan natively at precision `T`.
+    ///
+    /// Mirrors `SpectrogramPlanner::mel_plan`, but is generic over the data
+    /// scalar `T` so we can instantiate the typed pipeline at `f32` as well as
+    /// the default `f64`. Uses the private internal builders directly.
+    fn mel_power_plan_t<T: Sample>(
+        params: &SpectrogramParams,
+        mel: &MelParams,
+    ) -> SpectrogramResult<SpectrogramPlan<Mel, Power, T>> {
+        let stft = StftPlan::<T>::new(params)?;
+        let mapping = FrequencyMapping::<Mel>::new_mel(params, mel)?;
+        let scaling = AmplitudeScaling::<Power>::new(None);
+        let freq_axis = build_frequency_axis::<Mel>(params, &mapping);
+        let workspace = Workspace::<T>::new(stft.n_fft, stft.out_len, mapping.output_bins());
+
+        Ok(SpectrogramPlan {
+            params: params.clone(),
+            stft,
+            mapping,
+            scaling,
+            freq_axis,
+            workspace,
+            _amp: PhantomData,
+        })
+    }
+
+    /// The high-level Mel power pipeline must compute natively in `T`: an `f32`
+    /// run must agree with the `f64` run within a small relative tolerance,
+    /// proving the f32 data path is real (not f64-then-downcast).
+    #[test]
+    fn mel_power_f32_agrees_with_f64() {
+        let sample_rate = 16_000.0;
+        let n = 16_000usize;
+
+        // Mix of two tones so several mel bands carry energy.
+        let sig_f64: Vec<f64> = (0..n)
+            .map(|i| {
+                let t = i as f64 / sample_rate;
+                (2.0 * std::f64::consts::PI * 440.0 * t).sin()
+                    + 0.5 * (2.0 * std::f64::consts::PI * 1_500.0 * t).sin()
+            })
+            .collect();
+        let sig_f32: Vec<f32> = sig_f64.iter().map(|&x| x as f32).collect();
+
+        let samples_f64 = NonEmptyVec::new(sig_f64).unwrap();
+        let samples_f32 = NonEmptyVec::new(sig_f32).unwrap();
+
+        let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
+        let params = SpectrogramParams::new(stft, sample_rate).unwrap();
+        let mel = MelParams::new(nzu!(40), 0.0, 8000.0).unwrap();
+
+        let mut plan_f64 = mel_power_plan_t::<f64>(&params, &mel).unwrap();
+        let mut plan_f32 = mel_power_plan_t::<f32>(&params, &mel).unwrap();
+
+        let spec_f64 = plan_f64.compute(&samples_f64).unwrap();
+        let spec_f32 = plan_f32.compute(&samples_f32).unwrap();
+
+        assert_eq!(spec_f64.dim(), spec_f32.dim());
+
+        let mut max_rel = 0.0f64;
+        let mut max_abs = 0.0f64;
+        for (ref_val, test_val) in spec_f64.iter().zip(spec_f32.iter()) {
+            let ref_val = *ref_val;
+            let test_val = f64::from(*test_val);
+            assert!(ref_val.is_finite() && test_val.is_finite());
+            let abs = (ref_val - test_val).abs();
+            let rel = abs / ref_val.abs().max(1e-12);
+            max_abs = max_abs.max(abs);
+            // Only hold the relative bound where the f64 value is large enough
+            // to be meaningful.
+            if ref_val.abs() > 1e-6 {
+                max_rel = max_rel.max(rel);
+            }
+        }
+
+        // The f32 pipeline is genuinely computed in f32 end-to-end, so it carries
+        // f32 rounding: a 512-point FFT plus power (|X|^2) and mel-band summation
+        // accumulate to a worst-case relative deviation of ~2e-3 versus f64. A
+        // bound well below 1% confirms the f32 path is real and correct (not a
+        // downcast of f64 garbage, which would diverge wildly).
+        assert!(
+            max_rel < 5e-3,
+            "f32 mel power deviates from f64 by relative {max_rel} (max abs {max_abs})"
+        );
     }
 
     #[test]

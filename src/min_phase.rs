@@ -22,9 +22,9 @@
 
 use num_complex::Complex;
 
+use crate::Sample;
 use crate::error::{SpectrogramError, SpectrogramResult};
 use crate::fft_backend::C2cPlan;
-use crate::fft_backend::realfft_backend::RealFftC2cPlan;
 
 /// Oversampling factor applied to the IR length when choosing the FFT size.
 ///
@@ -35,8 +35,8 @@ const DEFAULT_OVERSAMPLE: usize = 8;
 /// Convert an FIR impulse response to its minimum-phase equivalent.
 ///
 /// The returned filter has the same length as `ir` and (very nearly) the same
-/// magnitude response, but minimal latency. Computation is done in `f64` for
-/// numerical stability and the result is returned as `f32`.
+/// magnitude response, but minimal latency. Computation is performed in the
+/// sample precision `T` (`f32` or `f64`); `f64` offers more numerical headroom.
 ///
 /// # Errors
 /// Returns an error if `ir` is empty or an FFT step fails.
@@ -52,7 +52,7 @@ const DEFAULT_OVERSAMPLE: usize = 8;
 /// // Minimum-phase energy is front-loaded: first tap is the largest.
 /// assert!(mp[0].abs() >= mp[mp.len() - 1].abs());
 /// ```
-pub fn minimum_phase(ir: &[f32]) -> SpectrogramResult<Vec<f32>> {
+pub fn minimum_phase<T: Sample>(ir: &[T]) -> SpectrogramResult<Vec<T>> {
     minimum_phase_with(ir, ir.len(), DEFAULT_OVERSAMPLE)
 }
 
@@ -64,11 +64,11 @@ pub fn minimum_phase(ir: &[f32]) -> SpectrogramResult<Vec<f32>> {
 ///
 /// # Errors
 /// Returns an error if `ir` is empty, `out_len` is zero, or an FFT step fails.
-pub fn minimum_phase_with(
-    ir: &[f32],
+pub fn minimum_phase_with<T: Sample>(
+    ir: &[T],
     out_len: usize,
     oversample: usize,
-) -> SpectrogramResult<Vec<f32>> {
+) -> SpectrogramResult<Vec<T>> {
     if ir.is_empty() {
         return Err(SpectrogramError::invalid_input(
             "impulse response must not be empty",
@@ -82,30 +82,30 @@ pub fn minimum_phase_with(
 
     let oversample = oversample.max(1);
     let n = (ir.len() * oversample).next_power_of_two();
-    let inv_n = 1.0 / n as f64;
+    let inv_n = T::one() / T::from_usize(n);
 
-    let mut fft = RealFftC2cPlan::new(n);
+    let mut fft = T::plan_c2c(n)?;
 
     // buf := zero-padded IR (complex, imag = 0)
-    let mut buf = vec![Complex::new(0.0f64, 0.0); n];
+    let mut buf = vec![Complex::new(T::zero(), T::zero()); n];
     for (dst, &src) in buf.iter_mut().zip(ir.iter()) {
-        dst.re = f64::from(src);
+        dst.re = src;
     }
 
     // H = FFT(h)
     fft.forward(&mut buf)?;
 
     // Ĥ = log|H|  (guard against log(0) at spectral nulls)
-    let max_mag2 = buf.iter().map(Complex::norm_sqr).fold(0.0_f64, f64::max);
-    let eps = if max_mag2 > 0.0 {
-        max_mag2 * 1e-20
+    let max_mag2 = buf.iter().map(Complex::norm_sqr).fold(T::zero(), T::max);
+    let eps = if max_mag2 > T::zero() {
+        max_mag2 * T::from_f64(1e-20)
     } else {
-        1e-300
+        T::from_f64(1e-300)
     };
     for x in buf.iter_mut() {
-        let log_mag = 0.5 * (x.norm_sqr() + eps).ln();
+        let log_mag = T::from_f64(0.5) * (x.norm_sqr() + eps).ln();
         x.re = log_mag;
-        x.im = 0.0;
+        x.im = T::zero();
     }
 
     // real cepstrum c = IFFT(Ĥ)
@@ -119,10 +119,10 @@ pub fn minimum_phase_with(
     // buf[0] (DC) and buf[n/2] (Nyquist, n even) keep weight 1.
     let half = n / 2;
     for x in buf.iter_mut().take(half).skip(1) {
-        *x *= 2.0;
+        *x *= T::from_f64(2.0);
     }
     for x in buf.iter_mut().skip(half + 1) {
-        *x = Complex::new(0.0, 0.0);
+        *x = Complex::new(T::zero(), T::zero());
     }
 
     // H_min = exp(FFT(c))
@@ -136,11 +136,7 @@ pub fn minimum_phase_with(
     fft.inverse(&mut buf)?;
 
     let take = out_len.min(n);
-    let out: Vec<f32> = buf
-        .iter()
-        .take(take)
-        .map(|x| (x.re * inv_n) as f32)
-        .collect();
+    let out: Vec<T> = buf.iter().take(take).map(|x| x.re * inv_n).collect();
     Ok(out)
 }
 

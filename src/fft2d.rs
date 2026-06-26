@@ -29,17 +29,15 @@
 //! Due to Hermitian symmetry in real-to-complex FFTs, the output shape is
 //! `(nrows, ncols/2 + 1)` for an input of shape `(nrows, ncols)`.
 
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+
 use ndarray::{Array2, ArrayView2};
 use num_complex::Complex;
 
-use crate::fft_backend::{C2rPlan2d, C2rPlanner2d, R2cPlan2d, R2cPlanner2d, r2c_output_size_2d};
+use crate::Sample;
+use crate::fft_backend::{C2rPlan2d, R2cPlan2d, r2c_output_size_2d};
 use crate::{SpectrogramError, SpectrogramResult};
-
-#[cfg(feature = "fftw")]
-use crate::fft_backend::fftw_backend::FftwPlanner;
-
-#[cfg(feature = "realfft")]
-use crate::fft_backend::realfft_backend::RealFftPlanner;
 
 /// Compute 2D FFT of a real-valued array (e.g., image).
 ///
@@ -76,7 +74,7 @@ use crate::fft_backend::realfft_backend::RealFftPlanner;
 /// For batch processing of multiple arrays with the same dimensions, use
 /// [`Fft2dPlanner`] to reuse FFT plans and avoid repeated setup overhead.
 #[inline]
-pub fn fft2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2<Complex<f64>>> {
+pub fn fft2d<T: Sample>(data: &ArrayView2<T>) -> SpectrogramResult<Array2<Complex<T>>> {
     let (nrows, ncols) = (data.nrows(), data.ncols());
 
     if nrows == 0 || ncols == 0 {
@@ -95,19 +93,13 @@ pub fn fft2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2<Complex<f64>>> 
 
     let out_shape = r2c_output_size_2d(nrows, ncols);
 
-    #[cfg(feature = "fftw")]
-    let mut planner = FftwPlanner::new();
-
-    #[cfg(feature = "realfft")]
-    let mut planner = RealFftPlanner::new();
-
-    let mut plan = planner.plan_r2c_2d(nrows, ncols)?;
+    let mut plan = T::plan_r2c_2d(nrows, ncols)?;
 
     let input_slice = data
         .as_slice()
         .ok_or_else(|| SpectrogramError::invalid_input("array must be contiguous"))?;
 
-    let mut output = vec![Complex::new(0.0, 0.0); out_shape.0 * out_shape.1];
+    let mut output = vec![Complex::new(T::zero(), T::zero()); out_shape.0 * out_shape.1];
 
     plan.process(input_slice, &mut output)?;
 
@@ -153,10 +145,10 @@ pub fn fft2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2<Complex<f64>>> 
 /// }
 /// ```
 #[inline]
-pub fn ifft2d(
-    spectrum: &Array2<Complex<f64>>,
+pub fn ifft2d<T: Sample>(
+    spectrum: &Array2<Complex<T>>,
     output_ncols: usize,
-) -> SpectrogramResult<Array2<f64>> {
+) -> SpectrogramResult<Array2<T>> {
     let nrows = spectrum.nrows();
 
     if nrows == 0 || output_ncols == 0 {
@@ -178,19 +170,13 @@ pub fn ifft2d(
         ));
     }
 
-    #[cfg(feature = "fftw")]
-    let mut planner = FftwPlanner::new();
-
-    #[cfg(feature = "realfft")]
-    let mut planner = RealFftPlanner::new();
-
-    let mut plan = planner.plan_c2r_2d(nrows, output_ncols)?;
+    let mut plan = T::plan_c2r_2d(nrows, output_ncols)?;
 
     let input_slice = spectrum
         .as_slice()
         .ok_or_else(|| SpectrogramError::invalid_input("array must be contiguous"))?;
 
-    let mut output = vec![0.0; nrows * output_ncols];
+    let mut output = vec![T::zero(); nrows * output_ncols];
 
     plan.process(input_slice, &mut output)?;
 
@@ -225,7 +211,7 @@ pub fn ifft2d(
 /// assert!(power[[0, 0]] > 1000.0);
 /// ```
 #[inline]
-pub fn power_spectrum_2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2<f64>> {
+pub fn power_spectrum_2d<T: Sample>(data: &ArrayView2<T>) -> SpectrogramResult<Array2<T>> {
     let spectrum = fft2d(data)?;
     let power = spectrum.mapv(|c| c.norm_sqr());
     Ok(power)
@@ -255,7 +241,7 @@ pub fn power_spectrum_2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2<f64
 /// let magnitude = magnitude_spectrum_2d(&img.view()).unwrap();
 /// ```
 #[inline]
-pub fn magnitude_spectrum_2d(data: &ArrayView2<f64>) -> SpectrogramResult<Array2<f64>> {
+pub fn magnitude_spectrum_2d<T: Sample>(data: &ArrayView2<T>) -> SpectrogramResult<Array2<T>> {
     let spectrum = fft2d(data)?;
     let magnitude = spectrum.mapv(num_complex::Complex::norm);
     Ok(magnitude)
@@ -419,28 +405,28 @@ fn rotate_left<T: Clone>(arr: Vec<T>, shift: usize) -> Vec<T> {
 /// use spectrograms::fft2d::fftfreq;
 ///
 /// // For 8 samples with spacing 1.0
-/// let freqs = fftfreq(8, 1.0);
+/// let freqs = fftfreq::<f64>(8, 1.0);
 /// // Returns: [0.0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]
 ///
 /// // For temporal modulation at 16kHz sample rate with 100 frames
-/// let freqs_hz = fftfreq(100, 1.0 / 16000.0);
+/// let freqs_hz = fftfreq::<f64>(100, 1.0 / 16000.0);
 /// // Returns frequencies in Hz
 /// ```
 #[inline]
 #[must_use]
-pub fn fftfreq(n: usize, d: f64) -> Vec<f64> {
+pub fn fftfreq<T: Sample>(n: usize, d: f64) -> Vec<T> {
     let mut freqs = Vec::with_capacity(n);
     let n_f64 = n as f64;
     let n_half = n.div_ceil(2);
 
     // Positive frequencies: 0, 1, 2, ..., (n-1)/2
     for i in 0..n_half {
-        freqs.push(i as f64 / (n_f64 * d));
+        freqs.push(T::from_f64(i as f64 / (n_f64 * d)));
     }
 
     // Negative frequencies: -n/2, ..., -2, -1
     for i in n_half..n {
-        freqs.push((i as f64 - n_f64) / (n_f64 * d));
+        freqs.push(T::from_f64((i as f64 - n_f64) / (n_f64 * d)));
     }
 
     freqs
@@ -466,18 +452,18 @@ pub fn fftfreq(n: usize, d: f64) -> Vec<f64> {
 /// use spectrograms::fft2d::rfftfreq;
 ///
 /// // For 8 samples
-/// let freqs = rfftfreq(8, 1.0);
+/// let freqs = rfftfreq::<f64>(8, 1.0);
 /// // Returns: [0.0, 0.125, 0.25, 0.375, 0.5]
 /// ```
 #[inline]
 #[must_use]
-pub fn rfftfreq(n: usize, d: f64) -> Vec<f64> {
+pub fn rfftfreq<T: Sample>(n: usize, d: f64) -> Vec<T> {
     let n_out = n / 2 + 1;
     let mut freqs = Vec::with_capacity(n_out);
     let n_f64 = n as f64;
 
     for i in 0..n_out {
-        freqs.push(i as f64 / (n_f64 * d));
+        freqs.push(T::from_f64(i as f64 / (n_f64 * d)));
     }
 
     freqs
@@ -502,15 +488,12 @@ pub fn rfftfreq(n: usize, d: f64) -> Vec<f64> {
 ///     let spectrum = planner.fft2d(&img.view()).unwrap();
 /// }
 /// ```
-pub struct Fft2dPlanner {
-    #[cfg(feature = "fftw")]
-    inner: FftwPlanner,
-
-    #[cfg(feature = "realfft")]
-    inner: RealFftPlanner,
+pub struct Fft2dPlanner<T: Sample = f64> {
+    cache_r2c: HashMap<(usize, usize), T::R2cPlan2d>,
+    cache_c2r: HashMap<(usize, usize), T::C2rPlan2d>,
 }
 
-impl Fft2dPlanner {
+impl<T: Sample> Fft2dPlanner<T> {
     /// Create a new 2D FFT planner.
     ///
     /// # Returns
@@ -520,11 +503,8 @@ impl Fft2dPlanner {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            #[cfg(feature = "fftw")]
-            inner: FftwPlanner::new(),
-
-            #[cfg(feature = "realfft")]
-            inner: RealFftPlanner::new(),
+            cache_r2c: HashMap::new(),
+            cache_c2r: HashMap::new(),
         }
     }
 
@@ -544,7 +524,7 @@ impl Fft2dPlanner {
     ///
     /// Returns `SpectrogramError` if the input array is invalid or processing fails.
     #[inline]
-    pub fn fft2d(&mut self, data: &ArrayView2<f64>) -> SpectrogramResult<Array2<Complex<f64>>> {
+    pub fn fft2d(&mut self, data: &ArrayView2<T>) -> SpectrogramResult<Array2<Complex<T>>> {
         let (nrows, ncols) = (data.nrows(), data.ncols());
 
         if nrows == 0 || ncols == 0 {
@@ -560,13 +540,16 @@ impl Fft2dPlanner {
         }
 
         let out_shape = r2c_output_size_2d(nrows, ncols);
-        let mut plan = self.inner.plan_r2c_2d(nrows, ncols)?;
+        let plan = match self.cache_r2c.entry((nrows, ncols)) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => e.insert(T::plan_r2c_2d(nrows, ncols)?),
+        };
 
         let input_slice = data
             .as_slice()
             .ok_or_else(|| SpectrogramError::invalid_input("array must be contiguous"))?;
 
-        let mut output = vec![Complex::new(0.0, 0.0); out_shape.0 * out_shape.1];
+        let mut output = vec![Complex::new(T::zero(), T::zero()); out_shape.0 * out_shape.1];
         plan.process(input_slice, &mut output)?;
 
         Array2::from_shape_vec(out_shape, output)
@@ -590,9 +573,9 @@ impl Fft2dPlanner {
     #[inline]
     pub fn ifft2d(
         &mut self,
-        spectrum: &ArrayView2<Complex<f64>>,
+        spectrum: &ArrayView2<Complex<T>>,
         output_ncols: usize,
-    ) -> SpectrogramResult<Array2<f64>> {
+    ) -> SpectrogramResult<Array2<T>> {
         let nrows = spectrum.nrows();
 
         if nrows == 0 || output_ncols == 0 {
@@ -613,13 +596,16 @@ impl Fft2dPlanner {
             ));
         }
 
-        let mut plan = self.inner.plan_c2r_2d(nrows, output_ncols)?;
+        let plan = match self.cache_c2r.entry((nrows, output_ncols)) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => e.insert(T::plan_c2r_2d(nrows, output_ncols)?),
+        };
 
         let input_slice = spectrum
             .as_slice()
             .ok_or_else(|| SpectrogramError::invalid_input("array must be contiguous"))?;
 
-        let mut output = vec![0.0; nrows * output_ncols];
+        let mut output = vec![T::zero(); nrows * output_ncols];
         plan.process(input_slice, &mut output)?;
 
         Array2::from_shape_vec((nrows, output_ncols), output)
@@ -640,7 +626,7 @@ impl Fft2dPlanner {
     ///
     /// Returns `SpectrogramError` if the input array is invalid or processing fails.
     #[inline]
-    pub fn power_spectrum_2d(&mut self, data: &ArrayView2<f64>) -> SpectrogramResult<Array2<f64>> {
+    pub fn power_spectrum_2d(&mut self, data: &ArrayView2<T>) -> SpectrogramResult<Array2<T>> {
         let spectrum = self.fft2d(data)?;
         let power = spectrum.mapv(|c| c.norm_sqr());
         Ok(power)
@@ -662,15 +648,15 @@ impl Fft2dPlanner {
     #[inline]
     pub fn magnitude_spectrum_2d(
         &mut self,
-        data: &ArrayView2<f64>,
-    ) -> SpectrogramResult<Array2<f64>> {
+        data: &ArrayView2<T>,
+    ) -> SpectrogramResult<Array2<T>> {
         let spectrum = self.fft2d(data)?;
         let magnitude = spectrum.mapv(num_complex::Complex::norm);
         Ok(magnitude)
     }
 }
 
-impl Default for Fft2dPlanner {
+impl<T: Sample> Default for Fft2dPlanner<T> {
     #[inline]
     fn default() -> Self {
         Self::new()

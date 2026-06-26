@@ -108,7 +108,7 @@ fn test_mfcc_different_n_coefficients() {
 #[test]
 fn test_mfcc_silence() {
     let sample_rate = 16000.0;
-    let samples = vec![0.0; 16000]; // Silence
+    let samples = vec![0.0f64; 16000]; // Silence
     let samples = NonEmptyVec::new(samples).unwrap();
 
     let stft = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();

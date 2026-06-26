@@ -21,7 +21,7 @@
 
 use std::{marker::PhantomData, num::NonZeroUsize, ops::Deref};
 
-use crate::{SpectrogramError, SpectrogramParams, SpectrogramResult, StftPlan};
+use crate::{Sample, SpectrogramError, SpectrogramParams, SpectrogramResult, StftPlan};
 use ndarray::{Array1, Array2, Axis, Zip};
 use non_empty_slice::{NonEmptySlice, NonEmptyVec};
 use num_complex::Complex;
@@ -57,7 +57,7 @@ pub struct ILD;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ILR;
 
-fn pow_mag(mag: f64, mag_sq: f64, power: usize) -> f64 {
+fn pow_mag<T: Sample>(mag: T, mag_sq: T, power: usize) -> T {
     match power {
         1 => mag,
         2 => mag_sq,
@@ -67,7 +67,7 @@ fn pow_mag(mag: f64, mag_sq: f64, power: usize) -> f64 {
             // Integer exponent: prefer exponentiation-by-squaring.
             let mut base = mag;
             let mut exp = power;
-            let mut acc = 1.0_f64;
+            let mut acc = T::one();
             while exp > 0 {
                 if (exp & 1) == 1 {
                     acc *= base;
@@ -82,7 +82,7 @@ fn pow_mag(mag: f64, mag_sq: f64, power: usize) -> f64 {
     }
 }
 
-fn np_mod(x: f64, m: f64) -> f64 {
+fn np_mod<T: Sample>(x: T, m: T) -> T {
     ((x % m) + m) % m
 }
 
@@ -103,10 +103,10 @@ fn np_mod(x: f64, m: f64) -> f64 {
 /// - Phase array as unit complex numbers (re² + im² = 1)
 #[inline]
 #[must_use]
-pub fn magphase(
-    complex_spect: &Array2<Complex<f64>>,
+pub fn magphase<T: Sample>(
+    complex_spect: &Array2<Complex<T>>,
     power: NonZeroUsize,
-) -> (Array2<f64>, Array2<Complex<f64>>) {
+) -> (Array2<T>, Array2<Complex<T>>) {
     let power_usize = power.get();
     let shape = complex_spect.raw_dim();
     let mut mag = Array2::zeros(shape);
@@ -121,9 +121,12 @@ pub fn magphase(
             .and(complex_spect)
             .par_for_each(|m, p, &c| {
                 let mag_sq = c.re.mul_add(c.re, c.im * c.im);
-                if mag_sq == 0.0 {
-                    *m = 0.0;
-                    *p = Complex { re: 1.0, im: 0.0 };
+                if mag_sq == T::zero() {
+                    *m = T::zero();
+                    *p = Complex {
+                        re: T::one(),
+                        im: T::zero(),
+                    };
                 } else {
                     let mag_val = mag_sq.sqrt();
                     *m = pow_mag(mag_val, mag_sq, power_usize);
@@ -143,9 +146,12 @@ pub fn magphase(
             .and(complex_spect)
             .for_each(|m, p, &c| {
                 let mag_sq = c.re.mul_add(c.re, c.im * c.im);
-                if mag_sq == 0.0 {
-                    *m = 0.0;
-                    *p = Complex { re: 1.0, im: 0.0 };
+                if mag_sq == T::zero() {
+                    *m = T::zero();
+                    *p = Complex {
+                        re: T::one(),
+                        im: T::zero(),
+                    };
                 } else {
                     let mag_val = mag_sq.sqrt();
                     *m = pow_mag(mag_val, mag_sq, power_usize);
@@ -176,9 +182,9 @@ pub fn magphase(
 /// Data values are in **seconds**.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ItdSpectrogram {
+pub struct ItdSpectrogram<T = f64> {
     /// ITD values with shape (n_bins, n_frames) in seconds
-    pub data: Array2<f64>,
+    pub data: Array2<T>,
     /// Parameters used to compute this spectrogram
     params: ITDSpectrogramParams,
     /// Frequency values for each bin (Hz)
@@ -189,15 +195,15 @@ pub struct ItdSpectrogram {
     _unit: PhantomData<ITD>,
 }
 
-impl AsRef<Array2<f64>> for ItdSpectrogram {
+impl<T> AsRef<Array2<T>> for ItdSpectrogram<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl Deref for ItdSpectrogram {
-    type Target = Array2<f64>;
+impl<T> Deref for ItdSpectrogram<T> {
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -205,7 +211,7 @@ impl Deref for ItdSpectrogram {
     }
 }
 
-impl ItdSpectrogram {
+impl<T: Sample> ItdSpectrogram<T> {
     /// Get the number of frequency bins.
     ///
     /// # Returns
@@ -331,7 +337,7 @@ impl ItdSpectrogram {
 
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
-                let itd_value = self.data[(freq_bin, frame)];
+                let itd_value = self.data[(freq_bin, frame)].to_f64().unwrap_or(f64::NAN);
 
                 // Skip NaN or out-of-range values
                 if !itd_value.is_finite() || itd_value < min_delay || itd_value > max_delay {
@@ -463,11 +469,11 @@ impl ITDSpectrogramParams {
 ///
 /// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-pub fn compute_itd_spectrogram(
-    audio: [&NonEmptySlice<f64>; 2],
+pub fn compute_itd_spectrogram<T: Sample>(
+    audio: [&NonEmptySlice<T>; 2],
     params: &ITDSpectrogramParams,
-    plan: &mut StftPlan, // force reuse
-) -> SpectrogramResult<ItdSpectrogram> {
+    plan: &mut StftPlan<T>, // force reuse
+) -> SpectrogramResult<ItdSpectrogram<T>> {
     let window_size = params.spectrogram_params.stft().n_fft();
 
     let bin_width = params.spectrogram_params.sample_rate_hz / window_size.get() as f64;
@@ -494,8 +500,9 @@ pub fn compute_itd_spectrogram(
     let right_phase_slice = right_phase.slice(ndarray::s![start_bin..stop_bin, ..]);
 
     let mut itd_spectrogram = Array2::zeros((num_bins, num_frames));
-    let pi = std::f64::consts::PI;
-    let two_pi = 2.0 * pi;
+    let pi = T::PI();
+    let two_pi = T::from_f64(2.0) * pi;
+    let bin_width_t = T::from_f64(bin_width);
 
     #[cfg(feature = "rayon")]
     Zip::indexed(itd_spectrogram.view_mut()).par_for_each(|(bin_idx, frame), o| {
@@ -509,11 +516,11 @@ pub fn compute_itd_spectrogram(
 
         // Check intensity (sum of magnitudes should always be >= 0, but check for numerical safety)
         let intensity_val = left_mag_slice[(bin_idx, frame)] + right_mag_slice[(bin_idx, frame)];
-        if intensity_val > 0.0 {
+        if intensity_val > T::zero() {
             let diff = left_angle - right_angle;
             let wrapped = np_mod(diff + pi, two_pi) - pi;
-            let actual_bin = (start_bin + bin_idx) as f64;
-            *o = wrapped / (two_pi * bin_width * actual_bin);
+            let actual_bin = T::from_usize(start_bin + bin_idx);
+            *o = wrapped / (two_pi * bin_width_t * actual_bin);
         }
     });
 
@@ -529,11 +536,11 @@ pub fn compute_itd_spectrogram(
 
         // Check intensity (sum of magnitudes should always be >= 0, but check for numerical safety)
         let intensity_val = left_mag_slice[(bin_idx, frame)] + right_mag_slice[(bin_idx, frame)];
-        if intensity_val > 0.0 {
+        if intensity_val > T::zero() {
             let diff = left_angle - right_angle;
             let wrapped = np_mod(diff + pi, two_pi) - pi;
-            let actual_bin = (start_bin + bin_idx) as f64;
-            *o = wrapped / (two_pi * bin_width * actual_bin);
+            let actual_bin = T::from_usize(start_bin + bin_idx);
+            *o = wrapped / (two_pi * bin_width_t * actual_bin);
         }
     });
 
@@ -575,9 +582,9 @@ pub fn compute_itd_spectrogram(
 /// Data values are in **radians**.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct IpdSpectrogram {
+pub struct IpdSpectrogram<T = f64> {
     /// IPD values with shape (n_bins, n_frames) in radians
-    pub data: Array2<f64>,
+    pub data: Array2<T>,
     /// Parameters used to compute this spectrogram
     params: IPDSpectrogramParams,
     /// Frequency values for each bin (Hz)
@@ -588,15 +595,15 @@ pub struct IpdSpectrogram {
     _unit: PhantomData<IPD>,
 }
 
-impl AsRef<Array2<f64>> for IpdSpectrogram {
+impl<T> AsRef<Array2<T>> for IpdSpectrogram<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl Deref for IpdSpectrogram {
-    type Target = Array2<f64>;
+impl<T> Deref for IpdSpectrogram<T> {
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -604,7 +611,7 @@ impl Deref for IpdSpectrogram {
     }
 }
 
-impl IpdSpectrogram {
+impl<T: Sample> IpdSpectrogram<T> {
     /// Get the number of frequency bins.
     #[inline]
     #[must_use]
@@ -699,7 +706,7 @@ impl IpdSpectrogram {
 
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
-                let ipd_value = self.data[(freq_bin, frame)];
+                let ipd_value = self.data[(freq_bin, frame)].to_f64().unwrap_or(f64::NAN);
 
                 // Skip NaN or out-of-range values
                 if !ipd_value.is_finite() || ipd_value < min_phase || ipd_value > max_phase {
@@ -820,11 +827,11 @@ impl IPDSpectrogramParams {
 ///
 /// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-pub fn compute_ipd_spectrogram(
-    audio: [&NonEmptySlice<f64>; 2],
+pub fn compute_ipd_spectrogram<T: Sample>(
+    audio: [&NonEmptySlice<T>; 2],
     params: &IPDSpectrogramParams,
-    plan: &mut StftPlan,
-) -> SpectrogramResult<IpdSpectrogram> {
+    plan: &mut StftPlan<T>,
+) -> SpectrogramResult<IpdSpectrogram<T>> {
     let window_size = params.spectrogram_params.stft().n_fft();
     let bin_width = params.spectrogram_params.sample_rate_hz / window_size.get() as f64;
 
@@ -848,8 +855,8 @@ pub fn compute_ipd_spectrogram(
     let right_phase_slice = right_phase.slice(ndarray::s![start_bin..stop_bin, ..]);
 
     let mut ipd_spectrogram = Array2::zeros((num_bins, num_frames));
-    let pi = std::f64::consts::PI;
-    let two_pi = 2.0 * pi;
+    let pi = T::PI();
+    let two_pi = T::from_f64(2.0) * pi;
 
     #[cfg(feature = "rayon")]
     Zip::indexed(ipd_spectrogram.view_mut()).par_for_each(|(bin_idx, frame), o| {
@@ -925,9 +932,9 @@ pub fn compute_ipd_spectrogram(
 /// Data values are in **decibels (dB)**.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct IldSpectrogram {
+pub struct IldSpectrogram<T = f64> {
     /// ILD values with shape (n_bins, n_frames) in dB
-    pub data: Array2<f64>,
+    pub data: Array2<T>,
     /// Parameters used to compute this spectrogram
     params: ILDSpectrogramParams,
     /// Frequency values for each bin (Hz)
@@ -938,15 +945,15 @@ pub struct IldSpectrogram {
     _unit: PhantomData<ILD>,
 }
 
-impl AsRef<Array2<f64>> for IldSpectrogram {
+impl<T> AsRef<Array2<T>> for IldSpectrogram<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl Deref for IldSpectrogram {
-    type Target = Array2<f64>;
+impl<T> Deref for IldSpectrogram<T> {
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -954,7 +961,7 @@ impl Deref for IldSpectrogram {
     }
 }
 
-impl IldSpectrogram {
+impl<T: Sample> IldSpectrogram<T> {
     /// Get the number of frequency bins.
     #[inline]
     #[must_use]
@@ -1052,7 +1059,7 @@ impl IldSpectrogram {
 
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
-                let ild_value = self.data[(freq_bin, frame)];
+                let ild_value = self.data[(freq_bin, frame)].to_f64().unwrap_or(f64::NAN);
 
                 // Skip NaN or out-of-range values
                 if !ild_value.is_finite() || ild_value < min_db || ild_value > max_db {
@@ -1177,11 +1184,11 @@ impl ILDSpectrogramParams {
 ///
 /// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-pub fn compute_ild_spectrogram(
-    audio: [&NonEmptySlice<f64>; 2],
+pub fn compute_ild_spectrogram<T: Sample>(
+    audio: [&NonEmptySlice<T>; 2],
     params: &ILDSpectrogramParams,
-    plan: &mut StftPlan,
-) -> SpectrogramResult<IldSpectrogram> {
+    plan: &mut StftPlan<T>,
+) -> SpectrogramResult<IldSpectrogram<T>> {
     let window_size = params.spectrogram_params.stft().n_fft();
     let bin_width = params.spectrogram_params.sample_rate_hz / window_size.get() as f64;
 
@@ -1203,7 +1210,7 @@ pub fn compute_ild_spectrogram(
     let left_mag_slice = left_mag.slice(ndarray::s![start_bin..stop_bin, ..]);
     let right_mag_slice = right_mag.slice(ndarray::s![start_bin..stop_bin, ..]);
 
-    let mut ild_spectrogram = Array2::from_elem((num_bins, num_frames), f64::NAN);
+    let mut ild_spectrogram = Array2::from_elem((num_bins, num_frames), T::nan());
 
     #[cfg(feature = "rayon")]
     Zip::indexed(ild_spectrogram.view_mut()).par_for_each(|(bin_idx, frame), o| {
@@ -1212,9 +1219,9 @@ pub fn compute_ild_spectrogram(
 
         // Mask out low intensity (sum < 0, though this shouldn't happen with magnitudes)
         let intensity = left_val + right_val;
-        if intensity > 0.0 && left_val > 0.0 && right_val > 0.0 {
+        if intensity > T::zero() && left_val > T::zero() && right_val > T::zero() {
             // ILD = 20 * log10(right / left), then negated as per binaspect
-            *o = -20.0 * (right_val / left_val).log10();
+            *o = T::from_f64(-20.0) * (right_val / left_val).log10();
         }
     });
 
@@ -1224,8 +1231,8 @@ pub fn compute_ild_spectrogram(
         let right_val = right_mag_slice[(bin_idx, frame)];
 
         let intensity = left_val + right_val;
-        if intensity > 0.0 && left_val > 0.0 && right_val > 0.0 {
-            *o = -20.0 * (right_val / left_val).log10();
+        if intensity > T::zero() && left_val > T::zero() && right_val > T::zero() {
+            *o = T::from_f64(-20.0) * (right_val / left_val).log10();
         }
     });
 
@@ -1267,9 +1274,9 @@ pub fn compute_ild_spectrogram(
 /// Data values are **dimensionless** in the range [-1, 1].
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct IlrSpectrogram {
+pub struct IlrSpectrogram<T = f64> {
     /// ILR values with shape (n_bins, n_frames) in range [-1, 1]
-    pub data: Array2<f64>,
+    pub data: Array2<T>,
     /// Parameters used to compute this spectrogram
     params: ILRSpectrogramParams,
     /// Frequency values for each bin (Hz)
@@ -1280,15 +1287,15 @@ pub struct IlrSpectrogram {
     _unit: PhantomData<ILR>,
 }
 
-impl AsRef<Array2<f64>> for IlrSpectrogram {
+impl<T> AsRef<Array2<T>> for IlrSpectrogram<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl Deref for IlrSpectrogram {
-    type Target = Array2<f64>;
+impl<T> Deref for IlrSpectrogram<T> {
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -1296,7 +1303,7 @@ impl Deref for IlrSpectrogram {
     }
 }
 
-impl IlrSpectrogram {
+impl<T: Sample> IlrSpectrogram<T> {
     /// Get the number of frequency bins.
     #[inline]
     #[must_use]
@@ -1394,7 +1401,7 @@ impl IlrSpectrogram {
 
         for frame in 0..n_frames {
             for freq_bin in 0..n_freq_bins {
-                let ilr_value = self.data[(freq_bin, frame)];
+                let ilr_value = self.data[(freq_bin, frame)].to_f64().unwrap_or(f64::NAN);
 
                 // Skip NaN or out-of-range values
                 if !ilr_value.is_finite() || ilr_value < min_ratio || ilr_value > max_ratio {
@@ -1520,11 +1527,11 @@ impl ILRSpectrogramParams {
 ///
 /// Panics if the computed frequency range produces zero bins (this cannot happen with valid params).
 #[inline]
-pub fn compute_ilr_spectrogram(
-    audio: [&NonEmptySlice<f64>; 2],
+pub fn compute_ilr_spectrogram<T: Sample>(
+    audio: [&NonEmptySlice<T>; 2],
     params: &ILRSpectrogramParams,
-    plan: &mut StftPlan,
-) -> SpectrogramResult<IlrSpectrogram> {
+    plan: &mut StftPlan<T>,
+) -> SpectrogramResult<IlrSpectrogram<T>> {
     let window_size = params.spectrogram_params.stft().n_fft();
     let bin_width = params.spectrogram_params.sample_rate_hz / window_size.get() as f64;
 
@@ -1546,7 +1553,7 @@ pub fn compute_ilr_spectrogram(
     let left_mag_slice = left_mag.slice(ndarray::s![start_bin..stop_bin, ..]);
     let right_mag_slice = right_mag.slice(ndarray::s![start_bin..stop_bin, ..]);
 
-    let mut ilr_spectrogram = Array2::from_elem((num_bins, num_frames), f64::NAN);
+    let mut ilr_spectrogram = Array2::from_elem((num_bins, num_frames), T::nan());
 
     #[cfg(feature = "rayon")]
     Zip::indexed(ilr_spectrogram.view_mut()).par_for_each(|(bin_idx, frame), o| {
@@ -1554,14 +1561,14 @@ pub fn compute_ilr_spectrogram(
         let right_val = right_mag_slice[(bin_idx, frame)];
 
         let intensity = left_val + right_val;
-        if intensity > 0.0 && left_val > 0.0 && right_val > 0.0 {
+        if intensity > T::zero() && left_val > T::zero() && right_val > T::zero() {
             let ratio = right_val / left_val;
 
             // Transform: values < 1 => 1 - ratio, values >= 1 => -(1 - 1/ratio)
-            if ratio < 1.0 {
-                *o = 1.0 - ratio;
+            if ratio < T::one() {
+                *o = T::one() - ratio;
             } else {
-                *o = -(1.0 - 1.0 / ratio);
+                *o = -(T::one() - T::one() / ratio);
             }
         }
     });
@@ -1572,13 +1579,13 @@ pub fn compute_ilr_spectrogram(
         let right_val = right_mag_slice[(bin_idx, frame)];
 
         let intensity = left_val + right_val;
-        if intensity > 0.0 && left_val > 0.0 && right_val > 0.0 {
+        if intensity > T::zero() && left_val > T::zero() && right_val > T::zero() {
             let ratio = right_val / left_val;
 
-            if ratio < 1.0 {
-                *o = 1.0 - ratio;
+            if ratio < T::one() {
+                *o = T::one() - ratio;
             } else {
-                *o = -(1.0 - 1.0 / ratio);
+                *o = -(T::one() - T::one() / ratio);
             }
         }
     });
@@ -1612,15 +1619,15 @@ pub fn compute_ilr_spectrogram(
 // ============================================================================
 
 #[inline]
-pub(crate) fn median(arr: &Array1<f64>) -> f64 {
-    let mut sorted: Vec<f64> = arr.iter().filter(|x| x.is_finite()).copied().collect();
+pub(crate) fn median<T: Sample>(arr: &Array1<T>) -> T {
+    let mut sorted: Vec<T> = arr.iter().filter(|x| x.is_finite()).copied().collect();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let len = sorted.len();
     if len == 0 {
-        return f64::NAN;
+        return T::nan();
     }
     if len.is_multiple_of(2) {
-        f64::midpoint(sorted[len / 2 - 1], sorted[len / 2])
+        (sorted[len / 2 - 1] + sorted[len / 2]) / T::from_f64(2.0)
     } else {
         sorted[len / 2]
     }
@@ -1643,25 +1650,24 @@ pub(crate) fn median(arr: &Array1<f64>) -> f64 {
 ///
 /// Panics if the diff array has zero columns (cannot happen with valid non-empty audio).
 #[inline]
-pub fn compute_itd_spectrogram_diff(
-    reference: [&NonEmptySlice<f64>; 2],
-    test: [&NonEmptySlice<f64>; 2],
+pub fn compute_itd_spectrogram_diff<T: Sample>(
+    reference: [&NonEmptySlice<T>; 2],
+    test: [&NonEmptySlice<T>; 2],
     params: &ITDSpectrogramParams,
-    plan: &mut StftPlan,
-) -> SpectrogramResult<(Array1<f64>, f64, f64)> {
+    plan: &mut StftPlan<T>,
+) -> SpectrogramResult<(Array1<T>, T, T)> {
     let ref_itd = compute_itd_spectrogram(reference, params, plan)?;
     let test_itd = compute_itd_spectrogram(test, params, plan)?;
 
     let diff = &test_itd.data - &ref_itd.data;
 
-    let col_means = diff
-        .mean_axis(Axis(0))
-        .expect("Non-empty slices produce non-zero diff array");
+    // Mean over frequency bins (axis 0) for each frame; computed manually as
+    // sum / count to avoid requiring `FromPrimitive` on `T` (matches `mean_axis`).
+    let n_bins = T::from_usize(diff.nrows());
+    let col_means: Array1<T> = diff.sum_axis(Axis(0)).mapv(|s| s / n_bins);
 
-    let mean_diff_degrees = col_means
-        .mapv(|x| x.abs() * (1.0 / 0.00086) * 90.0)
-        .mean()
-        .expect("Non-empty slices produce non-zero diff array");
+    let mapped = col_means.mapv(|x| x.abs() * T::from_f64(1.0 / 0.00086) * T::from_f64(90.0));
+    let mean_diff_degrees = mapped.sum() / T::from_usize(mapped.len());
 
     let mean_diff_itd = median(&col_means);
 
@@ -1680,29 +1686,29 @@ pub fn compute_itd_spectrogram_diff(
 ///
 /// Returns an error if either ILR spectrogram computation fails.
 #[inline]
-pub fn compute_ilr_spectrogram_diff(
-    reference: [&NonEmptySlice<f64>; 2],
-    test: [&NonEmptySlice<f64>; 2],
+pub fn compute_ilr_spectrogram_diff<T: Sample>(
+    reference: [&NonEmptySlice<T>; 2],
+    test: [&NonEmptySlice<T>; 2],
     params: &ILRSpectrogramParams,
-    plan: &mut StftPlan,
-) -> SpectrogramResult<(Array1<f64>, f64)> {
+    plan: &mut StftPlan<T>,
+) -> SpectrogramResult<(Array1<T>, T)> {
     let ref_ilr = compute_ilr_spectrogram(reference, params, plan)?;
     let test_ilr = compute_ilr_spectrogram(test, params, plan)?;
 
     let diff = &test_ilr.data - &ref_ilr.data;
 
     let n_frames = diff.ncols();
-    let col_means: Array1<f64> = (0..n_frames)
+    let col_means: Array1<T> = (0..n_frames)
         .map(|frame| {
             let col = diff.column(frame);
             let (sum, count) = col
                 .iter()
                 .filter(|x| !x.is_nan())
-                .fold((0.0_f64, 0usize), |(s, c), x| (s + x, c + 1));
+                .fold((T::zero(), 0usize), |(s, c), x| (s + *x, c + 1));
             if count == 0 {
-                f64::NAN
+                T::nan()
             } else {
-                sum / count as f64
+                sum / T::from_usize(count)
             }
         })
         .collect();
@@ -1711,13 +1717,72 @@ pub fn compute_ilr_spectrogram_diff(
         let (sum, count) = col_means
             .iter()
             .filter(|x| !x.is_nan())
-            .fold((0.0_f64, 0usize), |(s, c), x| (s + x.abs(), c + 1));
+            .fold((T::zero(), 0usize), |(s, c), x| (s + x.abs(), c + 1));
         if count == 0 {
-            f64::NAN
+            T::nan()
         } else {
-            sum / count as f64
+            sum / T::from_usize(count)
         }
     };
 
     Ok((col_means, mean_diff))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{StftParams, StftPlan, WindowType};
+
+    fn stereo<T: Sample>(n: usize) -> (Vec<T>, Vec<T>) {
+        // Deterministic, slightly decorrelated L/R signals.
+        let left: Vec<T> = (0..n)
+            .map(|i| T::from_f64((i as f64 * 0.05).sin()))
+            .collect();
+        let right: Vec<T> = (0..n)
+            .map(|i| T::from_f64((i as f64 * 0.05 + 0.3).sin()))
+            .collect();
+        (left, right)
+    }
+
+    fn itd_params() -> ITDSpectrogramParams {
+        let stft = StftParams::new(crate::nzu!(512), crate::nzu!(256), WindowType::Hanning, true)
+            .unwrap();
+        let params = SpectrogramParams::new(stft, 16000.0).unwrap();
+        ITDSpectrogramParams::new(params, 100.0, 4000.0, None).unwrap()
+    }
+
+    fn run_itd<T: Sample>() -> ItdSpectrogram<T> {
+        let (l, r) = stereo::<T>(4096);
+        let ls = NonEmptySlice::new(&l).unwrap();
+        let rs = NonEmptySlice::new(&r).unwrap();
+        let params = itd_params();
+        let mut plan = StftPlan::<T>::new(&params.spectrogram_params).unwrap();
+        compute_itd_spectrogram([ls, rs], &params, &mut plan).unwrap()
+    }
+
+    #[test]
+    fn itd_generic_f64_matches_finite() {
+        let spec = run_itd::<f64>();
+        assert!(spec.data.iter().all(|v| v.is_finite()));
+        assert_eq!(spec.data.nrows(), spec.frequencies().len().get());
+    }
+
+    #[test]
+    fn itd_generic_f32_smoke() {
+        let spec = run_itd::<f32>();
+        assert!(spec.data.iter().all(|v| v.is_finite()));
+        assert_eq!(spec.data.nrows(), spec.frequencies().len().get());
+    }
+
+    #[test]
+    fn itd_f32_approximates_f64() {
+        // The f32 and f64 paths run the same algorithm; results should agree
+        // to within f32 precision over the masked region.
+        let s64 = run_itd::<f64>();
+        let s32 = run_itd::<f32>();
+        assert_eq!(s64.data.dim(), s32.data.dim());
+        for (a, b) in s64.data.iter().zip(s32.data.iter()) {
+            assert!((a - f64::from(*b)).abs() < 1e-4, "{a} vs {b}");
+        }
+    }
 }

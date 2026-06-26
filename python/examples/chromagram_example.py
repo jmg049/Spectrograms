@@ -219,7 +219,7 @@ def main():
     print("-" * 80)
 
     for frame_idx in range(n_show):
-        values = chroma_c_major[:, frame_idx]
+        values = chroma_c_major.data[:, frame_idx]
         values_normalized = values / (np.max(values) + 1e-10)
         print(f"{frame_idx:>6}  " + "  ".join(f"{v:>5.2f}" for v in values_normalized))
 

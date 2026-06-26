@@ -93,6 +93,7 @@ pub enum DLDataTypeCode {
     kDLUInt = 1,
     kDLFloat = 2,
     kDLBfloat = 4,
+    kDLComplex = 5,
 }
 
 /// DLPack data type structure
@@ -143,8 +144,8 @@ pub struct DLPackContext {
 }
 
 impl DLPackContext {
-    /// Create a new DLPackContext from a PyArray2<f64>
-    pub fn new(_py: Python<'_>, arr: &Bound<'_, PyArray2<f64>>) -> Self {
+    /// Create a new `DLPackContext` from a 2D NumPy array of any element type.
+    pub fn new<T: numpy::Element>(_py: Python<'_>, arr: &Bound<'_, PyArray2<T>>) -> Self {
         let readonly = arr.readonly();
         let shape = readonly.shape();
         let shape_box = Box::new([shape[0] as i64, shape[1] as i64]);
@@ -156,7 +157,7 @@ impl DLPackContext {
         } else {
             // Non-contiguous: must provide explicit strides
             let strides_bytes = readonly.strides();
-            let element_size = std::mem::size_of::<f64>() as isize;
+            let element_size = std::mem::size_of::<T>() as isize;
             Some(Box::new([
                 (strides_bytes[0] / element_size) as i64,
                 (strides_bytes[1] / element_size) as i64,
@@ -266,12 +267,13 @@ unsafe extern "C" fn pycapsule_destructor(capsule: *mut ffi::PyObject) {
     }
 }
 
-/// Create a DLPack PyCapsule from a PyArray2<f64>
+/// Create a DLPack PyCapsule from a 2D NumPy array of element type `T`.
 ///
 /// # Arguments
 ///
 /// * `py` - Python context
-/// * `arr` - The NumPy array to wrap (must be f64)
+/// * `arr` - The NumPy array to wrap
+/// * `dtype` - The DLPack data type to report (e.g. f32/f64 float code)
 /// * `flags` - DLPack flags (e.g., DLPACK_FLAG_BITMASK_IS_COPIED)
 ///
 /// # Returns
@@ -284,9 +286,10 @@ unsafe extern "C" fn pycapsule_destructor(capsule: *mut ffi::PyObject) {
 /// a reference to the Python array. When the consuming framework calls the deleter,
 /// the context is properly cleaned up with GIL safety.
 #[allow(unused)]
-pub fn create_dlpack_capsule<'py>(
+pub fn create_dlpack_capsule<'py, T: numpy::Element>(
     py: Python<'py>,
-    arr: &Bound<'py, PyArray2<f64>>,
+    arr: &Bound<'py, PyArray2<T>>,
+    dtype: DLDataType,
     flags: u64,
 ) -> PyResult<Bound<'py, PyCapsule>> {
     // Get raw data pointer directly from the PyArray using numpy's data() method
@@ -304,11 +307,7 @@ pub fn create_dlpack_capsule<'py>(
             device_id: 0,
         },
         ndim: 2,
-        dtype: DLDataType {
-            code: DLDataTypeCode::kDLFloat as u8,
-            bits: 64,
-            lanes: 1,
-        },
+        dtype,
         shape: ctx.shape.as_mut_ptr(),
         strides: ctx
             .strides

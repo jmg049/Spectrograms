@@ -307,7 +307,7 @@ fn bench_spectrogram_planner(c: &mut Criterion) {
     group.bench_function("planner_mel", |b| {
         let planner = SpectrogramPlanner::new();
         let mut plan = planner
-            .mel_plan::<Power>(&params, &mel_params, None)
+            .mel_plan::<Power, _>(&params, &mel_params, None)
             .unwrap();
 
         b.iter(|| {
@@ -356,7 +356,7 @@ fn bench_batch_spectrograms(c: &mut Criterion) {
         b.iter(|| {
             let planner = SpectrogramPlanner::new();
             let mut plan = planner
-                .mel_plan::<Power>(&params, &mel_params, None)
+                .mel_plan::<Power, _>(&params, &mel_params, None)
                 .unwrap();
 
             for sig in &signals {

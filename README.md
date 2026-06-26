@@ -21,6 +21,7 @@ If you want to learn more on the background of spectrograms and FFTs in audio/im
 - **Plan-Based Computation**: Reuse and cache FFT plans for speedup on batch processing
 - **Two FFT Backends**: pure-Rust RealFFT/RustFFT (default) or FFTW
 - **Type-Safe Rust API**: Compile-time guarantees for fft and spectrogram types
+- **Precision-Generic (f32/f64)**: All core computations are generic over the float scalar via the sealed `Sample` trait. Defaults to `f64` (existing code unchanged); opt into `f32` for memory-bound or ML workloads.
 - **Python Bindings**: Fast computation with NumPy integration and GIL-free execution. Outperforms NumPy/SciPy implementations across a wide range of configurations, all while providing a type-safe and simple API.
 
 ### Audio Processing
@@ -51,6 +52,37 @@ If you want to learn more on the background of spectrograms and FFTs in audio/im
 - **High Performance**: Rust implementation with minimal overhead backed by benchmarks
 - **Batch/Stream Processing**: Efficient batch processing and streaming support
 - **Well Documented**: [Comprehensive manual](./manual/Computational%20Audio%20and%20Image%20Analysis%20with%20the%20Spectrograms%20Library.pdf) (WIP), lots of examples, and API documentation.
+
+---
+
+## Numeric Precision (f32 / f64)
+
+All core computations are **generic over the floating-point scalar type**, dispatched through the sealed `Sample` trait (implemented for `f32` and `f64`). The scalar type **defaults to `f64`**, so existing code needs no changes — pass `f32` inputs (or annotate the type) to compute in single precision:
+
+```rust
+use non_empty_slice::NonEmptyVec;
+use spectrograms::*;
+
+// f64 (default) — unchanged
+let sig64 = NonEmptyVec::new(vec![0.0_f64; 1024]).unwrap();
+let spec64 = stft(&sig64, nzu!(256), nzu!(128), WindowType::Hanning, true)?;
+
+// f32 — inferred from the input type
+let sig32 = NonEmptyVec::new(vec![0.0_f32; 1024]).unwrap();
+let spec32 = stft(&sig32, nzu!(256), nzu!(128), WindowType::Hanning, true)?;
+```
+
+Single precision halves memory and matches ML pipelines that train in `f32`. Coverage includes STFT, Mel/ERB/CQT, MFCC, chroma, MDCT, convolution, minimum-phase, binaural, and 2D FFT / image ops.
+
+> **Note:** the `f64`-input convenience constructors `chromagram`, `mfcc`, and `gaussian_kernel_2d` return `f64`; reach single precision through the input-generic variants (`chromagram_from_spectrogram`, `mfcc_from_log_mel`) or the low-level primitives.
+
+From **Python**, pass `dtype="float32"` (or `"float64"`, the default) to any spectrogram compute function to compute natively at that precision — the returned `Spectrogram.data` and its DLPack export carry the chosen dtype:
+
+```python
+import spectrograms as sg
+spec = sg.compute_mel_power_spectrogram(samples, params, mel_params, dtype="float32")
+spec.data.dtype  # float32
+```
 
 ---
 
@@ -812,8 +844,8 @@ reconstructed = sg.imdct(coefficients, params, original_length=len(signal))
 |----------|-------------|
 | `mdct(samples, params)` | Forward MDCT → shape `(N, n_frames)` |
 | `imdct(coefficients, params)` | Inverse MDCT via overlap-add |
-| `mdct_f32(samples, params)` | f32 variant (~2× faster) |
-| `imdct_f32(coefficients, params)` | f32 inverse variant |
+| `mdct::<f32>(samples, params)` | f32 variant (~2× faster) |
+| `imdct::<f32>(coefficients, params)` | f32 inverse variant |
 | `MdctParams::sine_window(n)` | Perfect-reconstruction parameters |
 
 ---
@@ -1115,12 +1147,27 @@ Additional flags:
 ```toml
 # Pure Rust, no Python
 [dependencies]
-spectrograms = { version = "1.0.0", default-features = false, features = ["realfft"] }
+spectrograms = { version = "2.0", default-features = false, features = ["realfft"] }
 
 # FFTW backend with Python
 [dependencies]
-spectrograms = { version = "1.0.0", default-features = false, features = ["fftw", "python"] }
+spectrograms = { version = "2.0", default-features = false, features = ["fftw", "python"] }
 ```
+
+---
+
+## Migrating to 2.0
+
+Version 2.0 makes the crate generic over the float scalar type. The default is `f64`, so **most code compiles unchanged**. The only breaking change is the removal of the legacy single-precision names, all now covered by the generic API:
+
+| Removed (≤ 1.x) | Use instead (2.0) |
+|-----------------|-------------------|
+| `mdct_f32(..)` / `imdct_f32(..)` | `mdct::<f32>(..)` / `imdct::<f32>(..)` |
+| `RealFftC2cPlanF32` | `RealFftC2cPlan<f32>` |
+| `RealFftPlanF32` | `RealFftPlan<f32>` |
+| `C2cPlanF32` / `R2cPlanF32` traits | the generic `C2cPlan<f32>` / `R2cPlan<f32>` |
+
+Everything else — including the Python bindings — is source-compatible.
 
 ---
 

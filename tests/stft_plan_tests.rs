@@ -14,7 +14,7 @@ fn test_stft_plan_reuse() {
         non_empty_vec![0.5; nzu!(16000)]
     ];
 
-    let mut plan = StftPlan::new(&params).unwrap();
+    let mut plan = StftPlan::<f64>::new(&params).unwrap();
 
     for signal in signals {
         let stft = plan.compute(&signal, &params).unwrap();
@@ -28,7 +28,7 @@ fn test_stft_plan_frame_by_frame() {
     let stft_params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft_params, 16000.0).unwrap();
 
-    let mut plan = StftPlan::new(&params).unwrap();
+    let mut plan = StftPlan::<f64>::new(&params).unwrap();
 
     let (n_bins, n_frames) = plan.output_shape(samples.len()).unwrap();
 
@@ -45,7 +45,7 @@ fn test_stft_plan_compute_into() {
     let stft_params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft_params, 16000.0).unwrap();
 
-    let mut plan = StftPlan::new(&params).unwrap();
+    let mut plan = StftPlan::<f64>::new(&params).unwrap();
 
     let (n_bins, n_frames) = plan.output_shape(samples.len()).unwrap();
     let mut output = Array2::<Complex<f64>>::zeros((n_bins.get(), n_frames.get()));
@@ -68,7 +68,7 @@ fn test_stft_plan_matches_compute_stft() {
     let stft1 = planner.compute_stft(&samples, &params).unwrap();
 
     // Reusable plan API
-    let mut plan = StftPlan::new(&params).unwrap();
+    let mut plan = StftPlan::<f64>::new(&params).unwrap();
     let stft2 = plan.compute(&samples, &params).unwrap();
 
     // Both should produce identical results
@@ -87,7 +87,7 @@ fn test_stft_plan_dimension_mismatch() {
     let stft_params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft_params, 16000.0).unwrap();
 
-    let mut plan = StftPlan::new(&params).unwrap();
+    let mut plan = StftPlan::<f64>::new(&params).unwrap();
 
     let mut wrong_size = Array2::<Complex<f64>>::zeros((100, 50));
 
@@ -104,7 +104,7 @@ fn test_stft_plan_multichannel() {
     let stft_params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft_params, 16000.0).unwrap();
 
-    let mut plan = StftPlan::new(&params).unwrap();
+    let mut plan = StftPlan::<f64>::new(&params).unwrap();
 
     let stft_left = plan.compute(&left_channel, &params).unwrap();
     let stft_right = plan.compute(&right_channel, &params).unwrap();
@@ -118,7 +118,7 @@ fn test_stft_plan_getters() {
     let stft_params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft_params, 16000.0).unwrap();
 
-    let plan = StftPlan::new(&params).unwrap();
+    let plan = StftPlan::<f64>::new(&params).unwrap();
 
     assert_eq!(plan.n_fft(), nzu!(512));
     assert_eq!(plan.hop_size(), nzu!(256));
@@ -130,7 +130,7 @@ fn test_stft_plan_output_shape() {
     let stft_params = StftParams::new(nzu!(512), nzu!(256), WindowType::Hanning, true).unwrap();
     let params = SpectrogramParams::new(stft_params, 16000.0).unwrap();
 
-    let plan = StftPlan::new(&params).unwrap();
+    let plan = StftPlan::<f64>::new(&params).unwrap();
 
     let (n_bins, _) = plan.output_shape(nzu!(16000)).unwrap();
     assert_eq!(n_bins, nzu!(257));

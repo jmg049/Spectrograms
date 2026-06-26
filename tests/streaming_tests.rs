@@ -28,7 +28,7 @@ fn test_compute_frame() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, _>(&params, None)
         .unwrap();
 
     // Compute single frame
@@ -57,7 +57,7 @@ fn test_compute_frame_multiple() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, _>(&params, None)
         .unwrap();
 
     // Compute multiple frames
@@ -85,7 +85,7 @@ fn test_compute_into() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, _>(&params, None)
         .unwrap();
 
     // Get expected shape
@@ -120,7 +120,7 @@ fn test_compute_into_wrong_size() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, _>(&params, None)
         .unwrap();
 
     // Wrong size buffer
@@ -142,7 +142,7 @@ fn test_output_shape() {
 
     let planner = SpectrogramPlanner::new();
     let plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, f64>(&params, None)
         .unwrap();
 
     let (n_bins, _) = plan.output_shape(nzu!(16000)).unwrap();
@@ -165,7 +165,7 @@ fn test_compute_into_matches_compute() {
 
     let planner = SpectrogramPlanner::new();
     let mut plan = planner
-        .linear_plan::<spectrograms::Power>(&params, None)
+        .linear_plan::<spectrograms::Power, _>(&params, None)
         .unwrap();
 
     // Compute using regular method

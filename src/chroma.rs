@@ -7,7 +7,7 @@ use std::{num::NonZeroUsize, ops::Deref};
 use ndarray::Array2;
 use non_empty_slice::NonEmptySlice;
 
-use crate::{SpectrogramError, SpectrogramResult, StftParams, nzu};
+use crate::{Sample, SpectrogramError, SpectrogramResult, StftParams, nzu};
 
 /// Number of pitch classes in Western music.
 pub const N_CHROMA: usize = 12;
@@ -185,14 +185,14 @@ impl ChromaParams {
 /// Chromagram representation with 12 pitch classes.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Chromagram {
+pub struct Chromagram<T = f64> {
     /// Chroma feature matrix with shape (12, `n_frames`)
-    pub data: Array2<f64>,
+    pub data: Array2<T>,
     /// Parameters used to compute this chromagram
     params: ChromaParams,
 }
 
-impl Chromagram {
+impl<T: Sample> Chromagram<T> {
     /// Get the number of frames.
     ///
     /// # Returns
@@ -242,15 +242,15 @@ impl Chromagram {
     }
 }
 
-impl AsRef<Array2<f64>> for Chromagram {
+impl<T: Sample> AsRef<Array2<T>> for Chromagram<T> {
     #[inline]
-    fn as_ref(&self) -> &Array2<f64> {
+    fn as_ref(&self) -> &Array2<T> {
         &self.data
     }
 }
 
-impl Deref for Chromagram {
-    type Target = Array2<f64>;
+impl<T: Sample> Deref for Chromagram<T> {
+    type Target = Array2<T>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -362,12 +362,12 @@ pub fn build_chroma_filterbank(
 ///
 /// Returns `SpectrogramError` if the input spectrogram dimensions
 #[inline]
-pub fn chromagram_from_spectrogram(
-    spectrogram: &Array2<f64>,
+pub fn chromagram_from_spectrogram<T: Sample>(
+    spectrogram: &Array2<T>,
     sample_rate: f64,
     n_fft: NonZeroUsize,
     params: &ChromaParams,
-) -> SpectrogramResult<Chromagram> {
+) -> SpectrogramResult<Chromagram<T>> {
     let n_bins = spectrogram.nrows();
     let n_frames = spectrogram.ncols();
 
@@ -376,17 +376,18 @@ pub fn chromagram_from_spectrogram(
         return Err(SpectrogramError::dimension_mismatch(expected_bins, n_bins));
     }
 
-    // Build chroma filterbank
+    // Build chroma filterbank (in f64, converted to T at apply)
     let filterbank = build_chroma_filterbank(sample_rate, n_fft, params)?;
 
     // Apply filterbank: chroma = filterbank @ spectrogram
-    let mut chroma_data = Array2::<f64>::zeros((N_CHROMA, n_frames));
+    let mut chroma_data = Array2::<T>::zeros((N_CHROMA, n_frames));
 
     for frame_idx in 0..n_frames {
         for chroma_idx in 0..N_CHROMA {
-            let mut sum = 0.0;
+            let mut sum = T::zero();
             for bin_idx in 0..n_bins {
-                sum += filterbank[[chroma_idx, bin_idx]] * spectrogram[[bin_idx, frame_idx]];
+                sum += T::from_f64(filterbank[[chroma_idx, bin_idx]])
+                    * spectrogram[[bin_idx, frame_idx]];
             }
             chroma_data[[chroma_idx, frame_idx]] = sum;
         }
@@ -402,15 +403,15 @@ pub fn chromagram_from_spectrogram(
 }
 
 /// Apply normalization to chroma features.
-fn apply_chroma_normalization(chroma: &mut Array2<f64>, norm: ChromaNorm) {
+fn apply_chroma_normalization<T: Sample>(chroma: &mut Array2<T>, norm: ChromaNorm) {
     let n_frames = chroma.ncols();
 
     match norm {
         ChromaNorm::None => {}
         ChromaNorm::L1 => {
             for frame_idx in 0..n_frames {
-                let sum: f64 = (0..N_CHROMA).map(|i| chroma[[i, frame_idx]]).sum();
-                if sum > 0.0 {
+                let sum = (0..N_CHROMA).fold(T::zero(), |acc, i| acc + chroma[[i, frame_idx]]);
+                if sum > T::zero() {
                     for chroma_idx in 0..N_CHROMA {
                         chroma[[chroma_idx, frame_idx]] /= sum;
                     }
@@ -419,9 +420,10 @@ fn apply_chroma_normalization(chroma: &mut Array2<f64>, norm: ChromaNorm) {
         }
         ChromaNorm::L2 => {
             for frame_idx in 0..n_frames {
-                let sum_sq: f64 = (0..N_CHROMA).map(|i| chroma[[i, frame_idx]].powi(2)).sum();
+                let sum_sq =
+                    (0..N_CHROMA).fold(T::zero(), |acc, i| acc + chroma[[i, frame_idx]].powi(2));
                 let norm = sum_sq.sqrt();
-                if norm > 0.0 {
+                if norm > T::zero() {
                     for chroma_idx in 0..N_CHROMA {
                         chroma[[chroma_idx, frame_idx]] /= norm;
                     }
@@ -432,8 +434,8 @@ fn apply_chroma_normalization(chroma: &mut Array2<f64>, norm: ChromaNorm) {
             for frame_idx in 0..n_frames {
                 let max_val = (0..N_CHROMA)
                     .map(|i| chroma[[i, frame_idx]])
-                    .fold(0.0, f64::max);
-                if max_val > 0.0 {
+                    .fold(T::zero(), T::max);
+                if max_val > T::zero() {
                     for chroma_idx in 0..N_CHROMA {
                         chroma[[chroma_idx, frame_idx]] /= max_val;
                     }
@@ -473,7 +475,7 @@ fn apply_chroma_normalization(chroma: &mut Array2<f64>, norm: ChromaNorm) {
 /// let stft = StftParams::new(nzu!(2048), nzu!(512), WindowType::Hanning, true)?;
 /// let chroma_params = ChromaParams::music_standard();
 ///
-/// let chromagram = chromagram(&samples, &stft, 16000.0, &chroma_params)?;
+/// let chromagram: Chromagram = chromagram(&samples, &stft, 16000.0, &chroma_params)?;
 ///
 /// assert_eq!(chromagram.n_bins(), nzu!(12));
 /// println!("Chromagram: {} pitch classes x {} frames",
@@ -482,31 +484,21 @@ fn apply_chroma_normalization(chroma: &mut Array2<f64>, norm: ChromaNorm) {
 /// # }
 /// ```
 #[inline]
-pub fn chromagram(
-    samples: &NonEmptySlice<f64>,
+pub fn chromagram<T: Sample>(
+    samples: &NonEmptySlice<T>,
     stft_params: &StftParams,
     sample_rate: f64,
     chroma_params: &ChromaParams,
-) -> SpectrogramResult<Chromagram> {
-    use crate::{SpectrogramParams, SpectrogramPlanner};
+) -> SpectrogramResult<Chromagram<T>> {
+    use crate::{LinearHz, Magnitude, Spectrogram, SpectrogramParams};
 
     let params = SpectrogramParams::new(stft_params.clone(), sample_rate)?;
 
-    // Compute STFT
-    let planner = SpectrogramPlanner::new();
-    let stft_result = planner.compute_stft(samples, &params)?;
-
-    // Convert complex STFT to magnitude
-    let mut magnitude_spec = Array2::<f64>::zeros(stft_result.data.dim());
-    for ((i, j), val) in stft_result.data.indexed_iter() {
-        magnitude_spec[[i, j]] = val.norm();
-    }
+    // Compute the magnitude spectrogram at precision `T`. This is equivalent to
+    // taking |STFT| of the windowed frames, but stays in `T` end-to-end.
+    let mag_spec = Spectrogram::<LinearHz, Magnitude, T>::compute(samples, &params, None)?;
+    let magnitude_spec: Array2<T> = mag_spec.data().clone();
 
     // Compute chromagram from magnitude spectrogram
-    chromagram_from_spectrogram(
-        &magnitude_spec,
-        sample_rate,
-        stft_result.params.n_fft(),
-        chroma_params,
-    )
+    chromagram_from_spectrogram(&magnitude_spec, sample_rate, stft_params.n_fft(), chroma_params)
 }

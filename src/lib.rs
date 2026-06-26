@@ -37,6 +37,7 @@
 //! - **Image operations**: Convolution, filtering, edge detection
 //! - **Two backends**: `RealFFT` (pure Rust) or FFTW (fastest)
 //! - **Plan-based API**: Reusable plans for batch processing
+//! - **Precision-generic**: Works in `f32` or `f64` (defaults to `f64`) via the [`Sample`] trait
 //!
 //! # Domain Organization
 //!
@@ -148,6 +149,30 @@
 //! - `realfft` (default): Pure-Rust FFT implementation, no system dependencies
 //! - `fftw`: Uses FFTW C library for fastest performance (requires system install)
 //!
+//! # Numeric Precision (`f32` / `f64`)
+//!
+//! All core computations are generic over the floating-point scalar type via the
+//! sealed [`Sample`] trait (implemented for `f32` and `f64`). The scalar type
+//! **defaults to `f64`**, so existing code is unchanged; pass `f32` inputs (or
+//! annotate the type) to compute in single precision — useful for memory-bound
+//! workloads and ML pipelines that train in `f32`:
+//!
+//! ```
+//! use spectrograms::*;
+//! use non_empty_slice::NonEmptyVec;
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let sig = NonEmptyVec::new(vec![0.0_f32; 1024]).unwrap();
+//! // `T = f32` is inferred from the input type.
+//! let spec = stft(&sig, nzu!(256), nzu!(128), WindowType::Hanning, true)?;
+//! # Ok(()) }
+//! ```
+//!
+//! Coverage spans STFT, Mel/ERB/CQT, MFCC, chroma, MDCT, convolution,
+//! minimum-phase, binaural, and 2D FFT / image operations. The `f64`-input
+//! convenience constructors ([`chromagram`], [`mfcc`], [`gaussian_kernel_2d`])
+//! return `f64`; reach single precision via their input-generic variants
+//! ([`chromagram_from_spectrogram`], [`mfcc_from_log_mel`]) or the primitives.
+//!
 //! # Examples
 //!
 //! ## Mel Spectrogram
@@ -202,7 +227,7 @@
 //!
 //! // Create plan once, reuse for all signals
 //! let planner = SpectrogramPlanner::new();
-//! let mut plan = planner.linear_plan::<Power>(&params, None)?;
+//! let mut plan = planner.linear_plan::<Power, _>(&params, None)?;
 //!
 //! for signal in &signals {
 //!     let spec = plan.compute(&signal)?;
@@ -224,6 +249,7 @@ pub mod image_ops;
 mod mdct;
 mod mfcc;
 mod min_phase;
+mod sample;
 mod spectrogram;
 mod window;
 
@@ -335,15 +361,14 @@ pub use cqt::{CqtParams, CqtResult, cqt};
 pub use erb::{ErbParams, ErbSpacing, GammatoneParams, gammatone_iir_spectrogram};
 pub use error::{SpectrogramError, SpectrogramResult};
 #[cfg(feature = "realfft")]
-pub use fft_backend::realfft_backend::{RealFftC2cPlan, RealFftC2cPlanF32};
-pub use fft_backend::{
-    C2cPlan, C2cPlanF32, C2rPlan, C2rPlanner, R2cPlan, R2cPlanF32, R2cPlanner, r2c_output_size,
-};
+pub use fft_backend::realfft_backend::RealFftC2cPlan;
+pub use fft_backend::{C2cPlan, C2rPlan, C2rPlanner, R2cPlan, R2cPlanner, r2c_output_size};
 pub use fft2d::*;
 pub use image_ops::*;
-pub use mdct::{MdctParams, imdct, imdct_f32, mdct, mdct_f32};
+pub use mdct::{MdctParams, imdct, mdct};
 pub use mfcc::{Mfcc, MfccParams, mfcc, mfcc_from_log_mel};
 pub use min_phase::{minimum_phase, minimum_phase_with};
+pub use sample::Sample;
 // The complex type used by the FFT plan traits, so downstream crates can name
 // it without depending on num-complex directly.
 pub use num_complex::Complex;

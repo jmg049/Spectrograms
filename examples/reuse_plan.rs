@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the plan once
     let planner = SpectrogramPlanner::new();
-    let mut plan = planner.linear_plan::<spectrograms::Power>(&params, None)?;
+    let mut plan = planner.linear_plan::<spectrograms::Power, _>(&params, None)?;
 
     // Reuse it for all signals
     for (i, signal) in signals.iter().enumerate() {

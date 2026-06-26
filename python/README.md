@@ -110,7 +110,8 @@ stft = sg.StftParams(n_fft=512, hop_size=256, window=sg.WindowType.hanning)
 mfcc_params = sg.MfccParams(n_mfcc=13)
 
 mfccs = sg.compute_mfcc(samples, stft, sample_rate=16000, n_mels=40, mfcc_params=mfcc_params)
-# Returns shape: (n_mfcc, n_frames)
+# Returns an Mfcc result object; mfccs.data has shape (n_mfcc, n_frames).
+# mfccs.dtype is "float32"/"float64"; the object is array/DLPack compatible.
 ```
 
 ### Chromagram (Pitch Class Profiles)
@@ -120,7 +121,8 @@ stft = sg.StftParams(n_fft=4096, hop_size=512, window=sg.WindowType.hanning)
 chroma_params = sg.ChromaParams.music_standard()
 
 chroma = sg.compute_chromagram(samples, stft, sample_rate=22050, chroma_params=chroma_params)
-# Returns shape: (12, n_frames) - one row per pitch class
+# Returns a Chromagram result object; chroma.data has shape (12, n_frames),
+# one row per pitch class. chroma.labels lists the pitch-class names.
 ```
 
 ### Raw STFT
@@ -128,7 +130,8 @@ chroma = sg.compute_chromagram(samples, stft, sample_rate=22050, chroma_params=c
 ```python
 params = sg.SpectrogramParams.music_default(sample_rate=44100)
 stft_data = sg.compute_stft(samples, params)
-# Returns complex-valued STFT matrix
+# Returns an StftResult; stft_data.data is the complex-valued STFT matrix
+# (complex64/complex128). stft_data.norm() gives the real magnitude.
 ```
 
 ## Window Functions

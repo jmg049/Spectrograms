@@ -149,7 +149,7 @@ fn test_planner_irfft_remains_strict() {
 #[test]
 fn test_padding_preserves_dc_component() {
     // Test that DC component is preserved with padding
-    let signal = non_empty_vec![1.0, 1.0, 1.0];
+    let signal: non_empty_slice::NonEmptyVec<f64> = non_empty_vec![1.0, 1.0, 1.0];
     let spectrum_padded = fft(&signal, nzu!(8)).unwrap();
 
     // DC component should be sum of signal values
