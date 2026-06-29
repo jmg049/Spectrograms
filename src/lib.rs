@@ -251,6 +251,7 @@ mod mfcc;
 mod min_phase;
 mod sample;
 mod spectrogram;
+pub mod source;
 mod window;
 
 #[cfg(feature = "python")]
@@ -358,7 +359,10 @@ pub use chroma::{
 };
 pub use convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
 pub use cqt::{CqtParams, CqtResult, cqt};
-pub use erb::{ErbParams, ErbSpacing, GammatoneParams, gammatone_iir_spectrogram};
+pub use erb::{
+    ErbParams, ErbSpacing, GammatoneParams, gammatone_center_frequencies,
+    gammatone_iir_spectrogram,
+};
 pub use error::{SpectrogramError, SpectrogramResult};
 #[cfg(feature = "realfft")]
 pub use fft_backend::realfft_backend::RealFftC2cPlan;
@@ -372,6 +376,7 @@ pub use sample::Sample;
 // The complex type used by the FFT plan traits, so downstream crates can name
 // it without depending on num-complex directly.
 pub use num_complex::Complex;
+pub use source::{GammatoneSource, SpectrogramSource};
 pub use spectrogram::*;
 pub use window::{
     WindowType, blackman_window, gaussian_window, hamming_window, hanning_window, kaiser_window,

@@ -51,6 +51,12 @@ The manual is organized into major thematic sections:
     MFCC, chroma, gammatone filters
   \item \textbf{Image Processing via FFT} (\cref{sec:image}) --- 2D
     convolution, filtering, edge detection
+  \item \textbf{Binaural Spectrograms} (\cref{sec:binaural}) ---
+    ITD, IPD, ILD, ILR spatial audio features
+  \item \textbf{Modified Discrete Cosine Transform} (\cref{sec:mdct}) ---
+    MDCT/IMDCT, perfect reconstruction, codec applications
+  \item \textbf{FFT Convolution and Minimum Phase} (\cref{sec:convolution}) ---
+    FFT-based convolution, streaming overlap-save, minimum-phase conversion
   \item \textbf{Computational Optimizations}
     (\cref{sec:optimizations}) --- Sparse matrices, FFT plans, caching
   \item \textbf{Numerical Considerations} (\cref{sec:numerical}) ---
@@ -105,9 +111,9 @@ Precision genericity spans the full feature set: the STFT, the mel,
 ERB, and CQT perceptual transforms, MFCCs, chroma, the MDCT, FFT
 convolution, minimum-phase reconstruction, the binaural features, and
 the 2D FFT and image operations all operate at both precisions. The
-legacy \code{mdct\_f32} and \code{imdct\_f32} entry points are retained
-as thin wrappers over the generic \code{mdct} and \code{imdct}
-instantiated at \code{f32}.
+legacy \code{mdct\_f32} and \code{imdct\_f32} entry points have been
+\emph{removed}; use the generic \code{mdct::<f32>} and
+\code{imdct::<f32>} instead.
 
 \begin{concept}{Caveat: f64-Returning Convenience Constructors}
   A few high-level convenience constructors that accept \code{f64}
@@ -125,14 +131,14 @@ instantiated at \code{f32}.
 three concrete goals. First, many spectrogram workloads are
 \emph{memory-bound}: halving the width of every sample and spectral
 coefficient improves cache utilisation and memory bandwidth. Second,
-machine-learning pipelines frequently train in single precision, so
-producing features directly in \code{f32} avoids a wasteful conversion
-at the boundary. Third, a planned \code{no\_std}/embedded build targets
-devices whose floating-point units are single-precision, where
-\code{f64} arithmetic is emulated and therefore costly. Double
-precision nonetheless remains the default, as it is the right choice
-for offline analysis where numerical headroom matters
-(\cref{subsec:precision-f64}).
+machine-learning pipelines train in single precision, so producing
+features directly in \code{f32} avoids a conversion at the
+pipeline boundary. Third, modern hardware---both SIMD-capable CPUs and
+GPUs---processes single-precision data at higher throughput, so
+computing features in \code{f32} reduces wall-clock time for large-scale
+batch workloads. Double precision nonetheless remains the default, as it
+is the right choice for offline analysis where numerical headroom
+matters (\cref{subsec:precision-f64}).
 
 \subsection{Notation Conventions}\label{subsec:notation}
 
@@ -186,8 +192,10 @@ The \termdef{inverse DFT} (IDFT) reconstructs the time-domain signal:
   n = 0, 1, \ldots, N-1
 \end{equation}
 
-The normalization factor $1/N$ ensures \termdef{perfect
-reconstruction}: $\text{IDFT}(\DFT(x)) = x$.
+The normalization factor $1/N$ ensures \termdef{perfect reconstruction}:
+\[
+  \IDFT(\DFT(x)) = x.
+\]
 
 \begin{concept}{DFT Scaling Convention}
   Different implementations use different scaling conventions for the
@@ -319,7 +327,7 @@ with output size:
 algorithms (from RealFFT or FFTW backends) that exploit this symmetry
 for both speed and memory efficiency.
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={R2C output size for real FFT input}]
 
 pub const fn r2c_output_size(n: usize) -> usize {
     n / 2 + 1
@@ -351,7 +359,7 @@ frequencies:
 
 The library's C2R inverse FFT ensures perfect reconstruction:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Verifying C2R inverse FFT round-trip}]
 let original = vec![1.0, 2.0, 3.0, 4.0];
 let spectrum = fft2d(&original_image)?;
 let reconstructed = ifft2d(&spectrum, original_image.ncols())?;
@@ -390,7 +398,7 @@ For a real-valued $M \times N$ image, the output is $M \times (N/2 +
 \textbf{Implementation:} The library uses row-major layout and
 ensures contiguous memory:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={2D FFT function signature and output shape}]
 
 pub fn fft2d<T: Sample>(data: &ArrayView2<T>) -> SpectrogramResult<Array2<Complex<T>>> {
     let (nrows, ncols) = (data.nrows(), data.ncols());
@@ -493,7 +501,7 @@ over the scalar type. The match-arm listings throughout this section
 show the \code{f64} instantiation, whereas the public entry point has
 the generic signature
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Generic make-window constructor signature}]
 
 pub fn make_window<T: Sample>(window: WindowType,
                               n_fft: NonZeroUsize) -> NonEmptyVec<T>
@@ -567,7 +575,7 @@ The coefficients (0.54, 0.46) were chosen to minimize the first sidelobe:
   \item Sidelobe falloff: -6 dB/octave (worse than Hanning)
 \end{itemize}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Hamming window implementation}]
 
 WindowType::Hamming => {
     let n1 = (n_fft - 1) as f64;
@@ -600,7 +608,7 @@ Properties:
   \item Sidelobe falloff: -18 dB/octave
 \end{itemize}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Blackman window implementation}]
 
 WindowType::Blackman => {
     let n1 = (n_fft - 1) as f64;
@@ -647,7 +655,7 @@ Parameter $\beta$ effects:
   \item Larger $\beta$: lower sidelobes, wider main lobe
 \end{itemize}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Kaiser window with modified Bessel function}]
 
 fn bessel_i0(x: f64) -> f64 {
     let mut sum = 1.0;       // k=0 term
@@ -697,7 +705,7 @@ A Gaussian function centered at the window midpoint:
 where $\sigma$ (standard deviation) controls the width. Smaller
 $\sigma$ → narrower window → more time localization.
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Gaussian window implementation}]
 
 WindowType::Gaussian { std } => {
     for i in 0..n_fft {
@@ -799,7 +807,7 @@ Comparison table for $N=512$:
 \textbf{Verification:} To check if a window/hop combination satisfies
 COLA, compute:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Verifying COLA constraint for window and hop}]
 
 fn verify_cola(window: &[f64], hop_size: usize) -> bool {
     let n = window.len();
@@ -957,7 +965,7 @@ With centering (padding $N/2$ zeros on each end):
 \textbf{Implementation detail:} The library uses centering by default
 to avoid edge effects:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Frame count with optional centre-padding}]
 
 fn frame_count(&self, n_samples: usize) -> usize {
     let pad = if self.centre { self.n_fft / 2 } else { 0 };
@@ -1016,7 +1024,7 @@ Optimizations:
 
   \textbf{Implementation example:}
 
-  \begin{lstlisting}[]
+  \begin{lstlisting}[caption={Workspace struct with reusable STFT buffers}]
 struct Workspace {
     frame: Vec<f64>,              // Size N (windowed input)
     fft_out: Vec<Complex<f64>>,   // Size N/2 + 1 (FFT output)
@@ -1042,7 +1050,7 @@ impl Workspace {
   $\times$ 625 frames).
 \end{concept}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Windowed frame extraction and FFT per frame}]
  - compute one frame
 fn compute_frame_spectrum(&mut self, samples: &[f64],
                           frame_idx: usize,
@@ -1331,7 +1339,7 @@ where $f[m]$ are the FFT bin indices corresponding to mel points.
 matrix since each triangular filter only has non-zero values over a
 small range of bins:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Building the sparse mel filterbank matrix}]
 
 fn build_mel_filterbank_matrix(sample_rate_hz: f64, n_fft: usize,
                                 n_mels: usize, f_min: f64,
@@ -1474,7 +1482,7 @@ between adjacent bins to get log-spaced values:
 
 where $i = \lfloor f_k / \Delta f \rfloor$ and $\alpha = (f_k / \Delta f) - i$.
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Log-frequency interpolation via sparse matrix}]
 
 fn build_loghz_matrix(sample_rate_hz: f64, n_fft: usize,
                       n_bins: usize, f_min: f64,
@@ -1531,7 +1539,7 @@ linear spectrum, and $\mathbf{y}$ is the perceptually-scaled spectrum.
 
 The library uses row-wise sparse format:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Row-wise sparse matrix storage definition}]
 struct SparseMatrix {
     nrows: usize,
     ncols: usize,
@@ -1542,7 +1550,7 @@ struct SparseMatrix {
 
 Multiplication:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Sparse matrix-vector multiplication}]
 fn multiply_vec(&self, input: &[f64], out: &mut [f64]) {
     for (row_idx, (row_values, row_indices)) in
         self.values.iter().zip(&self.indices).enumerate() {
@@ -1652,7 +1660,7 @@ where $w[n]$ is a window function (typically Hanning or Hamming).
 
 \textbf{Implementation:}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={CQT kernel with windowed complex exponential}]
 
 fn generate_kernel_bin(center_freq: f64, kernel_length: usize,
                        sample_rate: f64,
@@ -1717,7 +1725,7 @@ especially near the edges due to windowing. This can be exploited with
 
 where $\epsilon$ is the sparsity threshold (e.g., 0.01 for 1\%).
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Zeroing small CQT kernel coefficients}]
 
 fn apply_sparsity_threshold(kernel: &mut [Complex<f64>],
                             threshold: f64) {
@@ -1800,7 +1808,7 @@ compacts energy into the first few coefficients.
   due to its excellent energy compaction properties.
 \end{concept}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={DCT-II implementation for MFCC cepstral step}]
 
 fn dct_ii(input: &[f64]) -> Vec<f64> {
     let n = input.len();
@@ -1829,7 +1837,7 @@ Liftering applies a sinusoidal weighting to emphasize mid-range coefficients:
 
 where $L$ is the lifter parameter (commonly 22).
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Sinusoidal liftering applied to MFCC array}]
 
 fn apply_liftering(mfcc: &mut Array2<f64>, lifter: usize) {
     let n_mfcc = mfcc.nrows();
@@ -1990,7 +1998,7 @@ For correct FFT convolution, the kernel must be padded to image size
 with proper phase shifting. The kernel's center should map to
 position $(0, 0)$ in the padded array:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Padding kernel with centre at origin for FFT}]
 
 fn pad_kernel_for_fft(kernel: &Array2<f64>,
                       target_shape: (usize, usize)) -> Array2<f64> {
@@ -2067,7 +2075,7 @@ The Gaussian kernel for blurring:
 
 Implementation:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={2D Gaussian kernel generation and normalisation}]
 
 pub fn gaussian_kernel_2d(size: NonZeroUsize, sigma: f64) -> SpectrogramResult<Array2<f64>> {
     if size.get().is_multiple_of(2) {
@@ -2137,6 +2145,421 @@ In frequency domain, differentiation becomes multiplication:
   \mathcal{F}\{\nabla^2 I\} = -(u^2 + v^2) \mathcal{F}\{I\}
 \end{equation}
 
+\section{Binaural Spectrograms}\label{sec:binaural}
+
+\subsection{Spatial Hearing and Binaural Cues}\label{subsec:binaural_intro}
+
+The human auditory system localises sound by comparing the signals
+arriving at the two ears.\ The library exposes four classic binaural
+cues as time-frequency representations, each implemented as a
+spectrogram whose rows correspond to frequency bins and whose columns
+correspond to STFT frames.\ All four operate at either \code{f32} or
+\code{f64} precision.
+
+\begin{center}
+  \begin{tabular}{llll}
+    \textbf{Cue} & \textbf{Symbol} & \textbf{Units} &
+    \textbf{Frequency range} \\
+    \hline
+    Interaural Time Difference & ITD & seconds & $<$1.5~kHz \\
+    Interaural Phase Difference & IPD & radians & all \\
+    Interaural Level Difference & ILD & dB & $>$1.5~kHz \\
+    Interaural Level Ratio & ILR & dimensionless ($[-1,1]$) & all \\
+  \end{tabular}
+\end{center}
+
+\subsection{Interaural Time Difference (ITD)}\label{subsec:itd}
+
+\begin{concept}{ITD Definition}
+  The ITD is the extra propagation time for a sound to reach the
+  farther ear:
+
+  \begin{equation}
+    \label{eq:itd}
+    \text{ITD}(k, m) = \frac{\angle X_L[k,m] - \angle X_R[k,m]}{2\pi f_k}
+  \end{equation}
+
+  where $X_L$ and $X_R$ are the complex STFT spectra of the left and
+  right channels, $\angle$ denotes argument (phase angle), and $f_k$
+  is the centre frequency of bin $k$ in Hz.\ At low frequencies the
+  phase difference is an unambiguous indicator of ITD; above $\sim$1.5~kHz
+  phase wrapping makes the relationship ambiguous.
+\end{concept}
+
+The library uses \code{round} (not \code{floor}/\code{ceil}) for the
+bin-index conversion to match the \texttt{Binaspect} reference
+implementation, and returns only the bins spanning
+\code{[start\_freq,~end\_freq]} rather than the full spectrum:
+
+\begin{lstlisting}[caption={Computing ITD spectrogram from stereo channels}]
+
+use spectrograms::{ITDSpectrogramParams, compute_itd_spectrogram};
+use std::num::NonZeroUsize;
+
+let n_fft = NonZeroUsize::new(4096).unwrap();
+let hop   = NonZeroUsize::new(2048).unwrap();
+let params = ITDSpectrogramParams::new(50.0, 620.0, n_fft, hop)?;
+// start_freq=50 Hz, end_freq=620 Hz
+
+let itd = compute_itd_spectrogram(&left, &right, sample_rate, &params)?;
+// itd is an ItdSpectrogram<f64>; shape is (n_freq_bins, n_frames)
+\end{lstlisting}
+
+\subsection{Interaural Phase Difference (IPD)}\label{subsec:ipd}
+
+The IPD is the unwrapped phase difference between channels:
+
+\begin{equation}
+  \text{IPD}(k, m) = \angle X_L[k,m] - \angle X_R[k,m]
+\end{equation}
+
+Values lie in $(-\pi, \pi]$. Unlike ITD, IPD is frequency-independent
+and does not require dividing by $f_k$, making it ambiguous at high
+frequencies (half a wavelength becomes less than the inter-ear distance).
+
+\subsection{Interaural Level Difference (ILD)}\label{subsec:ild}
+
+\begin{concept}{ILD Definition}
+  The ILD captures level asymmetry between channels in decibels:
+
+  \begin{equation}
+    \label{eq:ild}
+    \text{ILD}(k, m) = 10 \log_{10}
+    \frac{|X_L[k,m]|^2 + \epsilon}{|X_R[k,m]|^2 + \epsilon}
+  \end{equation}
+
+  where $\epsilon$ prevents division by zero.\ Positive values indicate
+  the sound source is closer to the left ear.\ ILD is the dominant
+  cue above $\sim$1.5~kHz because the head creates a significant
+  acoustic shadow at those wavelengths.
+\end{concept}
+
+\subsection{Interaural Level Ratio (ILR)}\label{subsec:ilr}
+
+The ILR normalises the power difference to the $[-1,1]$ range:
+
+\begin{equation}
+  \label{eq:ilr}
+  \text{ILR}(k, m) = \frac{|X_L[k,m]|^2 - |X_R[k,m]|^2}
+  {|X_L[k,m]|^2 + |X_R[k,m]|^2 + \epsilon}
+\end{equation}
+
+A value of $+1$ indicates all energy in the left channel; $-1$
+indicates all energy in the right channel; $0$ is perfectly balanced.
+
+\subsection{Histogram Analysis and Comparison}\label{subsec:binaural_histogram}
+
+Every binaural spectrogram object exposes a \code{histogram(n\_bins)}
+method that aggregates the frame-by-frame cue values into a 2D
+histogram (frequency bins $\times$ value buckets), providing a
+statistical summary of the spatial distribution over time.
+
+The library also provides comparison functions that compute the
+mean per-frequency-bin difference between a reference and a test
+recording:
+
+\begin{lstlisting}[caption={Mean ITD difference between reference and test}]
+
+let (col_means, mean_diff_degrees, mean_diff_itd) =
+    compute_itd_spectrogram_diff(&ref_left, &ref_right,
+                                 &test_left, &test_right,
+                                 sample_rate, &params)?;
+// col_means         -- per-frequency-bin mean ITD difference (Array1)
+// mean_diff_degrees -- mean absolute error converted to degrees of azimuth
+// mean_diff_itd     -- median ITD difference across frames (seconds)
+\end{lstlisting}
+
+\subsection{Parallelisation}\label{subsec:binaural_rayon}
+
+When the \code{rayon} feature is enabled, the per-frequency-bin
+magphase computation uses \code{par\_for\_each}, giving a significant
+speed-up on multi-core systems.\ Enable it in \texttt{Cargo.toml}:
+
+\begin{lstlisting}[caption={Enabling rayon parallelisation in Cargo.toml}]
+
+[dependencies]
+spectrograms = { version = "2", features = ["rayon"] }
+\end{lstlisting}
+
+\section{Modified Discrete Cosine Transform (MDCT)}\label{sec:mdct}
+
+\subsection{Motivation and Codec Context}\label{subsec:mdct_motivation}
+
+The \termdef{Modified Discrete Cosine Transform} (MDCT) is a lapped
+orthogonal transform at the heart of virtually every modern lossy audio
+codec: MP3 (Layer III), AAC, Vorbis, and Opus all use it as their
+core time-frequency analysis stage.\ Unlike the STFT, the MDCT
+overlaps input frames by exactly 50\% and maps $2N$ samples to $N$
+real-valued coefficients (50\% dimensionality reduction), yet still
+achieves \termdef{perfect reconstruction} when the appropriate window
+is applied.
+
+\subsection{MDCT Definition}\label{subsec:mdct_definition}
+
+For a windowed frame of $2N$ samples $x[n]$, the MDCT produces $N$
+coefficients:
+
+\begin{equation}
+  \label{eq:mdct}
+  C[k] = \sum_{n=0}^{2N-1} x[n]\, w[n]\, \cos\!\left(
+    \frac{\pi\,(2n+1+N)\,(2k+1)}{4N}
+  \right), \quad k = 0, 1, \ldots, N-1
+\end{equation}
+
+where $w[n]$ is a window function satisfying the TDAC condition
+(see \cref{subsec:mdct_pr}).
+
+The inverse MDCT (IMDCT) reconstructs $2N$ samples from $N$ coefficients:
+
+\begin{equation}
+  \label{eq:imdct}
+  y[n] = \frac{2}{N} \sum_{k=0}^{N-1} C[k]\, w[n]\, \cos\!\left(
+    \frac{\pi\,(2n+1+N)\,(2k+1)}{4N}
+  \right)
+\end{equation}
+
+Consecutive frames overlap by $N$ samples and are summed
+(\termdef{overlap-add}); the TDAC window ensures cancellation of
+aliasing terms.
+
+\subsection{Fast Computation via the Packing Trick}\label{subsec:mdct_fft}
+
+Direct evaluation of \cref{eq:mdct} costs $O(N^2)$.\ The library
+computes the forward MDCT in $O(N \log N)$ using a single $N$-point
+complex-to-complex (C2c) FFT (the \emph{packing trick}):
+
+\begin{enumerate}
+  \item Pre-multiply each windowed sample by a twiddle factor to produce
+    a complex sequence $z[m] = a[m] + jb[m]$ of length $N$ from the
+    $2N$-sample frame.
+  \item Execute one $N$-point C2c FFT on $z$.
+  \item Because $a$ and $b$ are real, the result satisfies Hermitian
+    symmetry; the $2N$-point DFT at even and odd indices is recovered via:
+    \begin{equation}
+      F[2p] = Z[p], \qquad F[2p+1] = Z[N-1-p]^*
+    \end{equation}
+  \item Apply a post-twiddle to obtain the MDCT coefficients.
+\end{enumerate}
+
+This halves the FFT count compared to the naive 2$\times$R2c($N$) approach.
+
+The inverse (IMDCT) similarly uses 2$\times$C2c($N$) FFTs by splitting
+the half-sparse $2N$-point DFT into even- and odd-indexed subsequences.
+
+\subsection{Perfect Reconstruction and the TDAC Condition}\label{subsec:mdct_pr}
+
+\begin{concept}{Time-Domain Aliasing Cancellation (TDAC)}
+  Perfect reconstruction requires the window $w$ to satisfy:
+  \begin{equation}
+    \label{eq:tdac}
+    w[n]^2 + w[n+N]^2 = 1, \quad \forall\, n \in [0, N)
+  \end{equation}
+
+  \textbf{Only the sine window satisfies this condition} for 50\% hop:
+  \begin{equation}
+    \label{eq:sine_window}
+    w[n] = \sin\!\left(\frac{\pi (n + \tfrac{1}{2})}{2N}\right)
+  \end{equation}
+
+  Standard windows (Hanning, Hamming, Blackman, Kaiser) do \emph{not}
+  satisfy \cref{eq:tdac} and will introduce reconstruction error.
+\end{concept}
+
+\textbf{Usage:}
+
+\begin{lstlisting}[caption={MDCT and IMDCT with sine-window reconstruction}]
+
+use spectrograms::{MdctParams, mdct, imdct};
+use std::num::NonZeroUsize;
+
+// Sine window gives perfect reconstruction with 50% hop.
+let params = MdctParams::sine_window(NonZeroUsize::new(2048).unwrap())?;
+
+let frames: Vec<Vec<f64>> = /* overlapping 2048-sample frames */;
+let coeffs = mdct(&frames, &params)?;     // (n_frames, 1024) coefficients
+
+let reconstructed = imdct(&coeffs, &params)?;  // overlap-added output
+\end{lstlisting}
+
+\textbf{Single precision:}
+
+\begin{lstlisting}[caption={MDCT at single-precision f32 via turbofish}]
+
+let coeffs = mdct::<f32>(&frames_f32, &params)?;
+\end{lstlisting}
+
+\subsection{Parameters}\label{subsec:mdct_params}
+
+\begin{center}
+  \begin{tabular}{lll}
+    \textbf{Parameter} & \textbf{Type} & \textbf{Notes} \\
+    \hline
+    \code{window\_size} & \code{NonZeroUsize} (even, $\geq 4$) &
+    Total frame length $2N$ \\
+    \code{hop\_size} & \code{NonZeroUsize} & Typically $N$ for PR \\
+    \code{window} & \code{WindowType} &
+    Use \code{MdctParams::sine\_window} for PR \\
+  \end{tabular}
+\end{center}
+
+\section{FFT Convolution and Minimum Phase}\label{sec:convolution}
+
+\subsection{FFT-Based Linear Convolution}\label{subsec:fft_convolve}
+
+The convolution theorem (\cref{subsec:convolution_theorem}) applies
+equally to 1D real signals.\ For two signals $a$ of length $M$ and $b$
+of length $K$, linear convolution yields an output of length $M + K - 1$.
+Direct time-domain convolution costs $O(MK)$; the FFT-based approach
+costs $O((M+K) \log(M+K))$ and is more efficient whenever $K \gtrsim
+\sqrt{\log(M+K)}$.
+
+\begin{lstlisting}[caption={FFT linear convolution with NonEmptySlice input}]
+
+use spectrograms::fft_convolve;
+use non_empty_slice::NonEmptySlice;
+
+let signal: Vec<f64> = /* ... */;
+let kernel: Vec<f64> = /* FIR filter taps */;
+
+let sig_ne = NonEmptySlice::new(&signal).unwrap();
+let ker_ne = NonEmptySlice::new(&kernel).unwrap();
+
+let output = fft_convolve(sig_ne, ker_ne)?;
+// output.len() == signal.len() + kernel.len() - 1
+\end{lstlisting}
+
+\textbf{Algorithm:} Both inputs are zero-padded to the next
+power-of-two above $M + K - 1$, multiplied element-wise in the
+frequency domain (a single complex multiplication per frequency bin),
+and inverse-transformed.
+
+\subsection{Spectral-Division Deconvolution}\label{subsec:fft_deconvolve}
+
+Given an observed output $y = h \ast x$ and the filter $h$, the
+original signal $x$ can be recovered by dividing spectra.\ Exact
+spectral division is unstable at frequencies where $H(f) \approx 0$;
+\termdef{regularised deconvolution} addresses this:
+
+\begin{equation}
+  \hat{X}(f) = \frac{Y(f)\, \conj{H}(f)}{|H(f)|^2 + \varepsilon}
+\end{equation}
+
+where $\varepsilon = \lambda \cdot \max_f |H(f)|^2$ and $\lambda$ is
+the \code{regularization} parameter.\ With $\lambda = 0$ this reduces
+to exact division; small positive values stabilise the result near
+spectral nulls.
+
+\begin{lstlisting}[caption={Regularised spectral deconvolution}]
+
+use spectrograms::fft_deconvolve;
+
+let recovered = fft_deconvolve(output_ne, kernel_ne, 1e-6)?;
+\end{lstlisting}
+
+\subsection{Streaming Overlap-Save Convolution}\label{subsec:overlap_save}
+
+For real-time or block-streaming applications (e.g., room-correction
+FIR filtering in an audio callback), repeatedly calling
+\code{fft\_convolve} is wasteful because the impulse response $h$
+is fixed and its FFT could be cached.\ The
+\code{OverlapSaveConvolver} does exactly this.
+
+\begin{concept}{Overlap-Save Method}
+  At construction, the impulse response $h$ of length $K$ is
+  zero-padded to the FFT size $N_{\text{FFT}} =
+  \text{next\_power\_of\_two}(B + K - 1)$ and transformed once.
+  For each input block of length $B$:
+  \begin{enumerate}
+    \item Prepend the $N_{\text{FFT}} - B$ most recent samples
+      (\emph{history}) to the block to form a window of length $N_{\text{FFT}}$.
+    \item Compute an $N_{\text{FFT}}$-point C2c FFT.
+    \item Multiply element-wise by the cached $H$ spectrum.
+    \item Inverse-transform.
+    \item Discard the first $K - 1$ alias-contaminated samples; the
+      remaining $B$ samples are the alias-free output.
+  \end{enumerate}
+
+  Per-block cost: $O(B \log N_{\text{FFT}})$, compared to $O(BK)$ for
+  direct convolution.\ \textbf{No heap allocation on the processing path.}
+\end{concept}
+
+\begin{lstlisting}[caption={Streaming overlap-save with fixed block size}]
+
+use spectrograms::OverlapSaveConvolver;
+use std::num::NonZeroUsize;
+
+// Build once from the impulse response.
+let conv = OverlapSaveConvolver::new(&ir, NonZeroUsize::new(256).unwrap())?;
+
+// In the audio callback (no allocation):
+let mut output = vec![0.0f64; 256];
+conv.process_block(&input_block, &mut output)?;
+\end{lstlisting}
+
+Key properties:
+\begin{itemize}
+  \item Fixed block size set at construction; every call to
+    \code{process\_block} must provide exactly that many samples.
+  \item Call \code{reset()} between independent streams to clear the
+    inter-block history.
+  \item Generic over \code{T: Sample} (works at both \code{f32} and
+    \code{f64}).
+\end{itemize}
+
+\subsection{Minimum-Phase Conversion}\label{subsec:minimum_phase}
+
+A \termdef{minimum-phase} filter has the same magnitude response as a
+given (typically linear-phase) FIR filter, but concentrates its energy
+at the start rather than the middle.\ This eliminates most of the
+filter's latency---beneficial for live-processing and room-correction
+applications.
+
+\begin{concept}{Real-Cepstrum Method}
+  The library uses the homomorphic (real-cepstrum) algorithm:
+  \begin{enumerate}
+    \item Compute $H = \text{FFT}(h)$ on a heavily oversampled grid
+      (default: $8\times$ the IR length, rounded up to a power of two)
+      to avoid cepstral time-aliasing.
+    \item Form the real log-magnitude: $\hat{H} = \log|H|$.
+    \item Apply an inverse FFT to obtain the real cepstrum $c$.
+    \item Window $c$: keep the DC and Nyquist taps unchanged,
+      double all causal taps (indices 1 to $N/2 - 1$), and zero all
+      anticausal taps (indices $N/2 + 1$ to $N - 1$).
+      This is the discrete version of the Hilbert relation that derives
+      minimum-phase angle from log-magnitude.
+    \item Compute $H_{\min} = \exp(\text{FFT}(c))$, then
+      $h_{\min} = \text{Re}(\text{IFFT}(H_{\min}))$.
+    \item Truncate to the desired output length.
+  \end{enumerate}
+
+  The magnitude response of $h_{\min}$ matches that of $h$ to within
+  the accuracy of the oversampled FFT; increasing the oversample factor
+  reduces the residual magnitude error at the cost of a larger one-off
+  transform.
+\end{concept}
+
+\begin{lstlisting}[caption={Converting linear-phase FIR to minimum phase}]
+
+use spectrograms::minimum_phase;
+
+// A 64-tap linear-phase low-pass prototype.
+let lin_phase_fir: Vec<f32> = /* ... */;
+let mp_fir = minimum_phase(&lin_phase_fir)?;
+
+// mp_fir has the same length and (nearly) the same magnitude response,
+// but most energy is in the first few taps.
+assert!(mp_fir[0].abs() >= mp_fir[mp_fir.len() - 1].abs());
+\end{lstlisting}
+
+\textbf{When to use minimum phase.} A linear-phase FIR of length $L$
+introduces a group delay of $(L-1)/2$ samples.\ For a 1000-tap room
+correction filter at 48~kHz this is over 10~ms of latency.\ The
+minimum-phase equivalent reduces this to near zero while preserving the
+equalisation curve.\ Use \code{minimum\_phase\_with} to control the
+output length (useful when only the leading portion of the minimum-phase
+response is needed) and the oversampling factor (higher values give a
+more accurate magnitude match).
+
 \section{Computational Optimizations}\label{sec:optimizations}
 
 \subsection{Plan-Based Computation}\label{subsec:fft_plans}
@@ -2154,7 +2577,7 @@ spectrograms with hundreds of frames, planning each FFT is wasteful.
 
 \textbf{Solution: Reusable plans}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Reusable STFT plan with cached FFT and window}]
 
 pub struct StftPlan {
     n_fft: usize,
@@ -2215,7 +2638,7 @@ For mel filterbanks with 80 bands and 257 FFT bins:
 
 \textbf{Row-wise sparse storage:}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Sparse matrix layout and filterbank multiply}]
 struct SparseMatrix {
     nrows: usize,
     ncols: usize,
@@ -2245,7 +2668,7 @@ to both input array and sparse values, maximizing cache hits.
 Minimize allocations in hot loops:
 
 \textbf{Bad: Allocate per iteration}
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Per-frame allocation — wasteful hot-loop pattern}]
 for frame in 0..n_frames {
     let mut windowed = vec![0.0; n_fft]; // Allocation!
     // ... process frame
@@ -2253,7 +2676,7 @@ for frame in 0..n_frames {
 \end{lstlisting}
 
 \textbf{Good: Reuse workspace}
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Pre-allocated workspace reused across frames}]
 let mut workspace = vec![0.0; n_fft]; // Single allocation
 for frame in 0..n_frames {
     // Reuse workspace
@@ -2264,7 +2687,7 @@ for frame in 0..n_frames {
 
 \textbf{Workspace pattern:}
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Full workspace struct with resizable buffers}]
 struct Workspace {
     frame: Vec<f64>,          // Windowed frame buffer
     fft_out: Vec<Complex<f64>>, // FFT output buffer
@@ -2290,7 +2713,7 @@ impl Workspace {
 The library uses row-major layout (C-style) for compatibility with
 most FFT libraries:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Asserting row-major layout for FFT compatibility}]
 // Row-major: rows are contiguous
 let data = Array2::<f64>::zeros((nrows, ncols));
 assert!(data.is_standard_layout()); // row-major
@@ -2320,7 +2743,7 @@ performance. The library supports both:
 FFTW learns optimal algorithms through runtime measurements. Plans
 can be saved and reused:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={FFTW planning modes from ESTIMATE to PATIENT}]
 // FFTW planning flags:
 // ESTIMATE: Fast planning, ok performance
 // MEASURE: Slower planning, better performance
@@ -2390,7 +2813,7 @@ Alternative conventions (used by some libraries):
 
 To avoid $\log(0) = -\infty$:
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Log floor with epsilon to avoid negative infinity}]
 let epsilon = 1e-10;
 let db = 10.0 * (power.max(epsilon)).log10();
 \end{lstlisting}
@@ -2406,7 +2829,7 @@ Choosing $\epsilon$:
 
 For considering values ``zero'':
 
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Epsilon threshold for sparse matrix storage}]
 if value.abs() > 1e-10 {
     store(value);
 }
@@ -2449,14 +2872,19 @@ This manual covered:
   \item MFCCs via DCT for speech recognition
   \item Chroma features for music analysis
   \item Gammatone filters for perceptual accuracy
+  \item Binaural spectrograms: ITD, IPD, ILD, ILR for spatial audio analysis
+  \item MDCT/IMDCT with sine-window perfect reconstruction
+  \item FFT convolution, deconvolution, and overlap-save streaming
+  \item Minimum-phase conversion via the real-cepstrum method
 \end{itemize}
 
 \textbf{Optimizations:}
 \begin{itemize}
   \item Plan-based computation
   \item Sparse matrix operations
-  \item  workspace patterns
+  \item Workspace patterns (zero allocation in hot loops)
   \item Cache-efficient memory layouts
+  \item Optional Rayon parallelisation (\code{rayon} feature)
 \end{itemize}
 
 \subsection{Applications and Extensions}

@@ -21,7 +21,6 @@ pub enum ErbSpacing {
     Linear,
     /// Geometric spacing using the Apple TR #35 / Patterson-Holdsworth formula
     /// (`earQ=9.26449`, `minBW=24.7`), ordered low → high.
-    /// Matches the ViSQOL C++ reference implementation exactly.
     AppleTr35,
 }
 
@@ -219,8 +218,6 @@ const MIN_BW: f64 = 24.7;
 /// geometric spacing formula (`earQ=9.26449`, `minBW=24.7`).
 ///
 /// Returned order is low → high (consistent with linear ERB spacing).
-/// This matches the final band ordering of the ViSQOL C++ reference
-/// (`gammatone_spectrogram_builder.cc`).
 fn apple_tr35_center_freqs(n: usize, low_freq: f64, high_freq: f64) -> Vec<f64> {
     let shift = EAR_Q * MIN_BW; // ≈ 228.733
 
@@ -407,7 +404,7 @@ impl ErbFilterbank {
 
 // ─── Time-domain IIR gammatone spectrogram ───────────────────────────────────
 //
-// Matches the C++ ViSQOL reference implementation:
+// Matches the C++ gammatone reference implementation:
 //   gammatone_spectrogram_builder.cc  +  signal_filter.cc
 //   +  equivalent_rectangular_bandwidth.cc
 //
@@ -552,13 +549,12 @@ fn hann_window(size: usize) -> Vec<f64> {
 }
 
 /// Build a gammatone magnitude spectrogram using the **time-domain IIR filter
-/// bank** from the C++ ViSQOL reference implementation.
+/// bank**.
 ///
 /// Unlike [`ErbFilterbank`] (which multiplies STFT bins by a pre-computed
 /// power response), this function applies actual 4th-order cascaded IIR
 /// gammatone filters to each windowed frame, then computes `sqrt(mean(x²))`
-/// per band — reproducing the exact feature vectors used to train the ViSQOL
-/// SVR model.
+/// per band.
 ///
 /// # Arguments
 ///
@@ -578,6 +574,32 @@ fn hann_window(size: usize) -> Vec<f64> {
 ///
 /// Returns `SpectrogramError::InvalidInput` if `sample_rate ≤ 0` or if the
 /// signal is shorter than `frame_size`.
+/// Compute the gammatone band centre frequencies (Hz, low→high) for `erb_params`.
+///
+/// Uses the spacing strategy in `erb_params` ([`ErbSpacing::AppleTr35`] for
+/// Apple TR #35 geometric centres, or ERB-linear spacing otherwise). This is the
+/// same axis used by [`gammatone_iir_spectrogram`], exposed so callers that hold
+/// only the parameters (e.g. a [`crate::source::SpectrogramSource`]) can report
+/// the frequency axis without running the filter bank.
+#[must_use]
+pub fn gammatone_center_frequencies(erb_params: &ErbParams) -> Vec<f64> {
+    match erb_params.spacing() {
+        ErbSpacing::AppleTr35 => apple_tr35_center_freqs(
+            erb_params.n_filters().get(),
+            erb_params.f_min(),
+            erb_params.f_max(),
+        ),
+        ErbSpacing::Linear => {
+            let erb_min = hz_to_erb(erb_params.f_min());
+            let erb_max = hz_to_erb(erb_params.f_max());
+            let step = (erb_max - erb_min) / (erb_params.n_filters().get() - 1) as f64;
+            (0..erb_params.n_filters().get())
+                .map(|i| erb_to_hz((i as f64).mul_add(step, erb_min)))
+                .collect()
+        }
+    }
+}
+
 pub fn gammatone_iir_spectrogram<T: Sample>(
     samples: &[T],
     sample_rate: f64,
@@ -597,21 +619,7 @@ pub fn gammatone_iir_spectrogram<T: Sample>(
         ));
     }
 
-    let center_freqs = match erb_params.spacing() {
-        ErbSpacing::AppleTr35 => apple_tr35_center_freqs(
-            erb_params.n_filters().get(),
-            erb_params.f_min(),
-            erb_params.f_max(),
-        ),
-        ErbSpacing::Linear => {
-            let erb_min = hz_to_erb(erb_params.f_min());
-            let erb_max = hz_to_erb(erb_params.f_max());
-            let step = (erb_max - erb_min) / (erb_params.n_filters().get() - 1) as f64;
-            (0..erb_params.n_filters().get())
-                .map(|i| erb_to_hz((i as f64).mul_add(step, erb_min)))
-                .collect()
-        }
-    };
+    let center_freqs = gammatone_center_frequencies(erb_params);
 
     let n_bands = erb_params.n_filters().get();
     let filter_bank = make_iir_bank(&center_freqs, sample_rate);

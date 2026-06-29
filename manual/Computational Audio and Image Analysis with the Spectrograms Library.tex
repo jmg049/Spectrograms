@@ -1,9 +1,22 @@
-\documentclass[a4paper,11pt]{article}
+\documentclass{extarticle}
 
 % ========================================
 % Page Layout and Geometry
+% Font size and paper size are injected by the build wrapper via
+% \PassOptionsToClass and \def\PAPERFORMAT before this file is \input.
+% Defaults to a4 when PAPERFORMAT is undefined (e.g. direct compilation).
 % ========================================
-\usepackage[margin=0.75in, top=0.5in, bottom=0.75in]{geometry}
+\ifdefined\PAPERFORMAT\else\def\PAPERFORMAT{a4}\fi
+\def\fmtAfour{a4}%
+\def\fmtAfive{a5}%
+\def\fmtAsix{a6}%
+\ifx\PAPERFORMAT\fmtAfour
+\usepackage[a4paper, margin=0.75in, top=0.5in, bottom=0.75in]{geometry}
+\else\ifx\PAPERFORMAT\fmtAfive
+\usepackage[a5paper, margin=0.55in, top=0.4in, bottom=0.55in]{geometry}
+\else
+\usepackage[a6paper, margin=0.35in, top=0.3in, bottom=0.35in]{geometry}
+\fi\fi
 
 % ========================================
 % Mathematical Packages
@@ -18,6 +31,8 @@
 % ========================================
 \usepackage{graphicx}
 \usepackage[dvipsnames]{xcolor}
+\usepackage[stretch=10]{microtype}
+\usepackage[htt]{hyphenat}
 
 % ========================================
 % Tables and Layout
@@ -26,6 +41,8 @@
 \usepackage{tabularx}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{adjustbox}
+\usepackage{etoolbox}
 
 % ========================================
 % Lists and Enumeration
@@ -37,43 +54,60 @@
 % Code Listings
 % ========================================
 \usepackage{needspace}
-\usepackage{mdframed}
 \usepackage{listings}
-\lstset{
-  basicstyle=\small\ttfamily,
-  breaklines=true,
-  backgroundcolor=\color{gray!10},
-  commentstyle=\color{ForestGreen},
-  keywordstyle=\color{blue},
-  stringstyle=\color{red},
-  numbers=none,
-  xleftmargin=10pt,
-  xrightmargin=10pt,
-  aboveskip=8pt,
-  belowskip=8pt
+
+% Rust language definition (not built into older listings versions)
+\lstdefinelanguage{Rust}{
+  keywords=[1]{as,async,await,break,const,continue,crate,dyn,else,enum,
+    extern,false,fn,for,if,impl,in,let,loop,match,mod,move,mut,pub,ref,
+    return,self,Self,static,struct,super,trait,true,type,union,unsafe,
+  use,where,while},
+  keywordstyle=[1]\color{blue!80!black}\bfseries,
+  keywords=[2]{Option,Result,Some,None,Ok,Err,Box,Vec,String,
+  HashMap,HashSet,Arc,Rc,Mutex,RwLock},
+  keywordstyle=[2]\color{teal},
+  keywords=[3]{i8,i16,i32,i64,i128,isize,u8,u16,u32,u64,u128,
+  usize,f32,f64,bool,char,str},
+  keywordstyle=[3]\color{violet},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  string=[b]",
+  morestring=[b]',
 }
 
-% Unbreakable framed environment for code
-\surroundwithmdframed[
-  linecolor=black,
-  linewidth=0.5pt,
-  backgroundcolor=gray!10,
-  skipabove=8pt,
-  skipbelow=8pt,
-  innerleftmargin=10pt,
-  innerrightmargin=10pt,
-  innertopmargin=5pt,
-  innerbottommargin=5pt,
-  nobreak=true
-]{lstlisting}
+\lstset{
+  language=Rust,
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  breakatwhitespace=false,
+  keepspaces=true,
+  showstringspaces=false,
+  backgroundcolor=\color{gray!10},
+  commentstyle=\color{ForestGreen}\itshape,
+  keywordstyle=\color{blue!80!black}\bfseries,
+  stringstyle=\color{red!70!black},
+  numbers=none,
+  % Left-bar frame: flows across page boundaries without open-ended boxes
+  frame=leftline,
+  framerule=3pt,
+  rulecolor=\color{black!25},
+  framexleftmargin=10pt,
+  framexrightmargin=2pt,
+  xleftmargin=0pt,
+  xrightmargin=0pt,
+  aboveskip=8pt,
+  belowskip=8pt,
+}
 
 % ========================================
 % Definition Boxes and Theorems
 % ========================================
-\usepackage[most]{tcolorbox}
+\usepackage[most,breakable]{tcolorbox}
 
 % Definition box style
 \newtcolorbox{definition}[1][]{
+  breakable,
   colback=blue!5!white,
   colframe=blue!75!black,
   fonttitle=\bfseries,
@@ -83,6 +117,7 @@
 
 % Concept box for important terms
 \newtcolorbox{concept}[1]{
+  breakable,
   colback=green!5!white,
   colframe=green!60!black,
   fonttitle=\bfseries,
@@ -93,6 +128,7 @@
 
 % Important note box
 \newtcolorbox{importantnote}{
+  breakable,
   colback=orange!5!white,
   colframe=orange!75!black,
   fonttitle=\bfseries,
@@ -117,7 +153,7 @@
   urlcolor=blue!50!black,
   bookmarks=true,
   bookmarksopen=true,
-  pdfauthor={Jack Geraghty},
+  pdfauthor={Dr Jack Geraghty},
   pdftitle={Computational Audio and Image Analysis with the
   Spectrograms Library}
 ]{hyperref}
@@ -151,6 +187,7 @@
 
 % Math operators
 \DeclareMathOperator{\DFT}{DFT}
+\DeclareMathOperator{\IDFT}{IDFT}
 \DeclareMathOperator{\FFT}{FFT}
 \DeclareMathOperator{\IFFT}{IFFT}
 \DeclareMathOperator{\STFT}{STFT}
@@ -178,6 +215,10 @@
 % Emphasis for technical terms on first use
 \newcommand{\termdef}[1]{\textbf{\textit{#1}}}
 
+% Rename the auto-generated listing list heading
+\renewcommand{\lstlistlistingname}{List of Code Listings}
+\renewcommand{\lstlistingname}{Listing}
+
 % ========================================
 % Typography and Spacing
 % ========================================
@@ -187,27 +228,130 @@
 % Better spacing in equations
 \setlength{\jot}{8pt}
 
-\title{Computational Audio and Image Analysis with the
-\texttt{Spectrograms} Library}
-\author{Jack Geraghty}
-\date{}
+% Discourage orphan lines and widows
+\widowpenalty=10000
+\clubpenalty=10000
+\displaywidowpenalty=10000
+
+% Allow extra inter-word stretch as a last resort before declaring an
+% overfull hbox — handles long \texttt and inline-math overflow.
+\setlength{\emergencystretch}{2em}
+
+% Keep section headings with their content: insert a page break if fewer
+% than N lines remain on the page before the heading.
+\preto
+\section{\needspace{7\baselineskip}}
+\preto
+\subsection{\needspace{5\baselineskip}}
+\preto
+\subsubsection{\needspace{4\baselineskip}}
+
+% On A5/A6, shrink table font so wide tables don't overflow the margins.
+\ifx\PAPERFORMAT\fmtAfour\else
+\AtBeginEnvironment{tabular}{\footnotesize}
+\AtBeginEnvironment{tabularx}{\footnotesize}
+\fi
+
+% Kept for PDF metadata read by hyperref at \AtBeginDocument
+\title{Computational Audio and Image Analysis with the Spectrograms Library}
+\author{Dr Jack Geraghty}
+\date{2026}
 
 % ========================================
-% Document Content
+% Document
 % ========================================
 \begin{document}
-\maketitle
+
+% ----------------------------------------
+% Title Page — nothing else lives here
+% ----------------------------------------
+\begin{titlepage}
+  \centering
+  \vspace*{5\baselineskip}
+  \rule{\linewidth}{1pt}
+  \vspace{0.6\baselineskip}
+
+  {\Huge\bfseries Computational Audio and Image Analysis\\[0.4em]
+  with the \texttt{Spectrograms} Library\par}
+
+  \vspace{0.6\baselineskip}
+  \rule{\linewidth}{1pt}
+
+  \vspace{3\baselineskip}
+  {\large Dr Jack Geraghty\par}
+
+  \vfill
+  {\normalsize Version 2.0 \textperiodcentered{} 2026\par}
+\end{titlepage}
+
+% ----------------------------------------
+% Front Matter — roman numerals
+% ----------------------------------------
+\pagenumbering{roman}
+
+\begin{abstract}
+  This manual documents the mathematical foundations and computational
+  implementation of the \texttt{spectrograms} library, a
+  precision-generic Rust library for FFT-based audio and image
+  analysis. It covers the Discrete Fourier Transform and fast FFT
+  algorithms; windowed spectral analysis via the Short-Time Fourier
+  Transform; perceptual frequency scales including the Mel scale,
+  Equivalent Rectangular Bandwidth, and the Constant-Q Transform;
+  advanced audio features such as Mel-frequency cepstral coefficients,
+  chromagrams, and binaural spatial analysis via ITD, IPD, ILD, and
+  ILR; two-dimensional Fourier methods for image filtering and edge
+  detection; streaming convolution via the overlap-save method; and
+  numerical precision considerations for single and double-precision
+  computation. All algorithms are presented in closed-form mathematical
+  notation alongside their Rust and Python implementations. The manual
+  assumes familiarity with linear algebra, complex numbers, and basic
+  discrete-time signal processing.
+\end{abstract}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+% These lists are only emitted if there are entries (flags written to
+% the aux file at the end of each content pass and read on the next).
+\makeatletter
+\@ifundefined{@hasfigures}{}{\listoffigures\clearpage}
+\@ifundefined{@hastables}{}{\listoftables\clearpage}
+\@ifundefined{@haslistings}{}{\lstlistoflistings\clearpage}
+\makeatother
+
+% ----------------------------------------
+% Main Matter — arabic numerals, page 1
+% ----------------------------------------
+\pagenumbering{arabic}
+
 \input{manual.tex}
 
-% ========================================
+% ----------------------------------------
 % Python API Reference Guide
-% ========================================
+% ----------------------------------------
 \input{python_guide.tex}
 
-% ========================================
+% ----------------------------------------
+% Write presence flags so the front matter knows what lists to show
+% on the next compilation pass.
+% ----------------------------------------
+\makeatletter
+\ifnum\value{figure}>0
+\immediate\write\@mainaux{\string\gdef\string\@hasfigures{1}}
+\fi
+\ifnum\value{table}>0
+\immediate\write\@mainaux{\string\gdef\string\@hastables{1}}
+\fi
+\ifnum\value{lstlisting}>0
+\immediate\write\@mainaux{\string\gdef\string\@haslistings{1}}
+\fi
+\makeatother
+
+% ----------------------------------------
 % Bibliography
-% ========================================
-\newpage
+% ----------------------------------------
+\clearpage
 \printbibliography[title={References}]
 
 \end{document}
