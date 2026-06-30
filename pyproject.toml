@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "spectrograms"
-version = "2.0.0"
+dynamic = ["version"]
 description = "Fast spectrogram computation library powered by Rust"
 readme = "python/README.md"
 requires-python = ">=3.10"
@@ -57,6 +57,7 @@ dev = [
     "pytest>=8.4.2",
     "librosa >=0.10.1",
     "numba>=0.63.1",
+    "ziglang>=0.16.0",
 ]
 torch = [
     "torch>=2.0.0",
