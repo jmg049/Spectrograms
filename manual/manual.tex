@@ -225,6 +225,21 @@ The normalization factor $1/N$ ensures \termdef{perfect reconstruction}:
   energy-consistent analysis.
 \end{concept}
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_dft_basis.pdf}
+  \caption{DFT analysis of a decaying three-note chord.
+    \textbf{Top-left:} magnitude spectrum $|X[k]|$ with the four dominant
+    frequency bins annotated.
+    \textbf{Top-right:} time-domain waveform showing the attack transient
+    and exponential decay.
+    \textbf{Bottom:} the real (cosine) and imaginary (sine) components of
+    two DFT basis functions at the peak frequencies; the inner product of
+    $x[n]$ with each basis vector gives the corresponding complex
+  amplitude $X[k]$.}
+  \label{fig:dft_basis}
+\end{figure}
+
 \subsection{Fast Fourier Transform (FFT): The Cooley-Tukey
 Algorithm}\label{subsec:fft}
 
@@ -338,6 +353,19 @@ let samples = vec![0.0; 512];
 let spectrum = fft(&samples, 512)?;
 assert_eq!(spectrum.len(), 257); // 512/2 + 1
 \end{lstlisting}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_hermitian.pdf}
+  \caption{Hermitian symmetry of the full DFT for a real-valued chord
+    signal ($N=256$, $f_s=8\,\text{kHz}$).
+    \textbf{Left:} magnitude $|X[k]|$ is symmetric about DC---the
+    negative-frequency half is a mirror of the positive-frequency half.
+    \textbf{Right:} phase $\angle X[k]$ is antisymmetric.
+    Only the $N/2+1$ unique bins (positive frequencies, blue) need to be
+  stored; the red dashed curve is entirely redundant.}
+  \label{fig:hermitian}
+\end{figure}
 
 \subsection{Inverse FFT and Perfect Reconstruction}
 
@@ -755,6 +783,40 @@ Comparison table for $N=512$:
 
 \end{itemize}
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_windows_time.pdf}
+  \caption{Window functions in the time domain ($N=512$ samples).
+    All windows taper smoothly to reduce discontinuities at the frame
+    boundaries; the rectangular window (uniform weight) is the limiting
+  case with no taper.}
+  \label{fig:windows_time}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_windows_freq.pdf}
+  \caption{Frequency-domain magnitude responses of the five window functions
+    (normalised, zero-padded to $8192$ points for a smooth curve).
+    The main lobe width and sidelobe levels reveal the fundamental
+    leakage--resolution trade-off: wider main lobe $\Rightarrow$ lower
+    sidelobes.  The dashed horizontal line marks the $-13\,$dB level of
+  the rectangular window's first sidelobe.}
+  \label{fig:windows_freq}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_spectral_leakage.pdf}
+  \caption{Spectral leakage on a real two-note signal with non-integer
+    period ($f_1=441.7\,\text{Hz}$, $f_2=882.3\,\text{Hz}$).
+    \textbf{Left:} the rectangular window spreads energy across many bins
+    (leakage sidelobes clearly visible).
+    \textbf{Right:} the Hanning window suppresses sidelobes by over
+  $30\,\text{dB}$, isolating the two peaks cleanly.}
+  \label{fig:spectral_leakage}
+\end{figure}
+
 \subsection{Constant Overlap-Add (COLA) Constraint}\label{subsec:cola}
 
 \begin{concept}{Perfect Reconstruction and COLA}
@@ -853,6 +915,18 @@ if no modifications were made (perfect reconstruction).
 (spectrograms, feature extraction), COLA is not required. However,
 this library uses 50\% overlap ($H = N/2$) by default, which
 satisfies COLA for Hanning windows and enables optional synthesis workflows.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_cola.pdf}
+  \caption{Constant Overlap-Add (COLA) visualisation for six overlapping
+    frames ($N=64$, 50\% hop).
+    \textbf{Left:} Hanning window---the coloured envelopes sum (black
+    curve) to a constant, guaranteeing perfect reconstruction.
+    \textbf{Right:} rectangular window---also constant, confirming that
+  any non-zero hop satisfies COLA for the rectangular case.}
+  \label{fig:cola}
+\end{figure}
 
 \section{Short-Time Fourier Transform (STFT)}\label{sec:stft}
 
@@ -1102,6 +1176,22 @@ or
 This discards phase information but provides an intuitive
 visualization of energy distribution over time and frequency.
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_amplitude_scaling.pdf}
+  \caption{Three amplitude representations of the same spectrogram
+    (Hanning window, $N{=}2048$, 50\% hop, $f_s{=}22{,}050\,\text{Hz}$)
+    computed from a four-chord piano progression.
+    \textbf{Left:} power $|X[m,k]|^2$---extremely wide dynamic range makes
+    quiet components invisible.
+    \textbf{Centre:} magnitude $|X[m,k]|$---square-root compression
+    reveals more structure.
+    \textbf{Right:} decibel scale $10\log_{10}|X|^2$---perceptually
+    linear, with the harmonic series of each chord clearly legible.
+  The dB representation is standard for analysis and display.}
+  \label{fig:amplitude_scaling}
+\end{figure}
+
 \subsection{Time-Frequency Uncertainty Principle}\label{subsec:uncertainty}
 
 \begin{concept}{Time-Frequency Uncertainty Principle}
@@ -1146,6 +1236,21 @@ For music (44.1 kHz sample rate):
 simultaneously.} This is not a limitation of the algorithm, but a
 fundamental property of Fourier analysis related to the Heisenberg
 uncertainty principle in quantum mechanics.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_uncertainty.pdf}
+  \caption{The time-frequency uncertainty trade-off demonstrated on
+    the same piano chord progression at two FFT sizes.
+    \textbf{Left ($N{=}256$, 31\,ms):} individual note onsets are sharply
+    localised in time but the harmonic partials blur together vertically.
+    \textbf{Right ($N{=}4096$, 185\,ms):} individual harmonics are clearly
+    resolved in frequency but chord transitions smear horizontally.
+    Neither window can achieve high resolution in both dimensions
+    simultaneously---this is not an implementation limitation but a
+  fundamental property of Fourier analysis.}
+  \label{fig:uncertainty}
+\end{figure}
 
 \section{Amplitude Scaling and Representations}\label{sec:amplitude}
 
@@ -1275,6 +1380,24 @@ different normalization conventions. The library uses the convention
 where the forward FFT has no normalization factor, and the inverse
 FFT divides by $N$. This is consistent with most signal processing literature.
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_pipeline_overview.pdf}
+  \caption{End-to-end feature extraction pipeline applied to synthesised
+    vowel speech (/a/ /e/ /i/ /o/ at $f_s{=}22\,050\,\text{Hz}$).
+    \textbf{(a)} Raw waveform showing the formant-driven amplitude
+    modulation of each vowel.
+    \textbf{(b)} Linear spectrogram (dB, $N{=}512$): the first two
+    formants ($F_1$, $F_2$) shift noticeably between vowels, encoding
+    their identity.
+    \textbf{(c)} Mel spectrogram ($M{=}40$ bands): perceptually weighted,
+    emphasising the formant region below 3\,kHz.
+    \textbf{(d)} MFCCs ($C{=}13$): the DCT decorrelates the mel bands and
+    compacts each vowel's identity into the first few coefficients---the
+  representation used directly by most speech recognition systems.}
+  \label{fig:pipeline_overview}
+\end{figure}
+
 \section{Perceptual Frequency Scales}\label{sec:perceptual}
 
 \subsection{Motivation: Human Auditory
@@ -1401,6 +1524,33 @@ f64) are set to exactly zero during construction. This prevents
 accumulation of negligible numerical artifacts while maintaining
 filterbank fidelity.
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_mel_filterbank.pdf}
+  \caption{\textbf{Top:} mel triangular filterbank ($M{=}40$ filters,
+    $f_{\min}{=}0\,\text{Hz}$, $f_{\max}{=}8\,\text{kHz}$).
+    Each overlapping triangle is wider at higher frequencies (more Hz
+    per mel), capturing the logarithmic perception of pitch.
+    Colour indicates filter index from low (violet) to high (yellow).
+    \textbf{Bottom:} the Hz-to-mel mapping
+    $\mathrm{mel}(f)=2595\log_{10}(1+f/700)$, linear below 1\,kHz and
+  logarithmic above.}
+  \label{fig:mel_filterbank}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_mel_spectrogram.pdf}
+  \caption{Mel-scale spectrogram (dB) of a four-chord piano progression
+    (C\,maj $\to$ A\,min $\to$ F\,maj $\to$ G\,maj), $M{=}128$ mel bands.
+    The perceptual frequency axis allocates many bands to the musically
+    rich low-frequency region and fewer to the upper overtones, matching
+    the logarithmic sensitivity of human pitch perception.
+    The harmonic series of each chord is clearly visible as parallel
+  horizontal streaks.}
+  \label{fig:mel_spectrogram}
+\end{figure}
+
 \subsection{ERB Scale: Glasberg and Moore Model}\label{subsec:erb_scale}
 
 The \termdef{Equivalent Rectangular Bandwidth} (ERB) scale is based
@@ -1451,6 +1601,21 @@ The library implements gammatone filters in the frequency domain for efficiency.
 \textbf{Why ERB over Mel?} The ERB scale more accurately models
 auditory filters at higher frequencies and is preferred for
 applications requiring high fidelity to human perception.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_erb_filterbank.pdf}
+  \caption{Gammatone auditory filters at five centre frequencies
+    (125\,Hz, 500\,Hz, 1\,kHz, 2\,kHz, 4\,kHz).
+    \textbf{Left:} time-domain impulse responses (order $n{=}4$,
+    bandwidth $b{=}1.019\cdot\mathrm{ERB}(f_c)$).
+    The envelope $t^{n-1}e^{-2\pi bt}$ shortens at higher frequencies
+    because the ERB bandwidth grows with $f_c$.
+    \textbf{Right:} frequency responses showing the characteristic
+    asymmetric skirt of the auditory filter---sharper on the high-frequency
+  side, broader toward lower frequencies.}
+  \label{fig:erb_filterbank}
+\end{figure}
 
 \subsection{Logarithmic Frequency (Musical Scale)}\label{subsec:log_frequency}
 
@@ -1770,6 +1935,21 @@ operations in time-domain convolution by skipping zero multiplications.
   through listening tests before deploying aggressive sparsity.
 \end{concept}
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_cqt_spectrogram.pdf}
+  \caption{Constant-Q Transform spectrogram of a chromatic ascending
+    arpeggio from C2 to C8 (12 bins/octave, 6 octaves,
+      $f_{\min}{=}65\,\text{Hz}$,
+    dB scale).
+    Unlike the STFT, successive semitones are uniformly spaced
+    vertically---a direct consequence of the constant-$Q$ design.
+    Each note produces a brief burst that aligns precisely with its
+    pitch-class label on the $y$-axis, demonstrating the transform's
+  suitability for pitch-accurate music analysis.}
+  \label{fig:cqt_spectrogram}
+\end{figure}
+
 \section{Advanced Audio Features}\label{sec:advanced}
 
 \subsection{Mel-Frequency Cepstral Coefficients (MFCC)}\label{subsec:mfcc}
@@ -1866,6 +2046,21 @@ sensitivity to volume.
 speech information. Higher coefficients represent fine spectral
 detail that's often noise.
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_mfcc.pdf}
+  \caption{MFCCs ($C{=}13$) computed from five synthesised vowels
+    (/a/, /e/, /i/, /o/, /u/, each $\approx 0.55\,\text{s}$).
+    Vertical white dashes mark vowel transitions.
+    The low-order coefficients (rows 0--4) encode the broad spectral
+    envelope (vowel identity), while higher-order coefficients capture
+    finer spectral detail.
+    The DCT-II decorrelates the mel-band energies, concentrating the
+    discriminative information into the first few coefficients---which is
+  why 13 MFCCs are sufficient for most speech tasks.}
+  \label{fig:mfcc}
+\end{figure}
+
 \subsection{Chroma Features for Music Analysis}\label{subsec:chroma}
 
 Chroma features~\cite{fujishima1999realtime,muller2005audio} (also
@@ -1907,6 +2102,20 @@ F\musSharp{}, G, G\musSharp{}, A, A\musSharp{}, B
 
 \textbf{Applications:} Chord recognition, key estimation, cover song
 identification, music similarity.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_chromagram.pdf}
+  \caption{Chromagram of the four-chord progression
+    (C\,maj $\to$ A\,min $\to$ F\,maj $\to$ G\,maj).
+    The $y$-axis lists the 12 pitch classes; energy is summed across all
+    octaves, so the display is octave-invariant.
+    Within the C\,major segment (0--1\,s), the C, E, and G rows light up
+    simultaneously; A\,minor activates A, C, and E; and so on.
+    This compact 12-dimensional vector is sufficient for key detection,
+  chord recognition, and cover-song identification.}
+  \label{fig:chromagram}
+\end{figure}
 
 \subsection{ERB Spectrograms and Gammatone Filters}
 
@@ -1955,6 +2164,17 @@ Filtering is then performed via element-wise multiplication:
 \end{equation}
 
 This avoids expensive time-domain convolution for each filter.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_erb_spectrogram.pdf}
+  \caption{ERB/gammatone spectrogram of the chord progression
+    (log-power scale, 64 channels from 80\,Hz to 8\,kHz).
+    Each channel's bandwidth grows with frequency following the ERB
+    function, providing finer frequency resolution in the low-frequency
+  region where harmonic relationships are most salient.}
+  \label{fig:erb_spectrogram}
+\end{figure}
 
 \section{Image Processing via FFT}\label{sec:image}
 
@@ -2145,6 +2365,23 @@ In frequency domain, differentiation becomes multiplication:
   \mathcal{F}\{\nabla^2 I\} = -(u^2 + v^2) \mathcal{F}\{I\}
 \end{equation}
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_image_processing.pdf}
+  \caption{Image processing pipeline via 2D FFT applied to a $320{\times}320$
+    greyscale crop of the raccoon portrait
+    (\texttt{scipy.datasets.face}).
+    \textbf{(1) Original:} the unmodified input.
+    \textbf{(2) 2D FFT magnitude ($\log|F|$):} the DC component (centre)
+    is the brightest point; horizontal and vertical lines correspond to
+    strong directional content in the image.
+    \textbf{(3) Gaussian blur ($\sigma{=}4$):} low-pass filtering via
+    multiplication by a Gaussian mask in the frequency domain.
+    \textbf{(4) High-pass edges ($r{<}20$):} zeroing the central disc
+  retains only high-frequency content, revealing structural edges.}
+  \label{fig:image_processing}
+\end{figure}
+
 \section{Binaural Spectrograms}\label{sec:binaural}
 
 \subsection{Spatial Hearing and Binaural Cues}\label{subsec:binaural_intro}
@@ -2281,6 +2518,22 @@ speed-up on multi-core systems.\ Enable it in \texttt{Cargo.toml}:
 spectrograms = { version = "2", features = ["rayon"] }
 \end{lstlisting}
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\linewidth]{figures/fig_binaural.pdf}
+  \caption{Binaural spectrograms for a simulated two-source scene: a
+    piano chord at $30^\circ$ right (ITD $\approx 340\,\mu\text{s}$,
+    ILD $\approx 8\,\text{dB}$) mixed with a chirp at $60^\circ$ left.
+    All four cues are shown as time-frequency maps (red = rightward/positive,
+    blue = leftward/negative).
+    \textbf{ITD} is most reliable at low frequencies ($<1.5\,\text{kHz}$);
+    \textbf{IPD} wraps at high frequencies due to sub-wavelength
+    ambiguity; \textbf{ILD} dominates above 1.5\,kHz where the head
+    creates an acoustic shadow; \textbf{ILR} normalises the power
+  asymmetry to $[-1, +1]$ and is interpretable at all frequencies.}
+  \label{fig:binaural}
+\end{figure}
+
 \section{Modified Discrete Cosine Transform (MDCT)}\label{sec:mdct}
 
 \subsection{Motivation and Codec Context}\label{subsec:mdct_motivation}
@@ -2401,6 +2654,22 @@ let coeffs = mdct::<f32>(&frames_f32, &params)?;
     Use \code{MdctParams::sine\_window} for PR \\
   \end{tabular}
 \end{center}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_mdct.pdf}
+  \caption{MDCT analysis and perfect reconstruction of a 2-second piano
+    chord progression (sine window, $2N{=}2048$, 50\% hop).
+    \textbf{Top:} MDCT coefficient matrix $\log_{10}|C[k,m]|$, analogous
+    to a spectrogram but with 50\% dimensionality reduction: $N$ input
+    samples map to $N/2$ real coefficients per frame.
+    \textbf{Centre:} original waveform (blue) overlaid with the IMDCT
+    reconstruction (red dashed)---the two are visually indistinguishable.
+    \textbf{Bottom:} reconstruction error, which is at the level of
+    floating-point rounding noise ($\approx 10^{-14}$), confirming the
+  Time-Domain Aliasing Cancellation (TDAC) property of the sine window.}
+  \label{fig:mdct}
+\end{figure}
 
 \section{FFT Convolution and Minimum Phase}\label{sec:convolution}
 
@@ -2559,6 +2828,25 @@ equalisation curve.\ Use \code{minimum\_phase\_with} to control the
 output length (useful when only the leading portion of the minimum-phase
 response is needed) and the oversampling factor (higher values give a
 more accurate magnitude match).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_convolution_min_phase.pdf}
+  \caption{Linear-phase vs.\ minimum-phase conversion of a 64-tap
+    low-pass FIR filter ($f_c{=}2\,\text{kHz}$, $f_s{=}22\,050\,\text{Hz}$,
+    Hamming window) via the real-cepstrum method.
+    \textbf{Top-left:} impulse responses---the linear-phase filter
+    (blue) is symmetric around its centre tap; the minimum-phase
+    equivalent (orange) concentrates energy at the start.
+    \textbf{Top-right:} magnitude responses---both filters share
+    \emph{identical} frequency responses; only the phase differs.
+    \textbf{Bottom-left:} phase responses.
+    \textbf{Bottom-right:} group delay---the linear-phase filter
+    introduces $(L-1)/2 \approx 1.45\,\text{ms}$ of constant latency;
+    the minimum-phase design reduces this to near zero, enabling
+  low-latency room correction and live processing.}
+  \label{fig:convolution_min_phase}
+\end{figure}
 
 \section{Computational Optimizations}\label{sec:optimizations}
 

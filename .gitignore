@@ -26,6 +26,8 @@ docs/build
 **/*.toc
 **/*.synctex.gz
 **/*.nav
+**/*.lol
+**/*.bcf
 **/*.snm
 **/*.run.xml 
 **/*.xdv

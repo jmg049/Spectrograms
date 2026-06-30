@@ -376,7 +376,7 @@ pub use sample::Sample;
 // The complex type used by the FFT plan traits, so downstream crates can name
 // it without depending on num-complex directly.
 pub use num_complex::Complex;
-pub use source::{GammatoneSource, SpectrogramSource};
+pub use source::{ChromaSource, CqtSource, GammatoneSource, MfccSource, SpectrogramSource};
 pub use spectrogram::*;
 pub use window::{
     WindowType, blackman_window, gaussian_window, hamming_window, hanning_window, kaiser_window,

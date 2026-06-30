@@ -30,7 +30,13 @@
 % Graphics and Color
 % ========================================
 \usepackage{graphicx}
+\usepackage{float}
+\usepackage{placeins}
 \usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\definecolor{coverBg}{HTML}{F7F7F2}
+\definecolor{emeraldGreen}{HTML}{047857}
 \usepackage[stretch=10]{microtype}
 \usepackage[htt]{hyphenat}
 
@@ -263,25 +269,44 @@
 \begin{document}
 
 % ----------------------------------------
-% Title Page — nothing else lives here
+% Front Cover
 % ----------------------------------------
 \begin{titlepage}
-  \centering
-  \vspace*{5\baselineskip}
-  \rule{\linewidth}{1pt}
-  \vspace{0.6\baselineskip}
-
-  {\Huge\bfseries Computational Audio and Image Analysis\\[0.4em]
-  with the \texttt{Spectrograms} Library\par}
-
-  \vspace{0.6\baselineskip}
-  \rule{\linewidth}{1pt}
-
-  \vspace{3\baselineskip}
-  {\large Dr Jack Geraghty\par}
-
-  \vfill
-  {\normalsize Version 2.0 \textperiodcentered{} 2026\par}
+  \thispagestyle{empty}
+  \begin{tikzpicture}[remember picture, overlay]
+    % Eggshell background
+    \fill[coverBg] (current page.south west) rectangle (current
+    page.north east);
+    % Main title block
+    \node[anchor=north west]
+    at ($(current page.north west)+(18mm,-30mm)$) {%
+      \begin{minipage}{120mm}
+        \setlength{\parskip}{0pt}%
+        {\fontsize{24}{30}\selectfont\bfseries\sffamily
+          Computational {\color{emeraldGreen}Audio}\\
+        and {\color{emeraldGreen}Image} Analysis\par}%
+        \vspace{10pt}%
+        {\fontsize{12}{15}\selectfont\sffamily
+        with the \textbf{Spectrograms} library}%
+    \end{minipage}};
+    % Rule below title block
+    \draw[black!30, line width=0.4pt]
+    ($(current page.north west)+(18mm,-68mm)$) --
+    ($(current page.north east)+(-18mm,-68mm)$);
+    % Rule above author line
+    \draw[black!30, line width=0.4pt]
+    ($(current page.south west)+(18mm,32mm)$) --
+    ($(current page.south east)+(-18mm,32mm)$);
+    % Author — bottom left
+    \node[anchor=south west, font=\large\bfseries\sffamily]
+    at ($(current page.south west)+(18mm,16mm)$)
+    {Dr Jack Geraghty};
+    % Version — bottom right
+    \node[anchor=south east, font=\normalsize\sffamily]
+    at ($(current page.south east)+(-18mm,16mm)$)
+    {Version 2.0 \textperiodcentered{} 2026};
+  \end{tikzpicture}
+  \null\vfill
 \end{titlepage}
 
 % ----------------------------------------
@@ -353,5 +378,55 @@
 % ----------------------------------------
 \clearpage
 \printbibliography[title={References}]
+
+% ----------------------------------------
+% Back Cover
+% ----------------------------------------
+\clearpage
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture, overlay]
+  % Eggshell background
+  \fill[coverBg] (current page.south west) rectangle (current page.north east);
+  % Content block
+  \node[anchor=north west]
+  at ($(current page.north west)+(18mm,-20mm)$) {%
+    \begin{minipage}{120mm}
+      \setlength{\parskip}{4pt}%
+      \sffamily\small
+      This manual documents the mathematical foundations and computational
+      implementation of the \textbf{spectrograms} library, a
+      precision-generic Rust library for FFT-based audio and image
+      analysis. It covers the Discrete Fourier Transform and fast FFT
+      algorithms; windowed spectral analysis via the Short-Time Fourier
+      Transform; perceptual frequency scales including the Mel scale,
+      Equivalent Rectangular Bandwidth, and the Constant-Q Transform;
+      advanced audio features such as Mel-frequency cepstral
+      coefficients, chromagrams, and binaural analysis; two-dimensional
+      Fourier methods for image filtering and edge detection; and
+      numerical precision for single- and double-precision computation.
+      Every algorithm is given in closed-form notation alongside its
+      Rust and Python implementation.\par
+      \vspace{14pt}
+      {\bfseries\color{emeraldGreen} WHAT'S INSIDE}\par
+      \vspace{6pt}
+      \begin{itemize}[leftmargin=1.2em, itemsep=2pt, parsep=0pt,
+          label={\color{emeraldGreen}\textbullet}]
+        \item Fourier foundations --- DFT, FFT, Hermitian symmetry,
+          2D transforms
+        \item Window functions --- Hann, Hamming, Blackman, Kaiser, Gaussian
+        \item The STFT and spectrograms --- power, magnitude, decibel scaling
+        \item Perceptual scales --- mel, ERB, log-frequency, constant-Q
+        \item Audio features --- MFCC, chroma, gammatone, binaural ITD/IPD/ILD
+        \item Image processing via 2D FFT --- blur, sharpening, edge detection
+        \item MDCT, FFT convolution, and streaming overlap-save
+      \end{itemize}
+  \end{minipage}};
+  % Footer — bottom left
+  \node[anchor=south west, font=\footnotesize\ttfamily, text=black!60]
+  at ($(current page.south west)+(18mm,14mm)$)
+  {spectrograms \textperiodcentered{} reference manual\\[2pt]%
+  A5 \textperiodcentered{} 93 pp};
+\end{tikzpicture}
+\mbox{}
 
 \end{document}
