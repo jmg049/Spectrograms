@@ -186,7 +186,11 @@ impl CqtSource {
     /// * `params` – CQT frequency and resolution parameters.
     #[must_use]
     pub fn new(sample_rate: f64, hop_size: NonZeroUsize, params: CqtParams) -> Self {
-        Self { sample_rate, hop_size, params }
+        Self {
+            sample_rate,
+            hop_size,
+            params,
+        }
     }
 
     /// The CQT parameters this source uses.
@@ -249,7 +253,11 @@ impl ChromaSource {
     /// * `params` – chroma parameters (tuning, frequency range, normalization).
     #[must_use]
     pub fn new(sample_rate: f64, stft_params: StftParams, params: ChromaParams) -> Self {
-        Self { sample_rate, stft_params, params }
+        Self {
+            sample_rate,
+            stft_params,
+            params,
+        }
     }
 
     /// The chroma parameters this source uses.
@@ -315,7 +323,12 @@ impl MfccSource {
         n_mels: NonZeroUsize,
         params: MfccParams,
     ) -> Self {
-        Self { sample_rate, stft_params, n_mels, params }
+        Self {
+            sample_rate,
+            stft_params,
+            n_mels,
+            params,
+        }
     }
 
     /// The MFCC parameters this source uses.
@@ -329,7 +342,14 @@ impl<T: Sample> SpectrogramSource<T> for MfccSource {
     fn compute_matrix(&mut self, samples: &[T]) -> SpectrogramResult<Array2<T>> {
         let samples = NonEmptySlice::new(samples)
             .ok_or_else(|| SpectrogramError::invalid_input("samples must be non-empty"))?;
-        Ok(mfcc(samples, &self.stft_params, self.sample_rate, self.n_mels, &self.params)?.data)
+        Ok(mfcc(
+            samples,
+            &self.stft_params,
+            self.sample_rate,
+            self.n_mels,
+            &self.params,
+        )?
+        .data)
     }
 
     fn n_bands(&self) -> usize {

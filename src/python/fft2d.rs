@@ -86,7 +86,11 @@ pub fn ifft2d(
     output_ncols: usize,
     dtype: Option<&str>,
 ) -> PyResult<Py<PyAny>> {
-    fn run<T>(py: Python<'_>, spectrum: &Bound<'_, PyAny>, output_ncols: usize) -> PyResult<Py<PyAny>>
+    fn run<T>(
+        py: Python<'_>,
+        spectrum: &Bound<'_, PyAny>,
+        output_ncols: usize,
+    ) -> PyResult<Py<PyAny>>
     where
         T: PyScalar,
         num_complex::Complex<T>: numpy::Element,
@@ -267,7 +271,11 @@ pub fn fftshift_1d(py: Python, arr: &Bound<'_, PyAny>, dtype: Option<&str>) -> P
 #[pyfunction]
 #[inline]
 #[pyo3(signature = (arr: "numpy.typing.NDArray[numpy.float64]", dtype: "str" = None), text_signature = "(arr: numpy.typing.NDArray[numpy.float64], dtype: str = \"float64\")")]
-pub fn ifftshift_1d(py: Python, arr: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<Py<PyAny>> {
+pub fn ifftshift_1d(
+    py: Python,
+    arr: &Bound<'_, PyAny>,
+    dtype: Option<&str>,
+) -> PyResult<Py<PyAny>> {
     fn run<T: PyScalar>(py: Python<'_>, arr: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let v = real_1d_vec::<T>(py, arr)?;
         Ok(vec1_to_py(py, rust_fft2d::ifftshift_1d(v)))
@@ -607,7 +615,11 @@ pub fn sharpen_fft(
     amount: f64,
     dtype: Option<&str>,
 ) -> PyResult<Py<PyAny>> {
-    fn run<T: PyScalar>(py: Python<'_>, image: &Bound<'_, PyAny>, amount: f64) -> PyResult<Py<PyAny>> {
+    fn run<T: PyScalar>(
+        py: Python<'_>,
+        image: &Bound<'_, PyAny>,
+        amount: f64,
+    ) -> PyResult<Py<PyAny>> {
         let image = real_2d_owned::<T>(py, image)?;
         let result = py.detach(|| image_ops::sharpen_fft(&image.view(), amount))?;
         Ok(array2_to_py(py, result))

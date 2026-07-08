@@ -7,7 +7,7 @@ use crate::{
     SpectrogramPlan, SpectrogramPlanner,
 };
 
-use super::dtype::{array1_to_py, parse_dtype, real_1d_vec, Dtype};
+use super::dtype::{Dtype, array1_to_py, parse_dtype, real_1d_vec};
 use super::params::{
     PyCqtParams, PyErbParams, PyLogHzParams, PyLogParams, PyMelParams, PySpectrogramParams,
 };
@@ -165,12 +165,14 @@ impl PySpectrogramPlanner {
         dtype: Option<&str>,
     ) -> PyResult<PyLinearMagnitudePlan> {
         let inner = match parse_dtype(dtype)? {
-            Dtype::F32 => {
-                DualPlan::F32(self.inner.linear_plan::<Magnitude, f32>(&params.inner, None)?)
-            }
-            Dtype::F64 => {
-                DualPlan::F64(self.inner.linear_plan::<Magnitude, f64>(&params.inner, None)?)
-            }
+            Dtype::F32 => DualPlan::F32(
+                self.inner
+                    .linear_plan::<Magnitude, f32>(&params.inner, None)?,
+            ),
+            Dtype::F64 => DualPlan::F64(
+                self.inner
+                    .linear_plan::<Magnitude, f64>(&params.inner, None)?,
+            ),
         };
         Ok(PyLinearMagnitudePlan { inner })
     }
@@ -198,14 +200,14 @@ impl PySpectrogramPlanner {
         dtype: Option<&str>,
     ) -> PyResult<PyLinearDbPlan> {
         let inner = match parse_dtype(dtype)? {
-            Dtype::F32 => DualPlan::F32(self.inner.linear_plan::<Decibels, f32>(
-                &params.inner,
-                Some(&db_params.inner),
-            )?),
-            Dtype::F64 => DualPlan::F64(self.inner.linear_plan::<Decibels, f64>(
-                &params.inner,
-                Some(&db_params.inner),
-            )?),
+            Dtype::F32 => DualPlan::F32(
+                self.inner
+                    .linear_plan::<Decibels, f32>(&params.inner, Some(&db_params.inner))?,
+            ),
+            Dtype::F64 => DualPlan::F64(
+                self.inner
+                    .linear_plan::<Decibels, f64>(&params.inner, Some(&db_params.inner))?,
+            ),
         };
         Ok(PyLinearDbPlan { inner })
     }

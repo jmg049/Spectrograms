@@ -2109,7 +2109,8 @@ impl<T: Sample> Workspace<T> {
             self.frame.resize(n_fft, T::zero());
         }
         if self.fft_out.len() != out_len {
-            self.fft_out.resize(out_len, Complex::new(T::zero(), T::zero()));
+            self.fft_out
+                .resize(out_len, Complex::new(T::zero(), T::zero()));
         }
     }
 }

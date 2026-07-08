@@ -808,8 +808,7 @@ pub mod realfft_backend {
             }
 
             // RealFFT inverse needs normalization
-            let scale =
-                T::one() / T::from_usize(self.nrows * self.ncols).unwrap_or_else(T::one);
+            let scale = T::one() / T::from_usize(self.nrows * self.ncols).unwrap_or_else(T::one);
             for val in output.iter_mut() {
                 *val = *val * scale;
             }
@@ -857,19 +856,13 @@ pub mod realfft_backend {
                     Ok(RealFftC2cPlan::<$t>::new(n_fft))
                 }
 
-                fn plan_r2c_2d(
-                    nrows: usize,
-                    ncols: usize,
-                ) -> SpectrogramResult<Self::R2cPlan2d> {
+                fn plan_r2c_2d(nrows: usize, ncols: usize) -> SpectrogramResult<Self::R2cPlan2d> {
                     use crate::fft_backend::R2cPlanner2d;
                     let mut planner = RealFftPlanner::<$t>::new();
                     planner.plan_r2c_2d(nrows, ncols)
                 }
 
-                fn plan_c2r_2d(
-                    nrows: usize,
-                    ncols: usize,
-                ) -> SpectrogramResult<Self::C2rPlan2d> {
+                fn plan_c2r_2d(nrows: usize, ncols: usize) -> SpectrogramResult<Self::C2rPlan2d> {
                     use crate::fft_backend::C2rPlanner2d;
                     let mut planner = RealFftPlanner::<$t>::new();
                     planner.plan_c2r_2d(nrows, ncols)

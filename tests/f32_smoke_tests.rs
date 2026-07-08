@@ -7,7 +7,7 @@
 use ndarray::Array2;
 use non_empty_slice::NonEmptyVec;
 use spectrograms::{
-    WindowType, fft, fft2d, fft_convolve, istft, make_window, minimum_phase, power_spectrum, rfft,
+    WindowType, fft, fft_convolve, fft2d, istft, make_window, minimum_phase, power_spectrum, rfft,
     stft,
 };
 
@@ -34,15 +34,19 @@ fn f32_power_spectrum_finds_tone() {
     let sig = NonEmptyVec::new(sig).unwrap();
 
     let p = power_spectrum::<f32>(&sig, nz(n_fft), None).unwrap();
-    assert!(p.as_slice().iter().all(|x: &f32| x.is_finite() && *x >= 0.0));
+    assert!(
+        p.as_slice()
+            .iter()
+            .all(|x: &f32| x.is_finite() && *x >= 0.0)
+    );
 
-    let (argmax, _) = p
-        .as_slice()
-        .iter()
-        .enumerate()
-        .fold((0usize, f32::NEG_INFINITY), |(bi, bv), (i, &v)| {
-            if v > bv { (i, v) } else { (bi, bv) }
-        });
+    let (argmax, _) =
+        p.as_slice()
+            .iter()
+            .enumerate()
+            .fold((0usize, f32::NEG_INFINITY), |(bi, bv), (i, &v)| {
+                if v > bv { (i, v) } else { (bi, bv) }
+            });
     assert!(
         (argmax as isize - 128).abs() <= 1,
         "expected spectral peak near bin 128, got {argmax}"
@@ -84,7 +88,10 @@ fn f32_convolve_with_impulse_is_identity() {
     let out = fft_convolve::<f32>(&a, &impulse).unwrap();
     assert_eq!(out.len().get(), a.len().get());
     for (o, e) in out.as_slice().iter().zip(a.as_slice().iter()) {
-        assert!((o - e).abs() < 1e-4, "convolution with impulse should be identity");
+        assert!(
+            (o - e).abs() < 1e-4,
+            "convolution with impulse should be identity"
+        );
     }
 }
 

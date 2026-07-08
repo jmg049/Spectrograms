@@ -500,5 +500,10 @@ pub fn chromagram<T: Sample>(
     let magnitude_spec: Array2<T> = mag_spec.data().clone();
 
     // Compute chromagram from magnitude spectrogram
-    chromagram_from_spectrogram(&magnitude_spec, sample_rate, stft_params.n_fft(), chroma_params)
+    chromagram_from_spectrogram(
+        &magnitude_spec,
+        sample_rate,
+        stft_params.n_fft(),
+        chroma_params,
+    )
 }

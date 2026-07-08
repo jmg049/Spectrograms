@@ -1745,8 +1745,13 @@ mod tests {
     }
 
     fn itd_params() -> ITDSpectrogramParams {
-        let stft = StftParams::new(crate::nzu!(512), crate::nzu!(256), WindowType::Hanning, true)
-            .unwrap();
+        let stft = StftParams::new(
+            crate::nzu!(512),
+            crate::nzu!(256),
+            WindowType::Hanning,
+            true,
+        )
+        .unwrap();
         let params = SpectrogramParams::new(stft, 16000.0).unwrap();
         ITDSpectrogramParams::new(params, 100.0, 4000.0, None).unwrap()
     }

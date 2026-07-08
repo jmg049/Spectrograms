@@ -2,6 +2,7 @@
 
 use std::num::NonZeroUsize;
 
+use non_empty_slice::NonEmptyVec;
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
@@ -266,8 +267,14 @@ impl PyWindowType {
         dtype: Option<&str>,
     ) -> PyResult<Py<PyAny>> {
         Ok(match parse_dtype(dtype)? {
-            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Kaiser { beta }, n).into_vec()),
-            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Kaiser { beta }, n).into_vec()),
+            Dtype::F64 => vec1_to_py(
+                py,
+                make_window::<f64>(WindowType::Kaiser { beta }, n).into_vec(),
+            ),
+            Dtype::F32 => vec1_to_py(
+                py,
+                make_window::<f32>(WindowType::Kaiser { beta }, n).into_vec(),
+            ),
         })
     }
 
@@ -293,8 +300,14 @@ impl PyWindowType {
         dtype: Option<&str>,
     ) -> PyResult<Py<PyAny>> {
         Ok(match parse_dtype(dtype)? {
-            Dtype::F64 => vec1_to_py(py, make_window::<f64>(WindowType::Gaussian { std }, n).into_vec()),
-            Dtype::F32 => vec1_to_py(py, make_window::<f32>(WindowType::Gaussian { std }, n).into_vec()),
+            Dtype::F64 => vec1_to_py(
+                py,
+                make_window::<f64>(WindowType::Gaussian { std }, n).into_vec(),
+            ),
+            Dtype::F32 => vec1_to_py(
+                py,
+                make_window::<f32>(WindowType::Gaussian { std }, n).into_vec(),
+            ),
         })
     }
 
@@ -329,7 +342,7 @@ pub struct PyStftResult {
 impl PyStftResult {
     /// Build a `PyStftResult` from a computed Rust [`StftResult`], moving its
     /// complex data onto the Python heap (no copy).
-    pub(crate) fn from_stft_result<T: PyScalar>(py: Python<'_>, result: StftResult<T>) -> Self {
+    pub fn from_stft_result<T: PyScalar>(py: Python<'_>, result: StftResult<T>) -> Self {
         let n_bins = result.data.nrows();
         let n_frames = result.data.ncols();
         let frequencies = result.frequencies.to_vec();
@@ -343,6 +356,37 @@ impl PyStftResult {
             params,
             n_bins,
             n_frames,
+        }
+    }
+
+    pub fn try_into_stft_result<T: PyScalar>(self, py: Python<'_>) -> Result<StftResult<T>, Self> {
+        let Self {
+            data,
+            frequencies,
+            sample_rate,
+            params,
+            n_bins,
+            n_frames,
+        } = self;
+        match T::try_from_complex_array_data(py, data) {
+            Ok(data) => {
+                // safety: frequencies is guaranteed to be non-empty by the STFT computation
+                let frequencies = unsafe { NonEmptyVec::new_unchecked(frequencies) };
+                Ok(StftResult {
+                    data,
+                    frequencies,
+                    sample_rate,
+                    params,
+                })
+            }
+            Err(data) => Err(Self {
+                data,
+                frequencies,
+                sample_rate,
+                params,
+                n_bins,
+                n_frames,
+            }),
         }
     }
 }

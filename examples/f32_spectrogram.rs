@@ -22,7 +22,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // STFT — `T = f32` is inferred from the input slice.
     let spec: Array2<Complex<f32>> =
         stft(&samples, nzu!(1024), nzu!(256), WindowType::Hanning, true)?;
-    println!("STFT: {} bins x {} frames (f32)", spec.nrows(), spec.ncols());
+    println!(
+        "STFT: {} bins x {} frames (f32)",
+        spec.nrows(),
+        spec.ncols()
+    );
 
     // Single-frame power spectrum, also computed in f32.
     let frame = NonEmptyVec::new(samples.as_slice()[..1024].to_vec()).unwrap();

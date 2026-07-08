@@ -2,7 +2,7 @@
 
 use ndarray::Array2;
 use num_complex::Complex;
-use numpy::PyArray2;
+use numpy::{PyArray2, PyArrayMethods};
 use pyo3::prelude::*;
 
 use crate::{AmpScaleSpec, Spectrogram, SpectrogramParams};
@@ -14,7 +14,7 @@ use super::params::PySpectrogramParams;
 /// The variant is chosen at compute time based on the requested `dtype`. The
 /// underlying `numpy` array lives on the Python heap so it can be shared with
 /// downstream frameworks with no extra copy (see DLPack support below).
-pub(crate) enum PyArrayData {
+pub enum PyArrayData {
     F32(Py<PyArray2<f32>>),
     F64(Py<PyArray2<f64>>),
 }
@@ -43,7 +43,7 @@ impl PyArrayData {
 ///
 /// Mirrors [`PyArrayData`] for complex-valued results (e.g. the raw STFT). The
 /// underlying `numpy` array lives on the Python heap for zero-copy sharing.
-pub(crate) enum PyComplexArrayData {
+pub enum PyComplexArrayData {
     C64(Py<PyArray2<Complex<f32>>>),
     C128(Py<PyArray2<Complex<f64>>>),
 }
@@ -179,7 +179,7 @@ pub(crate) fn complex_dlpack<'py>(
 
 /// Sealed helper trait tying a Rust scalar to its `numpy` dtype and array
 /// constructor. Implemented for `f32` and `f64` only.
-pub(crate) trait PyScalar: crate::Sample + numpy::Element {
+pub trait PyScalar: crate::Sample + numpy::Element {
     /// NumPy dtype name (`"float32"` / `"float64"`).
     const DTYPE: &'static str;
 
@@ -194,6 +194,14 @@ pub(crate) trait PyScalar: crate::Sample + numpy::Element {
     /// Move an owned `Array2<Complex<Self>>` onto the Python heap, wrapped in
     /// the matching [`PyComplexArrayData`] variant (no copy).
     fn into_complex_array_data(py: Python<'_>, a: Array2<Complex<Self>>) -> PyComplexArrayData;
+
+    /// Extract an `Array2<Complex<Self>>` from `data` if it holds the matching
+    /// variant, copying it off the Python heap. Returns `data` unchanged in
+    /// the `Err` case if the variant doesn't match `Self`.
+    fn try_from_complex_array_data(
+        py: Python<'_>,
+        data: PyComplexArrayData,
+    ) -> Result<Array2<Complex<Self>>, PyComplexArrayData>;
 }
 
 impl PyScalar for f32 {
@@ -207,6 +215,16 @@ impl PyScalar for f32 {
     fn into_complex_array_data(py: Python<'_>, a: Array2<Complex<Self>>) -> PyComplexArrayData {
         PyComplexArrayData::C64(PyArray2::from_owned_array(py, a).unbind())
     }
+
+    fn try_from_complex_array_data(
+        py: Python<'_>,
+        data: PyComplexArrayData,
+    ) -> Result<Array2<Complex<Self>>, PyComplexArrayData> {
+        match data {
+            PyComplexArrayData::C64(a) => Ok(a.bind(py).readonly().as_array().to_owned()),
+            other @ PyComplexArrayData::C128(_) => Err(other),
+        }
+    }
 }
 
 impl PyScalar for f64 {
@@ -219,6 +237,16 @@ impl PyScalar for f64 {
 
     fn into_complex_array_data(py: Python<'_>, a: Array2<Complex<Self>>) -> PyComplexArrayData {
         PyComplexArrayData::C128(PyArray2::from_owned_array(py, a).unbind())
+    }
+
+    fn try_from_complex_array_data(
+        py: Python<'_>,
+        data: PyComplexArrayData,
+    ) -> Result<Array2<Complex<Self>>, PyComplexArrayData> {
+        match data {
+            PyComplexArrayData::C128(a) => Ok(a.bind(py).readonly().as_array().to_owned()),
+            other @ PyComplexArrayData::C64(_) => Err(other),
+        }
     }
 }
 

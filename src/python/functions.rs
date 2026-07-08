@@ -557,12 +557,20 @@ pub fn compute_chromagram(
     dtype: Option<&str>,
 ) -> PyResult<PyChromagram> {
     match parse_dtype(dtype)? {
-        Dtype::F32 => {
-            chromagram_typed::<f32>(py, samples, &stft_params.inner, sample_rate, &chroma_params.inner)
-        }
-        Dtype::F64 => {
-            chromagram_typed::<f64>(py, samples, &stft_params.inner, sample_rate, &chroma_params.inner)
-        }
+        Dtype::F32 => chromagram_typed::<f32>(
+            py,
+            samples,
+            &stft_params.inner,
+            sample_rate,
+            &chroma_params.inner,
+        ),
+        Dtype::F64 => chromagram_typed::<f64>(
+            py,
+            samples,
+            &stft_params.inner,
+            sample_rate,
+            &chroma_params.inner,
+        ),
     }
 }
 
@@ -625,12 +633,22 @@ pub fn compute_mfcc(
         pyo3::exceptions::PyValueError::new_err("n_mels must be a positive integer")
     })?;
     match parse_dtype(dtype)? {
-        Dtype::F32 => {
-            mfcc_typed::<f32>(py, samples, &stft_params.inner, sample_rate, n_mels, &mfcc_params.inner)
-        }
-        Dtype::F64 => {
-            mfcc_typed::<f64>(py, samples, &stft_params.inner, sample_rate, n_mels, &mfcc_params.inner)
-        }
+        Dtype::F32 => mfcc_typed::<f32>(
+            py,
+            samples,
+            &stft_params.inner,
+            sample_rate,
+            n_mels,
+            &mfcc_params.inner,
+        ),
+        Dtype::F64 => mfcc_typed::<f64>(
+            py,
+            samples,
+            &stft_params.inner,
+            sample_rate,
+            n_mels,
+            &mfcc_params.inner,
+        ),
     }
 }
 

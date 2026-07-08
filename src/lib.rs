@@ -250,8 +250,8 @@ mod mdct;
 mod mfcc;
 mod min_phase;
 mod sample;
-mod spectrogram;
 pub mod source;
+mod spectrogram;
 mod window;
 
 #[cfg(feature = "python")]
@@ -360,8 +360,7 @@ pub use chroma::{
 pub use convolution::{OverlapSaveConvolver, fft_convolve, fft_deconvolve};
 pub use cqt::{CqtParams, CqtResult, cqt};
 pub use erb::{
-    ErbParams, ErbSpacing, GammatoneParams, gammatone_center_frequencies,
-    gammatone_iir_spectrogram,
+    ErbParams, ErbSpacing, GammatoneParams, gammatone_center_frequencies, gammatone_iir_spectrogram,
 };
 pub use error::{SpectrogramError, SpectrogramResult};
 #[cfg(feature = "realfft")]

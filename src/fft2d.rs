@@ -646,10 +646,7 @@ impl<T: Sample> Fft2dPlanner<T> {
     ///
     /// Returns `SpectrogramError` if the input array is invalid or processing fails.
     #[inline]
-    pub fn magnitude_spectrum_2d(
-        &mut self,
-        data: &ArrayView2<T>,
-    ) -> SpectrogramResult<Array2<T>> {
+    pub fn magnitude_spectrum_2d(&mut self, data: &ArrayView2<T>) -> SpectrogramResult<Array2<T>> {
         let spectrum = self.fft2d(data)?;
         let magnitude = spectrum.mapv(num_complex::Complex::norm);
         Ok(magnitude)
