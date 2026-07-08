@@ -43,6 +43,7 @@ impl PyArrayData {
 ///
 /// Mirrors [`PyArrayData`] for complex-valued results (e.g. the raw STFT). The
 /// underlying `numpy` array lives on the Python heap for zero-copy sharing.
+#[derive(Clone)]
 pub enum PyComplexArrayData {
     C64(Py<PyArray2<Complex<f32>>>),
     C128(Py<PyArray2<Complex<f64>>>),

@@ -2,6 +2,12 @@
 
 > Date format = YYYY-MM-DD
 
+## [2.1.2] - 2026-07-08
+
+### Changed
+
+- `StftResult` (`PyStftResult`) is `Clone` again and switched from `skip_from_py_object` back to `from_py_object`, restoring the ability to accept it as an owned `#[pyfunction]`/`#[pymethods]` argument (e.g. `fn istft(stft_result: StftResult)`), as it worked pre-2.0. Cloning is cheap: the underlying complex array is a `Py<PyArray2<_>>` (refcount bump only), only the small `frequencies` axis is actually copied. Requires the `pyo3` `py-clone` feature (now enabled for the `python` feature), since `Py<T>: Clone` needs the GIL attached — safe here because these values only ever exist while the GIL is held.
+
 ## [2.0.0] - 2026-06-26
 
 ### Added

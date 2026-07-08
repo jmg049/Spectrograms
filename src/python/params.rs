@@ -329,7 +329,8 @@ impl From<WindowType> for PyWindowType {
 /// `"float32"`/`"float64"`) plus the frequency axis, sample rate and the STFT
 /// parameters used. The data lives on the Python heap so it can be shared
 /// zero-copy with array libraries via ``__array__`` / ``__dlpack__``.
-#[pyclass(name = "StftResult", skip_from_py_object)]
+#[pyclass(name = "StftResult", from_py_object)]
+#[derive(Clone)]
 pub struct PyStftResult {
     data: PyComplexArrayData,
     frequencies: Vec<f64>,
